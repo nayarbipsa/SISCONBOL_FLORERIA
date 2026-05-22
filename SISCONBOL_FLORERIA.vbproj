@@ -122,6 +122,10 @@
       <DependentUpon>Default.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
     </Compile>
+    <Compile Include="Error.aspx.vb">
+      <DependentUpon>Error.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
     <Compile Include="Global.asax.vb">
       <DependentUpon>Global.asax</DependentUpon>
     </Compile>
@@ -209,6 +213,9 @@
   <ItemGroup>
     <Content Include="editorconfig" />
     <Content Include="jsconfig.json" />
+    <Content Include="CHECKLIST_OBLIGATORIO_VB.md" />
+    <Content Include="DEFINICIONES_BD.md" />
+    <Content Include="ESTRUCTURA_COMPLETA_BD_MASTER.md" />
     <None Include="My Project\Application.myapp">
       <Generator>MyApplicationCodeGenerator</Generator>
       <LastGenOutput>Application.Designer.vb</LastGenOutput>
@@ -220,6 +227,8 @@
     </None>
     <None Include="packages.config" />
     <Content Include="Site.master" />
+    <Content Include="SEGURIDAD_PROYECTO.md" />
+    <Content Include="REGLAS_DEFINITIVAS_V3.md" />
     <None Include="Web.Debug.config">
       <DependentUpon>Web.config</DependentUpon>
     </None>
