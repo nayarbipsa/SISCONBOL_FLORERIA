@@ -1,0 +1,71 @@
+﻿<?xml version="1.0"?>
+<doc>
+<assembly>
+<name>
+SISCONBOL_FLORERIA
+</name>
+</assembly>
+<members>
+<member name="T:SISCONBOL_FLORERIA.My.MyWebExtension">
+ <summary>
+ Módulo usado para definir las propiedades que están disponibles en el espacio de nombres My para proyectos web.
+ </summary>
+ <remarks></remarks>
+</member>
+<member name="P:SISCONBOL_FLORERIA.My.MyWebExtension.Computer">
+ <summary>
+ Devuelve información sobre el equipo host.
+ </summary>
+</member>
+<member name="P:SISCONBOL_FLORERIA.My.MyWebExtension.User">
+ <summary>
+ Devuelve información del usuario web actual.
+ </summary>
+</member>
+<member name="P:SISCONBOL_FLORERIA.My.MyWebExtension.Request">
+ <summary>
+ Devuelve un objeto Request.
+ </summary>
+</member>
+<member name="P:SISCONBOL_FLORERIA.My.MyWebExtension.Response">
+ <summary>
+ Devuelve un objeto Response.
+ </summary>
+</member>
+<member name="P:SISCONBOL_FLORERIA.My.MyWebExtension.Log">
+ <summary>
+ Devuelve el objeto de registro Asp.
+ </summary>
+</member>
+<member name="M:SISCONBOL_FLORERIA.Login.ObtenerExpiraBolivia">
+ <summary>
+ Calcula las 23:59:59 de HOY en hora de Bolivia (UTC-4)
+ y lo devuelve en UTC para asignarlo a la cookie del navegador.
+ Esto asegura que la cookie expire a medianoche Bolivia
+ sin importar la zona horaria del servidor de Somee.
+ </summary>
+</member>
+<member name="M:SISCONBOL_FLORERIA.SesionHelper.VerificarSesion(System.Web.HttpContext)">
+ <summary>
+ Verifica sesion desde Session ASP.NET o cookie del navegador.
+ Si la Session se perdio por recompilacion, la restaura desde la BD.
+ Retorna True si la sesion es valida.
+ </summary>
+</member>
+<member name="M:SISCONBOL_FLORERIA.SesionHelper.CargarDatosUsuario(System.Web.HttpContext,System.Int32)">
+ <summary>
+ Carga todos los datos del usuario en Session desde la BD
+ </summary>
+</member>
+<member name="M:SISCONBOL_FLORERIA.SesionHelper.ObtenerUsuarioId(System.Web.HttpContext)">
+ <summary>
+ Obtiene el usuario_id de la Session de forma segura
+ </summary>
+</member>
+<member name="M:SISCONBOL_FLORERIA.SesionHelper.GenerarMenuHtml(System.Web.HttpContext,System.Web.UI.Page)">
+ <summary>
+ Genera el HTML del sidebar con menu dinamico
+ </summary>
+</member>
+</members>
+</doc>

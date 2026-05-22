@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "checkJs": true,
+    "strict": false,
+    "noEmit": true,
+    "allowJs": true,
+    "lib": ["dom", "es2015"],
+    "target": "ES6"
+  },
+  "exclude": [
+    "node_modules",
+    "bin",
+    "obj",
+    "Modulos"
+  ]
+}

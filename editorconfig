@@ -1,0 +1,23 @@
+# ============================================================
+# SISCONBOL_FLORERIA — Reglas del proyecto
+# Archivo: .editorconfig
+# Coloca este archivo en la raiz del proyecto
+# ============================================================
+
+root = true
+
+[*.{aspx,vb,config,sql}]
+charset                  = utf-8
+end_of_line              = crlf
+indent_style             = space
+indent_size              = 4
+trim_trailing_whitespace = true
+insert_final_newline     = true
+
+# ── VB.NET ──────────────────────────────────────────────────
+[*.vb]
+# Forzar Option Strict para evitar errores de tipos implicitos
+dotnet_diagnostic.BC42016.severity = error
+dotnet_diagnostic.BC42017.severity = error
+dotnet_diagnostic.BC42018.severity = error
+dotnet_diagnostic.BC42019.severity = error
