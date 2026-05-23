@@ -1,4 +1,4 @@
-<%@ Page Language="VB" MasterPageFile="~/Site.Master" AutoEventWireup="false" CodeBehind="Default.aspx.vb" Inherits="SISCONBOL_FLORERIA.Default_aspx" %>
+<%@ Page Language="VB" MasterPageFile="~/Site.Master" AutoEventWireup="false" CodeBehind="Default.aspx.vb" Inherits="SISCONBOL_FLORERIA._Default" %>
 
 <asp:Content ID="Content1" ContentPlaceHolderID="TitleContent" runat="server">
     SISCONBOL - Inicio
@@ -36,7 +36,7 @@
 <script type="text/javascript">
 // @ts-nocheck
 (function () {
-    var nombres = '<%= If(Session("nombres") IsNot Nothing, Session("nombres").ToString(), "") %>';
+    var nombres = '<%= If(Session("usuario_nombre") IsNot Nothing, Session("usuario_nombre").ToString(), "") %>';
     var elBien = document.getElementById('spBienvenida');
     var elFecha = document.getElementById('spFecha');
     
@@ -45,7 +45,7 @@
     }
     
     if (elFecha) {
-        var dias  = ['Domingo','Lunes','Martes','Miercoles','Jueves','Viernes','Sabado'];
+        var dias  = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
         var meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
         var hoy   = new Date();
         elFecha.textContent = dias[hoy.getDay()] + ' ' + hoy.getDate() + ' de ' + meses[hoy.getMonth()] + ' de ' + hoy.getFullYear();

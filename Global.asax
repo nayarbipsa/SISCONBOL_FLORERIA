@@ -14,45 +14,10 @@
     
     Sub Application_BeginRequest(sender As Object, e As EventArgs)
         ' ==========================================================
-        ' SEGURIDAD: Verificar acceso a páginas protegidas
+        ' SEGURIDAD: Prevenir acceso directo a carpetas
         ' ==========================================================
         
         Dim rutaActual As String = Request.Path.ToLower()
-        
-        ' Páginas públicas (sin autenticación)
-        Dim paginasPublicas As String() = {
-            "/login.aspx",
-            "/error.aspx",
-            "/estilos/",
-            "/scripts/",
-            "/imagenes/"
-        }
-        
-        ' Verificar si es una página pública
-        Dim esPublica As Boolean = False
-        For Each pagina In paginasPublicas
-            If rutaActual.Contains(pagina) Then
-                esPublica = True
-                Exit For
-            End If
-        Next
-        
-        ' Si es una página .aspx protegida, verificar sesión
-        If rutaActual.EndsWith(".aspx") AndAlso Not esPublica Then
-            ' Verificar que tenga sesión o cookie válida
-            If Session("token") Is Nothing Then
-                Dim cookie As HttpCookie = Request.Cookies("SISCONBOL_TOKEN")
-                If cookie Is Nothing OrElse String.IsNullOrEmpty(cookie.Value) Then
-                    ' No tiene sesión ni cookie válida
-                    Response.Redirect("~/Login.aspx", True)
-                    Return
-                End If
-            End If
-        End If
-        
-        ' ==========================================================
-        ' SEGURIDAD: Prevenir acceso directo a carpetas
-        ' ==========================================================
         
         ' Bloquear acceso a App_Code, App_Data, bin, obj
         Dim carpetasBloqueadas As String() = {
@@ -79,7 +44,7 @@
         Response.Headers.Remove("X-AspNet-Version")
         Response.Headers.Remove("X-AspNetMvc-Version")
         
-        ' Agregar headers de seguridad (si no están en Web.config)
+        ' Agregar headers de seguridad
         If String.IsNullOrEmpty(Response.Headers("X-Frame-Options")) Then
             Response.Headers.Add("X-Frame-Options", "SAMEORIGIN")
         End If
@@ -151,11 +116,7 @@
         ' ==========================================================
         
         ' Nota: Este evento solo se ejecuta en modo InProc
-        ' Para sesiones en BD o StateServer, usar otro mecanismo
-        
-        ' Aquí podrías cerrar la sesión en BD si el token está en Session
-        ' Pero en InProc no tienes acceso a HttpContext, así que esto
-        ' se maneja mejor en SesionHelper.VerificarSesion()
+        ' En producción con sesiones en BD, usar otro mecanismo
     End Sub
 
 </script>

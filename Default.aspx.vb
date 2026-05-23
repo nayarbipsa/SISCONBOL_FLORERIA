@@ -1,22 +1,22 @@
 Imports System.Data.SqlClient
 
-Partial Public Class Default_aspx
+Partial Public Class _Default
     Inherits System.Web.UI.Page
 
     Protected Sub Page_Load(ByVal sender As Object, ByVal e As EventArgs) Handles Me.Load
-        ' La Master Page ya verifica la sesion y carga el menu
-        ' Aqui solo va la logica propia de esta pagina
+        ' Site.Master ya verifica la sesión y carga el menú
+        ' Aquí solo va la lógica propia de esta página
 
         If Not IsPostBack Then
-            ' Establecer titulo de la pagina en la Master
-            Dim master As Site = CType(Me.Master, Site)
-            If master IsNot Nothing Then
-                master.TituloPagina = "Inicio"
-            End If
-
-            ' Aqui se pueden cargar estadisticas del dashboard
+            ' Aquí se pueden cargar estadísticas del dashboard
             ' CargarEstadisticas()
         End If
+    End Sub
+
+    ' Método de ejemplo para cargar estadísticas
+    Private Sub CargarEstadisticas()
+        ' TODO: Implementar carga de estadísticas para el dashboard
+        ' Ejemplo: total de pedidos hoy, ventas del mes, etc.
     End Sub
 
 End Class
