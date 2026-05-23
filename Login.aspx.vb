@@ -1,3 +1,4 @@
+Imports System.ComponentModel.DataAnnotations
 Imports System.Data.SqlClient
 Imports System.Security.Cryptography
 Imports System.Text
@@ -28,12 +29,24 @@ Partial Public Class Login
         If pwd Is Nothing Then pwd = ""
         carnet = carnet.Trim()
 
+        ' Validaciones básicas
         If carnet = "" OrElse pwd = "" Then
             MostrarAlerta("Datos incompletos.", False) : Return
         End If
 
         If Not System.Text.RegularExpressions.Regex.IsMatch(carnet, "^\d{7,8}$") Then
             MostrarAlerta("Carnet no valido.", False) : Return
+        End If
+
+        ' ============================================================
+        ' VALIDACIÓN DE SEGURIDAD - Detectar SQL Injection
+        ' ============================================================
+        If Validador.TienePatronPeligroso(carnet) Then
+            MostrarAlerta("Datos invalidos.", False) : Return
+        End If
+
+        If Validador.TienePatronPeligroso(pwd) Then
+            MostrarAlerta("Datos invalidos.", False) : Return
         End If
 
         Dim pwdHash As String = GenerarHash(pwd, SALT)

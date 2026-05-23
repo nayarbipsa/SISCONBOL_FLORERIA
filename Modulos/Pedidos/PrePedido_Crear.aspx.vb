@@ -2,22 +2,53 @@ Imports System.Data
 Imports System.Data.SqlClient
 Imports System.Web
 
+' ============================================================
+' SISCONBOL - Crear Pre-Pedido
+' Archivo: Modulos/Pedidos/PrePedido_Crear.aspx.vb
+' MasterPage: Site.Master (sesión verificada automáticamente)
+' ============================================================
 Partial Public Class Modulos_Pedidos_PrePedido_Crear
     Inherits System.Web.UI.Page
 
-    Public Property MenuHtml As String = ""
+    ' Propiedades públicas para contenido dinámico
     Public Property MensajeAlerta As String = ""
     Public Property ValorCelular As String = ""
+    Public Property ValorNombre As String = ""
+    Public Property ValorApellidos As String = ""
+    Public Property ValorEmail As String = ""
 
+    ' ============================================================
+    ' Page_Load - NO verificar sesión, lo hace Site.Master
+    ' ============================================================
     Protected Sub Page_Load(ByVal sender As Object, ByVal e As EventArgs) Handles Me.Load
-        If Not SesionHelper.VerificarSesion(HttpContext.Current) Then
-            Response.Redirect("~/Login.aspx")
-            Return
+        ' Site.Master ya verificó sesión - esta página solo carga si hay sesión válida
+        If Not IsPostBack Then
+            ' Limpiar valores
+            ValorCelular = ""
+            ValorNombre = ""
+            ValorApellidos = ""
+            ValorEmail = ""
         End If
-        MenuHtml = SesionHelper.GenerarMenuHtml(HttpContext.Current, Me)
     End Sub
 
-    Protected Sub btnPostBack_Click(ByVal sender As Object, ByVal e As EventArgs)
+    ' ============================================================
+    ' btnAccion_Click - Procesar formulario
+    ' ============================================================
+    Protected Sub btnAccion_Click(ByVal sender As Object, ByVal e As EventArgs)
+        Dim accion As String = Request.Form("hdAccion")
+        If accion Is Nothing Then accion = ""
+        accion = accion.Trim()
+
+        If accion = "CREAR" Then
+            CrearPrePedido()
+        End If
+    End Sub
+
+    ' ============================================================
+    ' CrearPrePedido - Lógica de creación
+    ' ============================================================
+    Private Sub CrearPrePedido()
+        ' Leer formulario
         Dim celular As String = Request.Form("txCelular")
         Dim nombre As String = Request.Form("txNombre")
         Dim apellidos As String = Request.Form("txApellidos")
@@ -25,6 +56,7 @@ Partial Public Class Modulos_Pedidos_PrePedido_Crear
         Dim tipoRegistro As String = Request.Form("selTipo")
         Dim paisIdStr As String = Request.Form("hdPaisId")
 
+        ' Normalizar nulls
         If celular Is Nothing Then celular = ""
         If nombre Is Nothing Then nombre = ""
         If apellidos Is Nothing Then apellidos = ""
@@ -36,43 +68,61 @@ Partial Public Class Modulos_Pedidos_PrePedido_Crear
         nombre = nombre.Trim()
         apellidos = apellidos.Trim()
         email = email.Trim()
+        tipoRegistro = tipoRegistro.Trim()
+        paisIdStr = paisIdStr.Trim()
 
-        If celular = "" Then
-            MensajeAlerta = "El celular es obligatorio"
-            MenuHtml = SesionHelper.GenerarMenuHtml(HttpContext.Current, Me)
+        ' ============================================================
+        ' VALIDACIONES CON CLASE VALIDADOR
+        ' ============================================================
+        Dim resultadoValidacion = Validador.ValidarFormularioPrePedido(celular, nombre, apellidos, email)
+        
+        If Not resultadoValidacion.EsValido Then
+            MensajeAlerta = resultadoValidacion.Mensaje
+            ' Mantener valores para que usuario no pierda lo que escribió
+            ValorCelular = celular
+            ValorNombre = nombre
+            ValorApellidos = apellidos
+            ValorEmail = email
             Return
         End If
 
-        ValorCelular = celular
-
-        ' Detectar pais
+        ' Detectar país (fallback si JavaScript no detectó)
         Dim paisId As Object = DBNull.Value
         If paisIdStr <> "" Then
             Dim tmp As Integer = 0
-            If Integer.TryParse(paisIdStr, tmp) Then paisId = tmp
+            If Integer.TryParse(paisIdStr, tmp) Then
+                paisId = tmp
+            End If
         End If
+
+        ' Fallback manual si no se detectó
         If paisId Is DBNull.Value Then
             If celular.StartsWith("+591") OrElse celular.StartsWith("591") Then
                 paisId = 1
             ElseIf celular.StartsWith("+51") OrElse celular.StartsWith("51") Then
                 paisId = 2
-            ElseIf (celular.StartsWith("6") OrElse celular.StartsWith("7")) AndAlso (celular.Length = 7 OrElse celular.Length = 8) Then
+            ElseIf (celular.StartsWith("6") OrElse celular.StartsWith("7")) AndAlso _
+                   (celular.Length = 7 OrElse celular.Length = 8) Then
                 paisId = 1
             End If
         End If
 
         Dim prepedidoId As Integer = 0
         Dim codigoGenerado As String = ""
+        Dim ip As String = Request.UserHostAddress
+        If ip Is Nothing Then ip = ""
 
         Try
             Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
                 conn.Open()
+
+                ' Crear pre-pedido
                 Using cmd As New SqlCommand("FLORERIA_sp_PrePedido_Crear", conn)
-                    cmd.CommandType = Data.CommandType.StoredProcedure
+                    cmd.CommandType = CommandType.StoredProcedure
                     cmd.Parameters.AddWithValue("@tipo_registro", tipoRegistro)
                     cmd.Parameters.AddWithValue("@cliente_celular", celular)
                     cmd.Parameters.AddWithValue("@agente_id", SesionHelper.ObtenerUsuarioId(HttpContext.Current))
-                    cmd.Parameters.AddWithValue("@ip", Request.UserHostAddress)
+                    cmd.Parameters.AddWithValue("@ip", ip)
 
                     Dim pId As New SqlParameter("@prepedido_id", SqlDbType.Int)
                     pId.Direction = ParameterDirection.Output
@@ -84,10 +134,13 @@ Partial Public Class Modulos_Pedidos_PrePedido_Crear
 
                     cmd.ExecuteNonQuery()
 
-                    ' Verificar que el SP retornó valores validos
+                    ' Verificar valores de salida
                     If pId.Value Is DBNull.Value OrElse pId.Value Is Nothing Then
                         MensajeAlerta = "Error: No se pudo crear el pre-pedido"
-                        MenuHtml = SesionHelper.GenerarMenuHtml(HttpContext.Current, Me)
+                        ValorCelular = celular
+                        ValorNombre = nombre
+                        ValorApellidos = apellidos
+                        ValorEmail = email
                         Return
                     End If
 
@@ -95,53 +148,55 @@ Partial Public Class Modulos_Pedidos_PrePedido_Crear
                     codigoGenerado = pCod.Value.ToString()
                 End Using
 
-                ' Solo actualizar si el ID es valido
+                ' Actualizar datos del cliente si se creó correctamente
                 If prepedidoId > 0 Then
                     Using cmd2 As New SqlCommand("FLORERIA_sp_PrePedido_ActualizarCliente", conn)
-                        cmd2.CommandType = Data.CommandType.StoredProcedure
+                        cmd2.CommandType = CommandType.StoredProcedure
                         cmd2.Parameters.AddWithValue("@prepedido_id", prepedidoId)
-                        cmd2.Parameters.AddWithValue("@cliente_nombre", If(nombre = "", CObj(DBNull.Value), CObj(nombre)))
-                        cmd2.Parameters.AddWithValue("@cliente_apellidos", If(apellidos = "", CObj(DBNull.Value), CObj(apellidos)))
-                        cmd2.Parameters.AddWithValue("@cliente_email", If(email = "", CObj(DBNull.Value), CObj(email)))
+
+                        ' Campos opcionales - usar DBNull si están vacíos
+                        If nombre = "" Then
+                            cmd2.Parameters.AddWithValue("@cliente_nombre", DBNull.Value)
+                        Else
+                            cmd2.Parameters.AddWithValue("@cliente_nombre", nombre)
+                        End If
+
+                        If apellidos = "" Then
+                            cmd2.Parameters.AddWithValue("@cliente_apellidos", DBNull.Value)
+                        Else
+                            cmd2.Parameters.AddWithValue("@cliente_apellidos", apellidos)
+                        End If
+
+                        If email = "" Then
+                            cmd2.Parameters.AddWithValue("@cliente_email", DBNull.Value)
+                        Else
+                            cmd2.Parameters.AddWithValue("@cliente_email", email)
+                        End If
+
                         cmd2.Parameters.AddWithValue("@cliente_pais_id", paisId)
-                        cmd2.Parameters.AddWithValue("@cliente_ciudad_id", CObj(DBNull.Value))
+                        cmd2.Parameters.AddWithValue("@cliente_ciudad_id", DBNull.Value)
                         cmd2.Parameters.AddWithValue("@modificado_por", SesionHelper.ObtenerUsuarioId(HttpContext.Current))
-                        cmd2.Parameters.AddWithValue("@ip", Request.UserHostAddress)
+                        cmd2.Parameters.AddWithValue("@ip", ip)
                         cmd2.ExecuteNonQuery()
                     End Using
                 End If
             End Using
 
-            MensajeAlerta = "Pre-Pedido creado: " & codigoGenerado
+            ' Éxito - limpiar formulario
+            MensajeAlerta = "Pre-Pedido " & codigoGenerado & " creado correctamente"
             ValorCelular = ""
+            ValorNombre = ""
+            ValorApellidos = ""
+            ValorEmail = ""
 
         Catch ex As Exception
-            MensajeAlerta = "Error: " & ex.Message.Replace("'", "")
+            ' Error - mantener valores para que usuario no pierda lo que escribió
+            MensajeAlerta = "Error: " & ex.Message.Replace("'", "").Replace("""", "")
+            ValorCelular = celular
+            ValorNombre = nombre
+            ValorApellidos = apellidos
+            ValorEmail = email
         End Try
-
-        MenuHtml = SesionHelper.GenerarMenuHtml(HttpContext.Current, Me)
-    End Sub
-
-    Protected Sub btnCerrarSesion_Click(ByVal sender As Object, ByVal e As EventArgs)
-        If Session("token") IsNot Nothing Then
-            Try
-                Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
-                    conn.Open()
-                    Using cmd As New SqlCommand("FLORERIA_sp_CerrarSesion", conn)
-                        cmd.CommandType = Data.CommandType.StoredProcedure
-                        cmd.Parameters.AddWithValue("@token", Session("token").ToString())
-                        cmd.ExecuteNonQuery()
-                    End Using
-                End Using
-            Catch ex As Exception
-                System.Diagnostics.Debug.WriteLine("ERROR CerrarSesion: " & ex.Message)
-            End Try
-        End If
-        Dim cookie As New HttpCookie("SISCONBOL_TOKEN", "")
-        cookie.Expires = DateTime.Now.AddDays(-1)
-        Response.Cookies.Add(cookie)
-        Session.Abandon()
-        Response.Redirect("~/Login.aspx")
     End Sub
 
 End Class
