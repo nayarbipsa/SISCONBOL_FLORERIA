@@ -3080,7 +3080,251 @@ GO
 
 
 
+ -- ============================================================
+-- ACTUALIZACIÓN PARA: 03_TODOS_LOS_SPS.sql
+-- REEMPLAZAR LOS SPs DE PRE-PEDIDO CON ESTAS VERSIONES
+-- ============================================================
 
+USE SISCONBOL;
+GO
+
+-- ============================================================
+-- SP: FLORERIA_sp_PrePedido_Crear (CON VALIDACIONES)
+-- ============================================================
+
+IF OBJECT_ID('dbo.FLORERIA_sp_PrePedido_Crear', 'P') IS NOT NULL
+    DROP PROCEDURE dbo.FLORERIA_sp_PrePedido_Crear;
+GO
+
+CREATE PROCEDURE FLORERIA_sp_PrePedido_Crear
+    @tipo_registro   VARCHAR(20),
+    @cliente_celular VARCHAR(20),
+    @agente_id       INT,
+    @ip              VARCHAR(50),
+    @prepedido_id    INT OUTPUT,
+    @codigo          VARCHAR(20) OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        -- ========================================================
+        -- VALIDACIONES DE SEGURIDAD
+        -- ========================================================
+        
+        -- Validar celular con función
+        IF dbo.FLORERIA_fn_ValidarCelular(@cliente_celular) = 0
+        BEGIN
+            RAISERROR('El celular tiene un formato inválido', 16, 1);
+            RETURN;
+        END;
+
+        -- Validar contra patrones peligrosos
+        IF dbo.FLORERIA_fn_ValidarTexto(@cliente_celular) = 0
+        BEGIN
+            RAISERROR('El celular contiene caracteres no permitidos', 16, 1);
+            RETURN;
+        END;
+
+        -- Verificar que no exista pre-pedido activo
+        IF EXISTS (
+            SELECT 1 FROM FLORERIA_PrePedido 
+            WHERE cliente_celular = @cliente_celular
+              AND estado IN ('BORRADOR','FORM_ENVIADO','FORM_COMPLETADO',
+                             'COMPROBANTE_ENVIADO','PAGADO')
+        )
+        BEGIN
+            RAISERROR('El cliente ya tiene un pre-pedido activo.', 16, 1);
+            RETURN;
+        END;
+
+        -- ========================================================
+        -- GENERAR CÓDIGO SECUENCIAL
+        -- ========================================================
+        DECLARE @siguiente INT;
+        SELECT @siguiente = ISNULL(MAX(
+            CASE WHEN codigo LIKE 'PRE-%' 
+                 THEN CAST(SUBSTRING(codigo, 5, LEN(codigo)) AS INT)
+                 ELSE 0 END
+        ), 0) + 1
+        FROM FLORERIA_PrePedido;
+
+        SET @codigo = 'PRE-' + RIGHT('000000' + CAST(@siguiente AS VARCHAR), 6);
+
+        -- ========================================================
+        -- DETERMINAR ESTADO SEGÚN TIPO
+        -- ========================================================
+        DECLARE @estado VARCHAR(30);
+        SET @estado = CASE @tipo_registro
+            WHEN 'PRE_PEDIDO'    THEN 'BORRADOR'
+            WHEN 'VENTA_TIENDA'  THEN 'PAGADO'
+            WHEN 'VENTA_ANTIGUA' THEN 'COMPLETADO'
+            ELSE 'BORRADOR'
+        END;
+
+        -- ========================================================
+        -- INSERTAR PRE-PEDIDO
+        -- ========================================================
+        INSERT INTO FLORERIA_PrePedido (
+            codigo, tipo_registro, cliente_celular,
+            estado, token_web,
+            total_general_bs, total_general_usd, tasa_cambio,
+            descuento_bs, descuento_usd,
+            agente_actual_id, creado_por, creado_en
+        )
+        VALUES (
+            @codigo, @tipo_registro, @cliente_celular,
+            @estado, NULL,
+            0, 0, 7.0000,
+            0, 0,
+            @agente_id, @agente_id, GETDATE()
+        );
+
+        SET @prepedido_id = SCOPE_IDENTITY();
+        COMMIT TRANSACTION;
+
+        -- Retornar datos del pre-pedido creado
+        SELECT prepedido_id, codigo, estado 
+        FROM FLORERIA_PrePedido 
+        WHERE prepedido_id = @prepedido_id;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK;
+        DECLARE @err1 VARCHAR(4000);
+        SET @err1 = ERROR_MESSAGE();
+        RAISERROR(@err1, 16, 1);
+    END CATCH;
+END;
+GO
+
+-- ============================================================
+-- SP: FLORERIA_sp_PrePedido_ActualizarCliente (CON VALIDACIONES)
+-- ============================================================
+
+IF OBJECT_ID('dbo.FLORERIA_sp_PrePedido_ActualizarCliente', 'P') IS NOT NULL
+    DROP PROCEDURE dbo.FLORERIA_sp_PrePedido_ActualizarCliente;
+GO
+
+CREATE PROCEDURE FLORERIA_sp_PrePedido_ActualizarCliente
+    @prepedido_id         INT,
+    @cliente_nombre       VARCHAR(200),
+    @cliente_apellidos    VARCHAR(200),
+    @cliente_email        VARCHAR(100),
+    @cliente_pais_id      TINYINT,
+    @cliente_ciudad_id    SMALLINT,
+    @modificado_por       INT,
+    @ip                   VARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- ========================================================
+    -- VALIDACIONES DE SEGURIDAD
+    -- ========================================================
+    
+    -- Validar nombre (solo si no es NULL)
+    IF @cliente_nombre IS NOT NULL
+    BEGIN
+        -- Solo letras, espacios, acentos, ñ
+        IF @cliente_nombre LIKE '%[^a-zA-ZáéíóúÁÉÍÓÚñÑ ]%'
+        BEGIN
+            RAISERROR('El nombre solo puede contener letras y espacios', 16, 1);
+            RETURN;
+        END;
+
+        -- Validar contra patrones peligrosos
+        IF dbo.FLORERIA_fn_ValidarTexto(@cliente_nombre) = 0
+        BEGIN
+            RAISERROR('El nombre contiene caracteres no permitidos', 16, 1);
+            RETURN;
+        END;
+
+        -- Validar longitud
+        IF LEN(@cliente_nombre) > 200
+        BEGIN
+            RAISERROR('El nombre no puede exceder 200 caracteres', 16, 1);
+            RETURN;
+        END;
+    END;
+
+    -- Validar apellidos (solo si no es NULL)
+    IF @cliente_apellidos IS NOT NULL
+    BEGIN
+        IF @cliente_apellidos LIKE '%[^a-zA-ZáéíóúÁÉÍÓÚñÑ ]%'
+        BEGIN
+            RAISERROR('Los apellidos solo pueden contener letras y espacios', 16, 1);
+            RETURN;
+        END;
+
+        IF dbo.FLORERIA_fn_ValidarTexto(@cliente_apellidos) = 0
+        BEGIN
+            RAISERROR('Los apellidos contienen caracteres no permitidos', 16, 1);
+            RETURN;
+        END;
+
+        IF LEN(@cliente_apellidos) > 200
+        BEGIN
+            RAISERROR('Los apellidos no pueden exceder 200 caracteres', 16, 1);
+            RETURN;
+        END;
+    END;
+
+    -- Validar email (solo si no es NULL)
+    IF @cliente_email IS NOT NULL
+    BEGIN
+        -- Debe tener @ y .
+        IF @cliente_email NOT LIKE '%@%.%'
+        BEGIN
+            RAISERROR('El email tiene un formato inválido', 16, 1);
+            RETURN;
+        END;
+
+        IF dbo.FLORERIA_fn_ValidarTexto(@cliente_email) = 0
+        BEGIN
+            RAISERROR('El email contiene caracteres no permitidos', 16, 1);
+            RETURN;
+        END;
+
+        IF LEN(@cliente_email) > 100
+        BEGIN
+            RAISERROR('El email no puede exceder 100 caracteres', 16, 1);
+            RETURN;
+        END;
+    END;
+
+    -- ========================================================
+    -- ACTUALIZAR DATOS DEL CLIENTE
+    -- ========================================================
+    UPDATE FLORERIA_PrePedido SET
+        cliente_nombre     = @cliente_nombre,
+        cliente_apellidos  = @cliente_apellidos,
+        cliente_email      = @cliente_email,
+        cliente_pais_id    = @cliente_pais_id,
+        cliente_ciudad_id  = @cliente_ciudad_id,
+        modificado_por     = @modificado_por,
+        modificado_en      = GETDATE()
+    WHERE prepedido_id = @prepedido_id;
+
+    -- ========================================================
+    -- REGISTRAR EN AUDITORÍA
+    -- ========================================================
+    INSERT INTO FLORERIA_Auditoria (
+        usuario_id, ip, tabla, registro_id, accion, valor_nuevo
+    )
+    VALUES (
+        @modificado_por, 
+        @ip, 
+        'FLORERIA_PrePedido', 
+        CAST(@prepedido_id AS VARCHAR), 
+        'MODIFICAR', 
+        '{"campo":"cliente_datos","detalle":"Actualización de datos del cliente"}'
+    );
+END;
+GO
+
+PRINT 'SPs de Pre-Pedido actualizados con validaciones de seguridad';
+GO
 
 
 

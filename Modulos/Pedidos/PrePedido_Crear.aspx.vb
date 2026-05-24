@@ -182,12 +182,8 @@ Partial Public Class Modulos_Pedidos_PrePedido_Crear
                 End If
             End Using
 
-            ' Éxito - limpiar formulario
-            MensajeAlerta = "Pre-Pedido " & codigoGenerado & " creado correctamente"
-            ValorCelular = ""
-            ValorNombre = ""
-            ValorApellidos = ""
-            ValorEmail = ""
+            ' Éxito - redirigir a página de links
+            Response.Redirect("PrePedido_Links.aspx?id=" & prepedidoId)
 
         Catch ex As Exception
             ' Error - mantener valores para que usuario no pierda lo que escribió

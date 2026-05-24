@@ -118,6 +118,75 @@ Tabler requiere **DOS clases**:
 
 ---
 
+## 🔤 REGLAS ENCODING UTF-8 Y CARACTERES ESPECIALES
+
+### ❌ NUNCA usar en archivos .aspx:
+- Tildes: `á é í ó ú Á É Í Ó Ú`
+- Ñ: `ñ Ñ`
+- Signos de apertura: `¿ ¡`
+- Símbolos: `° ª º`
+
+### ✅ SIEMPRE usar ASCII puro:
+```
+¿Qué tipo?     →  Que tipo
+Perú           →  Peru
+código         →  codigo
+después        →  despues
+Configuración  →  Configuracion
+```
+
+### 📍 Dónde SÍ y dónde NO:
+
+**✅ Puedes usar tildes en:**
+- Base de datos (columnas, datos)
+- Code-behind VB.NET (strings en `.vb`)
+- Comentarios HTML (`<!-- aquí sí -->`)
+- JavaScript dentro de funciones
+
+**❌ NUNCA uses tildes en:**
+- Labels: `<label>Que hacer</label>`
+- Placeholders: `<input placeholder="Escriba su codigo">`
+- Títulos de sección: `<div class="form-section-title">Configuracion</div>`
+- Options: `<option>Opcion 1</option>`
+
+### 💾 Guardar archivos en Visual Studio:
+
+1. Archivo → Guardar con codificación...
+2. Seleccionar: **Unicode (UTF-8 con firma) - Página de códigos 65001**
+
+### 📋 Checklist antes de subir .aspx:
+
+```
+[ ] Sin tildes en labels
+[ ] Sin tildes en placeholders
+[ ] Sin tildes en títulos HTML
+[ ] Sin ¿? en textos visibles
+[ ] Archivo guardado UTF-8 con firma
+[ ] Probado con CTRL+SHIFT+R
+```
+
+### 🎯 Ejemplo correcto:
+
+```html
+<!-- ✅ CORRECTO -->
+<div class="form-section">
+    <div class="form-section-title">
+        <i class="ti ti-user"></i>
+        Datos del cliente pagador
+    </div>
+    <div class="form-group">
+        <label class="form-label required">Celular</label>
+        <input type="text" class="form-control" 
+               placeholder="Ej: 71234567 o +591 71234567">
+        <span class="form-help">Bolivia: 71234567 | Peru: +51 987654321</span>
+    </div>
+</div>
+```
+
+**Trigger para IA:** "SIN TILDES" / "ASCII PURO"
+
+---
+
 ## 📐 REGLAS JAVASCRIPT
 
 1. `// @ts-nocheck` al inicio
@@ -150,6 +219,23 @@ Tabler requiere **DOS clases**:
 2. **Variables `:root`** (--rosa, --gris, --verde, etc.)
 3. **NUNCA modificar clases base:** `.layout`, `.sidebar`, `.main`, `.topbar`, `.content`, `.nav-item`, `.nav-child`, `.avatar-*`, `.sb-*`
 4. **Estilos por página:** usar `HeadContent`
+5. **Una sola clase para inputs:** `.form-control` (inputs, selects, textareas)
+
+### Clases de formularios definitivas:
+
+```
+.form-control      → Inputs, selects, textareas (TODO)
+.form-row          → Grid responsive
+.form-group        → Label + input
+.form-label        → Labels (.required para *)
+.form-section      → Secciones con títulos
+.form-actions      → Botones al final
+.form-help         → Mensajes de ayuda
+.form-error        → Mensajes de error
+.form-input-icon   → Inputs con iconos
+```
+
+**NUNCA crear:** `.form-input`, `.form-select`, `.form-textarea` (eliminados)
 
 ---
 
@@ -243,6 +329,52 @@ End Class
 
 ---
 
+## ⚠️ REGLA CRÍTICA: App_Code vs Páginas - NAMESPACE
+
+**OBLIGATORIO — NUNCA OLVIDAR:**
+
+```
+App_Code/*.vb          → ❌ NO Namespace
+Cualquier .aspx.vb     → ✅ SÍ Namespace SISCONBOL_FLORERIA
+```
+
+### ❌ MAL - App_Code/Validador.vb:
+```vb
+Namespace SISCONBOL_FLORERIA
+    Public Class Validador
+    End Class
+End Namespace
+```
+
+### ✅ BIEN - App_Code/Validador.vb:
+```vb
+Imports System.Text.RegularExpressions
+
+Public Class Validador
+End Class
+```
+
+### ✅ BIEN - Login.aspx.vb o cualquier .aspx.vb:
+```vb
+Namespace SISCONBOL_FLORERIA
+    Partial Public Class Login
+        Inherits System.Web.UI.Page
+    End Class
+End Namespace
+```
+
+### REGLA SIMPLE:
+```
+App_Code/SesionHelper.vb  → NO Namespace → Public Class SesionHelper
+App_Code/Validador.vb     → NO Namespace → Public Class Validador
+Login.aspx.vb             → SÍ Namespace  → Partial Public Class Login
+Modulos/Algo.aspx.vb      → SÍ Namespace  → Partial Public Class
+```
+
+**ERROR COMÚN:** "Validador no está declarado" = Pusiste Namespace en App_Code (QUÍTALO)
+
+---
+
 ## ✅ CHECKLIST OBLIGATORIO
 
 ### Antes de generar:
@@ -262,6 +394,8 @@ End Class
 - [ ] ¿CodeBehind?
 - [ ] ¿Inherits con namespace?
 - [ ] ¿Íconos `ti ti-xxx`?
+- [ ] ¿SIN tildes en textos HTML?
+- [ ] ¿Archivo UTF-8 con firma?
 
 ### Si toca .vb:
 - [ ] ¿Partial Public Class?
@@ -272,12 +406,14 @@ End Class
 ### Si toca CSS:
 - [ ] ¿NO modifiqué clases base?
 - [ ] ¿Uso variables --rosa, --gris?
+- [ ] ¿Solo .form-control (no .form-input)?
 
 ### Antes de declarar "funciona":
 - [ ] ¿Vi la captura con detalle?
 - [ ] ¿Bryan confirmó?
 - [ ] ¿Sin errores en consola?
 - [ ] ¿Sin errores en Output VS?
+- [ ] ¿Sin caracteres raros (Â, Ã)?
 
 ---
 
@@ -291,6 +427,8 @@ End Class
 | Texto menú se ve mal | HTML no coincide con CSS | NO parchar CSS, ALINEAR HTML |
 | `Could not load type X` | Inherits ≠ clase .vb | Igualar exactamente |
 | Login en bucle | Site.Master.vb duplica lógica | Site.Master.vb MÍNIMO |
+| `Â¿QuÃ©?` en pantalla | Tildes en .aspx | Usar ASCII puro (que, Peru, codigo) |
+| Inputs chicos | CSS en caché | CTRL+SHIFT+R para forzar recarga |
 
 ---
 
@@ -302,6 +440,7 @@ End Class
 3. Verificar capturas con detalle
 4. Buscar causa raíz
 5. UNA arquitectura
+6. ASCII puro en .aspx
 
 ### NUNCA:
 1. ❌ Generar sin consultar repo
@@ -309,9 +448,11 @@ End Class
 3. ❌ Declarar "funciona" sin confirmar
 4. ❌ Inventar lógica que ya existe
 5. ❌ Tocar Site.Master.vb más allá de lo mínimo
+6. ❌ Usar tildes en archivos .aspx
 
 ---
 
-**VERSIÓN:** 3.0 — Mayo 2026  
+**VERSIÓN:** 3.1 — Mayo 2026  
 **REPO:** https://github.com/nayarbipsa/SISCONBOL_FLORERIA  
-**ARQUITECTURA:** MasterPage + SesionHelper
+**ARQUITECTURA:** MasterPage + SesionHelper  
+**ÚLTIMA ACTUALIZACIÓN:** Reglas de encoding UTF-8 y CSS unificado (.form-control)

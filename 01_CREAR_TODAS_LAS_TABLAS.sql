@@ -651,3 +651,89 @@ GO
 -- =============================================
 -- FIN DE CREACIÓN DE TABLAS
 -- =============================================
+
+
+
+-- ============================================================
+-- ACTUALIZACIÓN PARA: 01_CREAR_TODAS_LAS_TABLAS.sql
+-- AGREGAR AL FINAL DEL ARCHIVO (después de todas las tablas)
+-- ============================================================
+
+-- ============================================================
+-- FUNCIONES DE VALIDACIÓN
+-- ============================================================
+
+-- Función: Validar texto genérico (detectar patrones peligrosos)
+IF OBJECT_ID('dbo.FLORERIA_fn_ValidarTexto', 'FN') IS NOT NULL
+    DROP FUNCTION dbo.FLORERIA_fn_ValidarTexto;
+GO
+
+CREATE FUNCTION dbo.FLORERIA_fn_ValidarTexto
+(
+    @texto VARCHAR(MAX)
+)
+RETURNS BIT
+AS
+BEGIN
+    -- Retorna 1 si es válido, 0 si es inválido
+    
+    IF @texto IS NULL RETURN 1;
+    
+    -- Detectar caracteres peligrosos y patrones de SQL Injection/XSS
+    IF @texto LIKE '%<%' OR @texto LIKE '%>%' OR
+       @texto LIKE '%''%' OR @texto LIKE '%"%' OR
+       @texto LIKE '%;%' OR @texto LIKE '%--%' OR
+       @texto LIKE '%/*%' OR @texto LIKE '%*/%' OR
+       @texto LIKE '%script%' OR @texto LIKE '%SCRIPT%' OR
+       @texto LIKE '%DROP%' OR @texto LIKE '%DELETE%' OR
+       @texto LIKE '%INSERT%' OR @texto LIKE '%UPDATE%' OR
+       @texto LIKE '%EXEC%' OR @texto LIKE '%XP_%' OR
+       @texto LIKE '%SP_%'
+        RETURN 0;
+    
+    RETURN 1;
+END;
+GO
+
+-- Función: Validar celular
+IF OBJECT_ID('dbo.FLORERIA_fn_ValidarCelular', 'FN') IS NOT NULL
+    DROP FUNCTION dbo.FLORERIA_fn_ValidarCelular;
+GO
+
+CREATE FUNCTION dbo.FLORERIA_fn_ValidarCelular
+(
+    @celular VARCHAR(20)
+)
+RETURNS BIT
+AS
+BEGIN
+    -- Retorna 1 si es válido, 0 si es inválido
+    
+    IF @celular IS NULL OR LEN(LTRIM(RTRIM(@celular))) = 0
+        RETURN 0;
+    
+    -- Solo debe contener: números, +, espacios, guiones, paréntesis
+    IF @celular LIKE '%[^0-9 +()-]%'
+        RETURN 0;
+    
+    -- Contar solo dígitos
+    DECLARE @digitos VARCHAR(20);
+    SET @digitos = @celular;
+    SET @digitos = REPLACE(@digitos, ' ', '');
+    SET @digitos = REPLACE(@digitos, '+', '');
+    SET @digitos = REPLACE(@digitos, '-', '');
+    SET @digitos = REPLACE(@digitos, '(', '');
+    SET @digitos = REPLACE(@digitos, ')', '');
+    
+    -- Mínimo 7 dígitos, máximo 15 (estándar E.164)
+    IF LEN(@digitos) < 7 OR LEN(@digitos) > 15
+        RETURN 0;
+    
+    RETURN 1;
+END;
+GO
+
+-- ============================================================
+-- FIN DE FUNCIONES DE VALIDACIÓN
+-- ESTAS FUNCIONES SE USAN EN LOS STORED PROCEDURES
+-- ============================================================

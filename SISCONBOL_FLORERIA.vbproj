@@ -92,6 +92,10 @@
     <Import Include="System.Web.UI.HtmlControls" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="01_CREAR_TODAS_LAS_TABLAS.sql" />
+    <Content Include="02_CREAR_TODOS_LOS_INDICES.sql" />
+    <Content Include="03_TODOS_LOS_SPS.sql" />
+    <Content Include="04_DATOS_INICIALES.sql" />
     <Content Include="CambiarPassword.aspx" />
     <Content Include="Default.aspx" />
     <Content Include="Error.aspx" />
@@ -100,6 +104,8 @@
     <Content Include="Modulos\Catalogo\ProductoEditar.aspx" />
     <Content Include="Modulos\Catalogo\Productos.aspx" />
     <Content Include="Modulos\Config\Migrar.aspx" />
+    <Content Include="Modulos\Pedidos\Pedido_Agregar.aspx" />
+    <Content Include="Modulos\Pedidos\PrePedido_Links.aspx" />
     <Content Include="Scripts\site.js" />
     <Content Include="Login.aspx" />
     <Content Include="Modulos\Catalogo\Categorias.aspx" />
@@ -110,9 +116,11 @@
     <Content Include="Modulos\Pedidos\PrePedido_Crear.aspx" />
     <Content Include="Modulos\Pedidos\PrePedido_Detalle.aspx" />
     <Content Include="Modulos\Pedidos\PrePedido_Lista.aspx" />
+    <Content Include="Scripts\validaciones.js" />
     <Content Include="Web.config" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="App_Code\Validador.vb" />
     <Compile Include="App_Code\WooCommerceSync.vb" />
     <Compile Include="CambiarPassword.aspx.vb">
       <DependentUpon>CambiarPassword.aspx</DependentUpon>
@@ -161,6 +169,10 @@
       <DependentUpon>Usuarios.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
     </Compile>
+    <Compile Include="Modulos\Pedidos\Pedido_Agregar.aspx.vb">
+      <DependentUpon>Pedido_Agregar.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
     <Compile Include="Modulos\Pedidos\PrePedidos.aspx.vb">
       <DependentUpon>PrePedidos.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
@@ -171,6 +183,10 @@
     </Compile>
     <Compile Include="Modulos\Pedidos\PrePedido_Detalle.aspx.vb">
       <DependentUpon>PrePedido_Detalle.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Modulos\Pedidos\PrePedido_Links.aspx.vb">
+      <DependentUpon>PrePedido_Links.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
     </Compile>
     <Compile Include="Modulos\Pedidos\PrePedido_Lista.aspx.vb">

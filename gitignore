@@ -1,0 +1,190 @@
+# ============================================================
+# SISCONBOL_FLORERIA - .gitignore
+# Proyecto: ASP.NET Web Forms + VB.NET
+# ============================================================
+
+# ──────────────────────────────────────
+# COMPILADOS Y BUILD
+# ──────────────────────────────────────
+bin/
+obj/
+*.dll
+*.pdb
+*.exe
+*.cache
+
+# ──────────────────────────────────────
+# VISUAL STUDIO
+# ──────────────────────────────────────
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+*.vssscc
+*.vspscc
+*.vbproj.user
+
+# ──────────────────────────────────────
+# ASP.NET ESPECÍFICO
+# ──────────────────────────────────────
+PublishProfiles/
+publish/
+*.publishsettings
+*.publishproj
+_compareTemp/
+_publishedWebsites/
+[Pp]ublish[Pp]rofiles/
+
+# Archivos temporales de ASP.NET
+App_Data/*.mdf
+App_Data/*.ldf
+App_Data/*.sdf
+
+# ──────────────────────────────────────
+# NUGET PACKAGES
+# ──────────────────────────────────────
+packages/
+*.nupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+
+# ──────────────────────────────────────
+# ARCHIVOS TEMPORALES
+# ──────────────────────────────────────
+*.tmp
+*.temp
+*.log
+*.swp
+*~
+*.bak
+*.backup
+*.orig
+
+# ──────────────────────────────────────
+# WINDOWS
+# ──────────────────────────────────────
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# ──────────────────────────────────────
+# MAC (por si acaso)
+# ──────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ──────────────────────────────────────
+# IDEs ALTERNATIVOS
+# ──────────────────────────────────────
+.idea/
+*.swp
+*.swo
+.vscode/
+.history/
+
+# ──────────────────────────────────────
+# ARCHIVOS DE CONFIGURACIÓN LOCAL
+# ──────────────────────────────────────
+Web.Debug.config
+Web.Release.config
+*.local.config
+appsettings.Development.json
+
+# ──────────────────────────────────────
+# LOGS
+# ──────────────────────────────────────
+Logs/
+logs/
+*.log
+
+# ──────────────────────────────────────
+# OUTPUT DE BUILD
+# ──────────────────────────────────────
+Generated_Code/
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+
+# ──────────────────────────────────────
+# TEST RESULTS
+# ──────────────────────────────────────
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.VisualState.xml
+TestResult.xml
+
+# ──────────────────────────────────────
+# RESHARPER
+# ──────────────────────────────────────
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# ──────────────────────────────────────
+# NCRUNCH
+# ──────────────────────────────────────
+_NCrunch_*
+.*crunch*.local.xml
+nCrunchTemp_*
+
+# ──────────────────────────────────────
+# ARCHIVOS DE NODE (por si usas npm)
+# ──────────────────────────────────────
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+
+# ──────────────────────────────────────
+# ARCHIVOS SENSIBLES (NUNCA SUBIR)
+# ──────────────────────────────────────
+*.pfx
+*.key
+*.pem
+secrets.json
+.env
+.env.local
+
+# ──────────────────────────────────────
+# ARCHIVOS DE COMPILACIÓN VB
+# ──────────────────────────────────────
+*.vbproj.FileListAbsolute.txt
+*.vshost.exe
+*.vshost.exe.config
+
+# ──────────────────────────────────────
+# ROSLYN
+# ──────────────────────────────────────
+roslyn/
+
+# ──────────────────────────────────────
+# SQL SERVER (archivos locales temporales)
+# ──────────────────────────────────────
+*.mdf
+*.ldf
+*.ndf
+
+# ──────────────────────────────────────
+# EXCEPCIONES (lo que SÍ queremos subir)
+# ──────────────────────────────────────
+# Mantener .vsconfig
+!.vsconfig
+
+# Mantener packages.config (lista de paquetes NuGet)
+!packages.config

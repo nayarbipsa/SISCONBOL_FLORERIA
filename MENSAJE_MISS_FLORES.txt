@@ -1,0 +1,110 @@
+🌸 *SISCONBOL - Módulo Creación de Pre-Pedido* 🌸
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ *ESTADO:* REESCRITO CON ARQUITECTURA MASTERPAGE
+
+📂 *ARCHIVOS MODIFICADOS:*
+1️⃣ Modulos/Pedidos/PrePedido_Crear.aspx
+2️⃣ Modulos/Pedidos/PrePedido_Crear.aspx.vb
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 *QUÉ SE CORRIGIÓ:*
+
+❌ ANTES (INCORRECTO):
+- Página SIN MasterPage
+- Verificaba sesión manualmente
+- Generaba menú manualmente  
+- CSS duplicado (400+ líneas)
+- JavaScript duplicado
+- CodeFile en vez de CodeBehind
+
+✅ DESPUÉS (CORRECTO):
+- Página CON Site.Master ✓
+- NO verifica sesión (lo hace Site.Master) ✓
+- NO genera menú (lo hace Site.Master) ✓
+- CSS mínimo (solo estilos específicos) ✓
+- JavaScript específico (solo detección país) ✓
+- CodeBehind correcto ✓
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📋 *FUNCIONALIDAD:*
+
+1. Formulario para crear pre-pedido
+2. Detección automática de país por celular:
+   - 🇧🇴 Bolivia: +591 o 6/7 de 7-8 dígitos
+   - 🇵🇪 Perú: +51 + 9 dígitos
+   - 🌎 Internacional: +código + número
+
+3. Tipos de registro:
+   - Pre-Pedido (Link Web)
+   - Venta Tienda
+   - Venta Antigua
+
+4. Campos:
+   - Celular (obligatorio)
+   - Tipo registro (obligatorio)
+   - Nombre (opcional)
+   - Apellidos (opcional)
+   - Email (opcional)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔧 *STORED PROCEDURES USADOS:*
+
+1. FLORERIA_sp_PrePedido_Crear
+   - Crea registro base
+   - Genera código PRE-000001
+   - Valida que no haya pre-pedido activo
+
+2. FLORERIA_sp_PrePedido_ActualizarCliente
+   - Actualiza datos opcionales
+   - Registra en auditoría
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎨 *INTERFAZ:*
+
+- ✅ Usa clases de site.css (NO duplica estilos)
+- ✅ Badge visual de país detectado
+- ✅ Alertas de éxito/error
+- ✅ Mantiene valores en caso de error
+- ✅ Limpia formulario en caso de éxito
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📤 *CÓMO ACTUALIZAR EN SOMEE:*
+
+1. Reemplazar estos 2 archivos:
+   - Modulos/Pedidos/PrePedido_Crear.aspx
+   - Modulos/Pedidos/PrePedido_Crear.aspx.vb
+
+2. Compilar proyecto
+
+3. Subir DLL a bin/
+
+4. Probar en navegador
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ *IMPORTANTE:*
+
+Esta página ahora depende de Site.Master.
+Si Site.Master tiene algún problema, esta página
+tampoco funcionará. Pero eso es CORRECTO - todas
+las páginas internas deben usar Site.Master.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚀 *PRÓXIMOS PASOS SUGERIDOS:*
+
+1. Lista de Pre-Pedidos (tabla con filtros)
+2. Detalle de Pre-Pedido (ver/editar)
+3. Generar Link Web (token único)
+4. Agregar Productos al pre-pedido
+5. Crear Pedidos desde pre-pedido
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+¿Probamos esta versión en local primero? 🌸

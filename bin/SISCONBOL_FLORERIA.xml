@@ -37,6 +37,76 @@ SISCONBOL_FLORERIA
  Devuelve el objeto de registro Asp.
  </summary>
 </member>
+<member name="M:SISCONBOL_FLORERIA.Validador.EsTextoValido(System.String,System.Boolean)">
+ <summary>
+ Valida que un texto solo contenga letras, espacios y acentos
+ Permite: a-z, A-Z, á, é, í, ó, ú, ñ, Ñ, espacios
+ </summary>
+</member>
+<member name="M:SISCONBOL_FLORERIA.Validador.EsAlfanumericoValido(System.String,System.Boolean)">
+ <summary>
+ Valida que un texto alfanumérico sea válido
+ Permite: letras, números, espacios, guiones, puntos
+ </summary>
+</member>
+<member name="M:SISCONBOL_FLORERIA.Validador.EsCelularValido(System.String)">
+ <summary>
+ Valida que un celular tenga formato válido
+ Permite: números, +, espacios, guiones, paréntesis
+ Mínimo: 7 dígitos
+ </summary>
+</member>
+<member name="M:SISCONBOL_FLORERIA.Validador.NormalizarCelular(System.String)">
+ <summary>
+ Normaliza un celular removiendo caracteres de formato
+ Ejemplo: "+591 (72) 020-979" → "+59172020979"
+ </summary>
+</member>
+<member name="M:SISCONBOL_FLORERIA.Validador.EsEmailValido(System.String,System.Boolean)">
+ <summary>
+ Valida que un email tenga formato válido
+ </summary>
+</member>
+<member name="M:SISCONBOL_FLORERIA.Validador.EsEnteroValido(System.String,System.Int32@)">
+ <summary>
+ Valida que un texto sea un número entero válido
+ </summary>
+</member>
+<member name="M:SISCONBOL_FLORERIA.Validador.EsDecimalValido(System.String,System.Decimal@)">
+ <summary>
+ Valida que un texto sea un número decimal válido
+ </summary>
+</member>
+<member name="M:SISCONBOL_FLORERIA.Validador.EsFechaValida(System.String,System.DateTime@)">
+ <summary>
+ Valida que un texto sea una fecha válida
+ </summary>
+</member>
+<member name="M:SISCONBOL_FLORERIA.Validador.EsFechaFutura(System.DateTime)">
+ <summary>
+ Valida que una fecha sea futura (mayor a hoy)
+ </summary>
+</member>
+<member name="M:SISCONBOL_FLORERIA.Validador.ValidarLongitud(System.String,System.Int32,System.Int32)">
+ <summary>
+ Valida que un texto esté dentro de un rango de longitud
+ </summary>
+</member>
+<member name="M:SISCONBOL_FLORERIA.Validador.TienePatronPeligroso(System.String)">
+ <summary>
+ Detecta posibles intentos de inyección SQL
+ </summary>
+</member>
+<member name="T:SISCONBOL_FLORERIA.Validador.ResultadoValidacion">
+ <summary>
+ Estructura para resultado de validación
+ </summary>
+</member>
+<member name="M:SISCONBOL_FLORERIA.Validador.ValidarFormularioPrePedido(System.String,System.String,System.String,System.String)">
+ <summary>
+ Valida formulario de Pre-Pedido
+ </summary>
+</member>
 <member name="M:SISCONBOL_FLORERIA.Login.ObtenerExpiraBolivia">
  <summary>
  Calcula las 23:59:59 de HOY en hora de Bolivia (UTC-4)
