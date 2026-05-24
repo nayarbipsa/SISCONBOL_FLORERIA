@@ -104,6 +104,7 @@
     <Content Include="Modulos\Catalogo\ProductoEditar.aspx" />
     <Content Include="Modulos\Catalogo\Productos.aspx" />
     <Content Include="Modulos\Config\Migrar.aspx" />
+    <Content Include="Modulos\Config\Webhooks_Monitor.aspx" />
     <Content Include="Modulos\Pedidos\Pedido_Agregar.aspx" />
     <Content Include="Modulos\Pedidos\PrePedido_Links.aspx" />
     <Content Include="Scripts\site.js" />
@@ -167,6 +168,10 @@
     </Compile>
     <Compile Include="Modulos\Config\Usuarios.aspx.vb">
       <DependentUpon>Usuarios.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Modulos\Config\Webhooks_Monitor.aspx.vb">
+      <DependentUpon>Webhooks_Monitor.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
     </Compile>
     <Compile Include="Modulos\Pedidos\Pedido_Agregar.aspx.vb">
@@ -251,6 +256,7 @@
     <None Include="Web.Release.config">
       <DependentUpon>Web.config</DependentUpon>
     </None>
+    <Content Include="WebhookWC.ashx" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="App_Data\" />

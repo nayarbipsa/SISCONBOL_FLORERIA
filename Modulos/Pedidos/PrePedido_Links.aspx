@@ -79,20 +79,20 @@
     <% End If %>
 </div>
 
-<!-- LINK PRINCIPAL PARA CLIENTE -->
+<!-- PRIMER MENSAJE AL CLIENTE -->
 <div class="link-section">
     <h3 class="link-title">
-        <i class="ti ti-link"></i>
+        <i class="ti ti-message"></i>
         Primer mensaje al cliente
     </h3>
-    <div class="link-url"><%=LinkCliente%></div>
+    <div class="link-url" style="white-space: pre-wrap;"><%=MensajeSugerido%></div>
     <button type="button" class="btn-whatsapp" onclick="enviarLinkCliente()">
         <i class="ti ti-brand-whatsapp"></i>
         Enviar primer mensaje
     </button>
-    <button type="button" class="btn btn-sm" onclick="copiarTexto('<%=LinkCliente%>')">
+    <button type="button" class="btn btn-sm" onclick="copiarMensaje()">
         <i class="ti ti-copy"></i>
-        Copiar link
+        Copiar mensaje
     </button>
     <div style="margin-top: 0.75rem; font-size: 13px; color: #666;">
         <i class="ti ti-clock"></i>
@@ -100,16 +100,37 @@
     </div>
 </div>
 
-<!-- LINK SEGUIMIENTO (OPCIONAL) -->
+<!-- LINK DEL FORMULARIO (ENVIAR DESPUÉS) -->
 <div class="link-section">
     <h3 class="link-title">
         <i class="ti ti-link"></i>
-        Link de seguimiento (opcional)
+        Link del formulario (enviar después)
+    </h3>
+    <div class="link-url"><%=LinkCliente%></div>
+    <button type="button" class="btn-whatsapp" onclick="enviarLinkFormulario()">
+        <i class="ti ti-brand-whatsapp"></i>
+        Enviar link del formulario
+    </button>
+    <button type="button" class="btn btn-sm" onclick="copiarTexto('<%=LinkCliente%>')">
+        <i class="ti ti-copy"></i>
+        Copiar link
+    </button>
+    <div style="margin-top: 0.75rem; font-size: 13px; color: #666;">
+        <i class="ti ti-info-circle"></i>
+        Enviar después del primer mensaje para que el cliente complete sus datos
+    </div>
+</div>
+
+<!-- LINK DE ACCESO DIRECTO -->
+<div class="link-section">
+    <h3 class="link-title">
+        <i class="ti ti-eye"></i>
+        Link de acceso directo
     </h3>
     <div class="link-url"><%=LinkInterno%></div>
     <button type="button" class="btn-whatsapp" onclick="enviarLinkInterno()">
         <i class="ti ti-brand-whatsapp"></i>
-        Enviar link adicional
+        Enviar link de acceso
     </button>
     <button type="button" class="btn btn-sm" onclick="copiarTexto('<%=LinkInterno%>')">
         <i class="ti ti-copy"></i>
@@ -117,25 +138,8 @@
     </button>
     <div style="margin-top: 0.75rem; font-size: 13px; color: #666;">
         <i class="ti ti-info-circle"></i>
-        Enviar más tarde si el cliente quiere ver su pedido nuevamente
+        Para que el cliente vea su pedido cuando quiera
     </div>
-</div>
-
-<!-- MENSAJE SUGERIDO -->
-<div class="link-section">
-    <h3 class="link-title">
-        <i class="ti ti-message"></i>
-        Mensaje sugerido para WhatsApp
-    </h3>
-    <div class="link-url" style="white-space: pre-wrap;"><%=MensajeSugerido%></div>
-    <button type="button" class="btn-whatsapp" onclick="enviarMensajeCompleto()">
-        <i class="ti ti-brand-whatsapp"></i>
-        Enviar mensaje completo
-    </button>
-    <button type="button" class="btn btn-sm" onclick="copiarMensaje()">
-        <i class="ti ti-copy"></i>
-        Copiar mensaje
-    </button>
 </div>
 
 <!-- GUARDAR PARA EL AGENTE -->
@@ -214,21 +218,6 @@ function copiarMensaje() {
 
 function enviarLinkCliente() {
     var celular = document.getElementById('hdCelular').value;
-    var link = '<%=LinkCliente%>';
-    
-    var url = 'https://api.whatsapp.com/send?phone=' + celular + '&text=' + encodeURIComponent(link);
-    window.open(url, '_blank');
-}
-
-function enviarLinkInterno() {
-    var celular = document.getElementById('hdCelular').value;
-    var link = '<%=LinkInterno%>';
-    var url = 'https://api.whatsapp.com/send?phone=' + celular + '&text=' + encodeURIComponent(link);
-    window.open(url, '_blank');
-}
-
-function enviarMensajeCompleto() {
-    var celular = document.getElementById('hdCelular').value;
     var hdMensaje = document.getElementById('hdMensaje');
     
     if (!hdMensaje) {
@@ -241,12 +230,27 @@ function enviarMensajeCompleto() {
     window.open(url, '_blank');
 }
 
+function enviarLinkFormulario() {
+    var celular = document.getElementById('hdCelular').value;
+    var link = '<%=LinkCliente%>';
+    var mensaje = 'Ahora por favor, para poder completar su pedido, llene el formulario en este link:\n' + link;
+    
+    var url = 'https://api.whatsapp.com/send?phone=' + celular + '&text=' + encodeURIComponent(mensaje);
+    window.open(url, '_blank');
+}
+
+function enviarLinkInterno() {
+    var celular = document.getElementById('hdCelular').value;
+    var link = '<%=LinkInterno%>';
+    var url = 'https://api.whatsapp.com/send?phone=' + celular + '&text=' + encodeURIComponent(link);
+    window.open(url, '_blank');
+}
+
 function guardarParaMi() {
     var link = '<%=LinkInterno%>';
     var codigo = '<%=Codigo%>';
     var mensaje = 'Pre-pedido ' + codigo + ' - Link de acceso:\n' + link;
     
-    // Abre WhatsApp SIN número para que el agente elija enviárselo a sí mismo
     var url = 'https://api.whatsapp.com/send?text=' + encodeURIComponent(mensaje);
     window.open(url, '_blank');
 }

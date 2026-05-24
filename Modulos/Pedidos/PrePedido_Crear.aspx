@@ -230,5 +230,28 @@ function enviarFormulario() {
     var btn = document.getElementById('<%= btnPostBack.ClientID %>');
     if (btn) btn.click();
 }
+
+// Detectar ENTER en el formulario y establecer hdAccion automáticamente
+window.addEventListener('DOMContentLoaded', function() {
+    var form = document.querySelector('form');
+    if (form) {
+        form.addEventListener('keypress', function(event) {
+            if (event.keyCode === 13 || event.which === 13) {
+                var target = event.target;
+                // Si presiona ENTER en un campo de texto (no textarea)
+                if (target && target.tagName === 'INPUT' && target.type === 'text') {
+                    event.preventDefault();
+                    // Establecer hdAccion como si hubiera hecho click en el botón
+                    var hdAcc = document.getElementById('hdAccion');
+                    if (hdAcc) hdAcc.value = 'CREAR';
+                    // Disparar el postback
+                    var btn = document.getElementById('<%= btnPostBack.ClientID %>');
+                    if (btn) btn.click();
+                    return false;
+                }
+            }
+        });
+    }
+});
 </script>
 </asp:Content>

@@ -210,5 +210,35 @@ Public Class SesionHelper
         Public Property Orden As Byte
     End Class
 
+    ''' <summary>
+    ''' Redirige de forma segura sin causar ThreadAbortException
+    ''' </summary>
+    ''' <param name="context">HttpContext actual</param>
+    ''' <param name="url">URL de destino</param>
+    ''' <param name="endResponse">Si debe terminar la respuesta (default: True)</param>
+    Public Shared Sub RedirectSeguro(context As HttpContext, url As String, Optional endResponse As Boolean = True)
+        If context Is Nothing Then
+            Throw New ArgumentNullException("context", "HttpContext no puede ser null")
+        End If
+        
+        If String.IsNullOrWhiteSpace(url) Then
+            Throw New ArgumentException("URL no puede estar vacía", "url")
+        End If
+        
+        Try
+            ' Redirigir sin abortar el thread
+            context.Response.Redirect(url, False)
+            
+            If endResponse Then
+                ' Finalizar la petición de forma limpia
+                context.ApplicationInstance.CompleteRequest()
+            End If
+        Catch ex As Exception
+            ' Log del error
+            System.Diagnostics.Debug.WriteLine("ERROR RedirectSeguro: " & ex.Message)
+            Throw
+        End Try
+    End Sub
+
 
 End Class

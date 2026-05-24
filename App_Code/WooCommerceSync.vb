@@ -531,4 +531,291 @@ Public Class WooCommerceSync
         End Try
     End Sub
 
+    ' ============================================
+    ' WEBHOOK: RECIBIR ORDEN DESDE WOOCOMMERCE
+    ' ============================================
+
+    ''' <summary>
+    ''' Procesa una orden recibida via webhook de WooCommerce
+    ''' Crea o actualiza el pedido en FLORERIA_Pedido
+    ''' </summary>
+    ''' <param name="jsonData">JSON completo del webhook (payload de WooCommerce)</param>
+    ''' <returns>Dictionary con ok, mensaje, pedido_id</returns>
+    Public Shared Function ProcesarOrdenWebhook(jsonData As String) As Dictionary(Of String, Object)
+        Dim resultado As New Dictionary(Of String, Object)
+        resultado("ok") = False
+        resultado("mensaje") = ""
+        resultado("pedido_id") = 0
+
+        Try
+            ' ============================================
+            ' 1. PARSEAR JSON DE WOOCOMMERCE
+            ' ============================================
+            Dim serializer As New JavaScriptSerializer()
+            serializer.MaxJsonLength = Integer.MaxValue
+            Dim orden As Dictionary(Of String, Object) = serializer.Deserialize(Of Dictionary(Of String, Object))(jsonData)
+
+            If Not orden.ContainsKey("id") Then
+                resultado("mensaje") = "JSON sin campo 'id'"
+                Return resultado
+            End If
+
+            ' Campos principales de la orden
+            Dim wcOrderId As Integer = CInt(orden("id"))
+            Dim wcOrderNumber As String = If(orden.ContainsKey("number"), orden("number").ToString(), wcOrderId.ToString())
+            Dim status As String = If(orden.ContainsKey("status"), orden("status").ToString(), "pending")
+            Dim total As Decimal = 0D
+            If orden.ContainsKey("total") Then
+                Decimal.TryParse(orden("total").ToString(), total)
+            End If
+
+            Dim createdDate As String = If(orden.ContainsKey("date_created"), orden("date_created").ToString(), "")
+            Dim customerNote As String = If(orden.ContainsKey("customer_note"), orden("customer_note").ToString(), "")
+
+            System.Diagnostics.Debug.WriteLine($"[WEBHOOK] Procesando orden WC #{wcOrderId} (Number: {wcOrderNumber}) - Estado: {status} - Total: {total}")
+
+            ' ============================================
+            ' 2. EXTRAER BILLING (FACTURACIÓN)
+            ' ============================================
+            Dim billing As Dictionary(Of String, Object) = If(orden.ContainsKey("billing"),
+                TryCast(orden("billing"), Dictionary(Of String, Object)),
+                New Dictionary(Of String, Object))
+
+            Dim nombreReceptor As String = ""
+            Dim celular As String = ""
+            Dim email As String = ""
+
+            If billing.ContainsKey("first_name") Then nombreReceptor = billing("first_name").ToString().Trim()
+            If billing.ContainsKey("last_name") Then
+                Dim apellido As String = billing("last_name").ToString().Trim()
+                If apellido <> "" Then nombreReceptor &= " " & apellido
+            End If
+            If billing.ContainsKey("phone") Then celular = billing("phone").ToString().Trim()
+            If billing.ContainsKey("email") Then email = billing("email").ToString().Trim()
+
+            ' Valores por defecto si están vacíos
+            If nombreReceptor = "" Then nombreReceptor = "Cliente Web"
+            If celular = "" Then celular = "00000000"
+
+            ' ============================================
+            ' 3. EXTRAER SHIPPING (ENVÍO)
+            ' ============================================
+            Dim shipping As Dictionary(Of String, Object) = If(orden.ContainsKey("shipping"),
+                TryCast(orden("shipping"), Dictionary(Of String, Object)),
+                New Dictionary(Of String, Object))
+
+            Dim direccion As String = ""
+            Dim ciudad As String = ""
+            Dim estado As String = ""
+
+            If shipping.ContainsKey("address_1") Then direccion = shipping("address_1").ToString().Trim()
+            If shipping.ContainsKey("address_2") Then
+                Dim dir2 As String = shipping("address_2").ToString().Trim()
+                If dir2 <> "" Then direccion &= " " & dir2
+            End If
+            If shipping.ContainsKey("city") Then ciudad = shipping("city").ToString().Trim()
+            If shipping.ContainsKey("state") Then estado = shipping("state").ToString().Trim()
+
+            If direccion = "" Then direccion = "Sin dirección especificada"
+
+            ' ============================================
+            ' 4. EXTRAER LINE_ITEMS (PRODUCTOS)
+            ' ============================================
+            Dim lineItems As New List(Of Dictionary(Of String, Object))
+            If orden.ContainsKey("line_items") Then
+                Dim itemsArray As Object() = TryCast(orden("line_items"), Object())
+                If itemsArray IsNot Nothing Then
+                    For Each itemObj As Object In itemsArray
+                        Dim item As Dictionary(Of String, Object) = TryCast(itemObj, Dictionary(Of String, Object))
+                        If item IsNot Nothing Then lineItems.Add(item)
+                    Next
+                End If
+            End If
+
+            System.Diagnostics.Debug.WriteLine($"[WEBHOOK] Line items encontrados: {lineItems.Count}")
+
+            ' ============================================
+            ' 5. VERIFICAR SI YA EXISTE EL PEDIDO (ANTI-LOOP)
+            ' ============================================
+            Dim pedidoId As Integer = 0
+            Using conn As New SqlConnection(ConfigurationManager.ConnectionStrings("SISCONBOL").ConnectionString)
+                conn.Open()
+
+                ' Buscar pedido existente por wc_order_id
+                Using cmd As New SqlCommand("SELECT pedido_id, wc_sync_estado FROM FLORERIA_Pedido WHERE wc_order_id=@wc", conn)
+                    cmd.Parameters.AddWithValue("@wc", wcOrderId)
+                    Using dr As SqlDataReader = cmd.ExecuteReader()
+                        If dr.Read() Then
+                            pedidoId = CInt(dr("pedido_id"))
+                            Dim estadoSync As String = dr("wc_sync_estado").ToString()
+                            
+                            ' ============================================
+                            ' 🔒 PROTECCIÓN ANTI-LOOP INFINITO
+                            ' ============================================
+                            ' Si el pedido fue creado/sincronizado DESDE SISCONBOL hacia WC,
+                            ' NO procesar este webhook para evitar duplicados
+                            ' ============================================
+                            If estadoSync = "SINCRONIZADO" OrElse estadoSync = "PENDIENTE" Then
+                                System.Diagnostics.Debug.WriteLine($"[WEBHOOK_ANTI_LOOP] Orden WC #{wcOrderId} fue CREADA por SISCONBOL - Webhook IGNORADO para evitar duplicado")
+                                resultado("ok") = True
+                                resultado("pedido_id") = pedidoId
+                                resultado("mensaje") = "Webhook ignorado - orden sincronizada desde SISCONBOL (anti-loop)"
+                                Return resultado
+                            End If
+                            
+                            System.Diagnostics.Debug.WriteLine($"[WEBHOOK] Pedido ID {pedidoId} existe con estado {estadoSync} - se actualizará")
+                        End If
+                    End Using
+                End Using
+
+                If pedidoId = 0 Then
+                    ' ============================================
+                    ' 6A. CREAR NUEVO PEDIDO
+                    ' ============================================
+                    System.Diagnostics.Debug.WriteLine("[WEBHOOK] Creando NUEVO pedido")
+
+                    ' Buscar o crear PrePedido temporal
+                    Dim prepedidoId As Integer = ObtenerOCrearPrePedidoWebhook(conn, wcOrderNumber, email)
+
+                    Using cmd As New SqlCommand("
+                        INSERT INTO FLORERIA_Pedido (
+                            prepedido_id, codigo, receptor_nombre, receptor_celular,
+                            ciudad_id, tipo_entrega, direccion, referencia, fecha_entrega,
+                            total_bs, estado_pago, 
+                            wc_order_id, wc_order_number, wc_sync_estado, wc_sync_fecha,
+                            creado_por, creado_en
+                        ) VALUES (
+                            @prepedido, @codigo, @nombre, @celular,
+                            @ciudad, @tipoEntrega, @direccion, @ref, @fechaEntrega,
+                            @total, @estadoPago,
+                            @wcId, @wcNum, @wcEstado, GETDATE(),
+                            @creador, GETDATE()
+                        ); SELECT SCOPE_IDENTITY();", conn)
+
+                        cmd.Parameters.AddWithValue("@prepedido", prepedidoId)
+                        cmd.Parameters.AddWithValue("@codigo", "WC-" & wcOrderNumber)
+                        cmd.Parameters.AddWithValue("@nombre", nombreReceptor.Substring(0, Math.Min(200, nombreReceptor.Length)))
+                        cmd.Parameters.AddWithValue("@celular", celular.Substring(0, Math.Min(20, celular.Length)))
+                        cmd.Parameters.AddWithValue("@ciudad", 1) ' TODO: Mapear ciudad desde shipping.city
+                        cmd.Parameters.AddWithValue("@tipoEntrega", "DOMICILIO")
+                        cmd.Parameters.AddWithValue("@direccion", direccion.Substring(0, Math.Min(300, direccion.Length)))
+                        cmd.Parameters.AddWithValue("@ref", customerNote.Substring(0, Math.Min(300, customerNote.Length)))
+                        cmd.Parameters.AddWithValue("@fechaEntrega", DateTime.Now.AddDays(1)) ' Entrega para mañana por defecto
+                        cmd.Parameters.AddWithValue("@total", total)
+                        cmd.Parameters.AddWithValue("@estadoPago", MapearEstadoPagoWC(status))
+                        cmd.Parameters.AddWithValue("@wcId", wcOrderId)
+                        cmd.Parameters.AddWithValue("@wcNum", wcOrderNumber)
+                        cmd.Parameters.AddWithValue("@wcEstado", "RECIBIDO_WEBHOOK")
+                        cmd.Parameters.AddWithValue("@creador", 1) ' Usuario sistema
+
+                        pedidoId = CInt(cmd.ExecuteScalar())
+                    End Using
+
+                    resultado("mensaje") = "Pedido creado desde webhook WC #" & wcOrderNumber
+
+                Else
+                    ' ============================================
+                    ' 6B. ACTUALIZAR PEDIDO EXISTENTE
+                    ' ============================================
+                    System.Diagnostics.Debug.WriteLine($"[WEBHOOK] ACTUALIZANDO pedido existente ID {pedidoId}")
+
+                    ' Solo actualizar campos que WooCommerce podría haber cambiado
+                    ' NO sobrescribir datos locales importantes
+                    Using cmd As New SqlCommand("
+                        UPDATE FLORERIA_Pedido SET
+                            estado_pago = @estadoPago,
+                            wc_order_number = @wcNum,
+                            wc_sync_estado = @wcEstado,
+                            wc_sync_fecha = GETDATE(),
+                            modificado_por = @modificador,
+                            modificado_en = GETDATE()
+                        WHERE pedido_id = @pid", conn)
+
+                        cmd.Parameters.AddWithValue("@estadoPago", MapearEstadoPagoWC(status))
+                        cmd.Parameters.AddWithValue("@wcNum", wcOrderNumber)
+                        cmd.Parameters.AddWithValue("@wcEstado", "ACTUALIZADO_WEBHOOK")
+                        cmd.Parameters.AddWithValue("@modificador", 1)
+                        cmd.Parameters.AddWithValue("@pid", pedidoId)
+
+                        cmd.ExecuteNonQuery()
+                    End Using
+
+                    resultado("mensaje") = "Pedido actualizado desde webhook WC #" & wcOrderNumber
+                End If
+
+                ' ============================================
+                ' 7. PROCESAR LINE_ITEMS (OPCIONAL)
+                ' ============================================
+                ' TODO: Implementar inserción en FLORERIA_Pedido_Detalle
+                ' Requiere mapear product_id de WC a producto_id local vía wc_product_id
+                For Each item In lineItems
+                    Dim productId As Integer = If(item.ContainsKey("product_id"), CInt(item("product_id")), 0)
+                    Dim quantity As Integer = If(item.ContainsKey("quantity"), CInt(item("quantity")), 1)
+                    Dim subtotal As Decimal = 0D
+                    If item.ContainsKey("subtotal") Then Decimal.TryParse(item("subtotal").ToString(), subtotal)
+
+                    System.Diagnostics.Debug.WriteLine($"[WEBHOOK] Item: WC Product {productId} x {quantity} = {subtotal}")
+                    ' Aquí insertar en FLORERIA_Pedido_Detalle cuando esté lista la tabla
+                Next
+
+            End Using
+
+            resultado("ok") = True
+            resultado("pedido_id") = pedidoId
+
+        Catch ex As Exception
+            resultado("mensaje") = "Error al procesar webhook: " & ex.Message
+            System.Diagnostics.Debug.WriteLine("[WEBHOOK_ERROR] " & ex.Message & vbCrLf & ex.StackTrace)
+        End Try
+
+        Return resultado
+    End Function
+
+    ''' <summary>
+    ''' Obtiene o crea un PrePedido temporal para órdenes web
+    ''' </summary>
+    Private Shared Function ObtenerOCrearPrePedidoWebhook(conn As SqlConnection, wcOrderNumber As String, email As String) As Integer
+        Try
+            ' Buscar PrePedido existente por email o crear uno genérico
+            Dim codigo As String = "WEB-" & wcOrderNumber
+            Using cmd As New SqlCommand("
+                IF EXISTS (SELECT 1 FROM FLORERIA_PrePedido WHERE codigo=@cod)
+                    SELECT prepedido_id FROM FLORERIA_PrePedido WHERE codigo=@cod
+                ELSE BEGIN
+                    INSERT INTO FLORERIA_PrePedido (
+                        codigo, tipo_registro, estado, cliente_celular, cliente_email, creado_por
+                    ) VALUES (
+                        @cod, 'VENTA_TIENDA', 'COMPLETADO', '00000000', @email, 1
+                    );
+                    SELECT SCOPE_IDENTITY();
+                END", conn)
+
+                cmd.Parameters.AddWithValue("@cod", codigo)
+                cmd.Parameters.AddWithValue("@email", If(email <> "", email, DBNull.Value))
+                Return CInt(cmd.ExecuteScalar())
+            End Using
+        Catch ex As Exception
+            System.Diagnostics.Debug.WriteLine("[WEBHOOK] Error crear PrePedido: " & ex.Message)
+            Return 1 ' ID genérico de fallback
+        End Try
+    End Function
+
+    ''' <summary>
+    ''' Mapea el estado de WooCommerce a estado de pago de SISCONBOL
+    ''' </summary>
+    Private Shared Function MapearEstadoPagoWC(wcStatus As String) As String
+        Select Case wcStatus.ToLower().Trim()
+            Case "pending", "on-hold"
+                Return "PENDIENTE"
+            Case "processing"
+                Return "PAGADO"
+            Case "completed"
+                Return "PAGADO"
+            Case "cancelled", "failed", "refunded"
+                Return "CANCELADO"
+            Case Else
+                Return "PENDIENTE"
+        End Select
+    End Function
+
 End Class

@@ -1,6 +1,6 @@
-<%@ Page Language="VB" MasterPageFile="~/Site.Master" 
-         AutoEventWireup="false" 
-         CodeBehind="Migrar.aspx.vb" 
+<%@ Page Language="VB" MasterPageFile="~/Site.Master"
+         AutoEventWireup="false"
+         CodeBehind="Migrar.aspx.vb"
          Inherits="SISCONBOL_FLORERIA.Modulos_Config_Migrar" %>
 
 <asp:Content ID="Content1" ContentPlaceHolderID="TitleContent" runat="server">
@@ -8,111 +8,176 @@
 </asp:Content>
 
 <asp:Content ID="Content2" ContentPlaceHolderID="PageTitleContent" runat="server">
-    Migración masiva desde WooCommerce
+    <i class="ti ti-cloud-download" style="vertical-align:-2px"></i> Migracion masiva desde WooCommerce
 </asp:Content>
 
 <asp:Content ID="Content3" ContentPlaceHolderID="MainContent" runat="server">
-    
-    <!-- Alertas -->
+
+    <!-- Alerta global -->
     <div class="alerta" id="divAlerta"></div>
 
-    <!-- MIGRACION CATEGORIAS -->
-    <div class="panel">
+    <!-- ============================================================ -->
+    <!-- PANEL: CATEGORIAS                                            -->
+    <!-- ============================================================ -->
+    <div class="panel" style="margin-bottom:16px">
         <div class="panel-head">
             <div class="panel-title">
-                <i class="ti ti-tag"></i> Categorías
+                <i class="ti ti-tag"></i> Categorias
+            </div>
+            <div class="panel-actions">
+                <button type="button" class="btn btn-sm btn-primary" onclick="migrarCategorias()">
+                    <i class="ti ti-cloud-download"></i> Migrar categorias
+                </button>
             </div>
         </div>
         <div class="panel-body">
-            <div id="divResCats" style="display:none;margin-bottom:16px">
-                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">
-                    <div style="padding:12px;border-radius:8px;text-align:center;background:#E8F5E9">
-                        <div style="font-size:22px;font-weight:500;color:#2E7D32" id="cntCatNuevas">0</div>
-                        <div style="font-size:11px;color:#3B6D11">Nuevas</div>
+            <div id="divResCats" style="display:none">
+                <div class="grid-4">
+                    <div class="stat g">
+                        <div class="stat-lbl">Nuevas</div>
+                        <div class="stat-val" id="cntCatNuevas">0</div>
                     </div>
-                    <div style="padding:12px;border-radius:8px;text-align:center;background:#E3F2FD">
-                        <div style="font-size:22px;font-weight:500;color:#1976D2" id="cntCatActualizadas">0</div>
-                        <div style="font-size:11px;color:#0C447C">Actualizadas</div>
+                    <div class="stat b">
+                        <div class="stat-lbl">Actualizadas</div>
+                        <div class="stat-val" id="cntCatActualizadas">0</div>
                     </div>
-                    <div style="padding:12px;border-radius:8px;text-align:center;background:#F5F5F5">
-                        <div style="font-size:22px;font-weight:500" id="cntCatSinCambios">0</div>
-                        <div style="font-size:11px;color:#757575">Sin cambios</div>
+                    <div class="stat">
+                        <div class="stat-lbl">Sin cambios</div>
+                        <div class="stat-val" id="cntCatSinCambios">0</div>
                     </div>
-                    <div style="padding:12px;border-radius:8px;text-align:center;background:#FFEBEE">
-                        <div style="font-size:22px;font-weight:500;color:#C62828" id="cntCatErrores">0</div>
-                        <div style="font-size:11px;color:#791F1F">Errores</div>
+                    <div class="stat r">
+                        <div class="stat-lbl">Errores</div>
+                        <div class="stat-val" id="cntCatErrores">0</div>
                     </div>
                 </div>
             </div>
-            <button type="button" class="btn btn-primary" onclick="migrarCategorias()">
-                <i class="ti ti-cloud-download"></i> Migrar categorías
-            </button>
         </div>
     </div>
 
-    <!-- MIGRACION PRODUCTOS -->
-    <div class="panel">
+    <!-- ============================================================ -->
+    <!-- PANEL: PRODUCTOS                                             -->
+    <!-- ============================================================ -->
+    <div class="panel" style="margin-bottom:16px">
         <div class="panel-head">
             <div class="panel-title">
                 <i class="ti ti-flower"></i> Productos
             </div>
+            <div class="panel-actions">
+                <button type="button" class="btn btn-sm btn-primary" onclick="migrarProductos()">
+                    <i class="ti ti-cloud-download"></i> Migrar productos
+                </button>
+            </div>
         </div>
         <div class="panel-body">
-            <div id="divProgreso" style="display:none;margin-bottom:16px">
+            <div id="divProgreso" style="display:none;margin-bottom:14px">
                 <div style="font-size:12px;color:#757575;margin-bottom:4px" id="spProgTxt">Procesando...</div>
                 <div style="height:8px;background:#f0f0f0;border-radius:4px;overflow:hidden">
-                    <div id="barProg" style="height:100%;background:#C2185B;width:0;transition:width .3s"></div>
+                    <div id="barProg" style="height:100%;background:var(--rosa);width:0;transition:width .3s"></div>
                 </div>
             </div>
-            <div id="divResProd" style="display:none;margin-bottom:16px">
-                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">
-                    <div style="padding:12px;border-radius:8px;text-align:center;background:#E8F5E9">
-                        <div style="font-size:22px;font-weight:500;color:#2E7D32" id="cntProdNuevos">0</div>
-                        <div style="font-size:11px;color:#3B6D11">Nuevos</div>
+            <div id="divResProd" style="display:none">
+                <div class="grid-4">
+                    <div class="stat g">
+                        <div class="stat-lbl">Nuevos</div>
+                        <div class="stat-val" id="cntProdNuevos">0</div>
                     </div>
-                    <div style="padding:12px;border-radius:8px;text-align:center;background:#E3F2FD">
-                        <div style="font-size:22px;font-weight:500;color:#1976D2" id="cntProdActualizados">0</div>
-                        <div style="font-size:11px;color:#0C447C">Actualizados</div>
+                    <div class="stat b">
+                        <div class="stat-lbl">Actualizados</div>
+                        <div class="stat-val" id="cntProdActualizados">0</div>
                     </div>
-                    <div style="padding:12px;border-radius:8px;text-align:center;background:#F5F5F5">
-                        <div style="font-size:22px;font-weight:500" id="cntProdSinCambios">0</div>
-                        <div style="font-size:11px;color:#757575">Sin cambios</div>
+                    <div class="stat">
+                        <div class="stat-lbl">Sin cambios</div>
+                        <div class="stat-val" id="cntProdSinCambios">0</div>
                     </div>
-                    <div style="padding:12px;border-radius:8px;text-align:center;background:#FFEBEE">
-                        <div style="font-size:22px;font-weight:500;color:#C62828" id="cntProdErrores">0</div>
-                        <div style="font-size:11px;color:#791F1F">Errores</div>
+                    <div class="stat r">
+                        <div class="stat-lbl">Errores</div>
+                        <div class="stat-val" id="cntProdErrores">0</div>
                     </div>
                 </div>
             </div>
-            <button type="button" class="btn btn-primary" onclick="migrarProductos()">
-                <i class="ti ti-cloud-download"></i> Migrar productos
-            </button>
         </div>
     </div>
 
-    <!-- MIGRACION PEDIDOS -->
-    <div class="panel">
+    <!-- ============================================================ -->
+    <!-- PANEL: PEDIDOS                                               -->
+    <!-- ============================================================ -->
+    <div class="panel" style="margin-bottom:16px">
         <div class="panel-head">
             <div class="panel-title">
                 <i class="ti ti-shopping-cart"></i> Pedidos
             </div>
+            <div class="panel-actions">
+                <button type="button" class="btn btn-sm btn-primary" onclick="migrarPedidos()">
+                    <i class="ti ti-cloud-download"></i> Migrar pedidos
+                </button>
+            </div>
         </div>
         <div class="panel-body">
-            <div class="alerta alerta-info" style="display:block">
-                <i class="ti ti-info-circle"></i>
-                La migración de pedidos se habilitará cuando las tablas de pedidos estén creadas en la base de datos.
+
+            <!-- Filtros de fecha -->
+            <div class="grid-2" style="margin-bottom:14px">
+                <div class="form-group">
+                    <label class="form-label">Desde fecha</label>
+                    <input type="date" id="txPedFechaDesde" class="form-control"
+                           value="<%=FechaDesdeDefault%>" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Hasta fecha</label>
+                    <input type="date" id="txPedFechaHasta" class="form-control"
+                           value="<%=FechaHastaDefault%>" />
+                </div>
             </div>
-            <button type="button" class="btn" onclick="migrarPedidos()" disabled>
-                <i class="ti ti-cloud-download"></i> Migrar pedidos (próximamente)
-            </button>
+
+            <!-- Estado WC a filtrar -->
+            <div class="form-group" style="margin-bottom:14px">
+                <label class="form-label">Estado en WooCommerce</label>
+                <select id="selEstadoWC" class="form-control">
+                    <option value="any">Todos los estados</option>
+                    <option value="processing" selected>processing (pagados)</option>
+                    <option value="pending">pending (pendientes de pago)</option>
+                    <option value="on-hold">on-hold (en espera)</option>
+                    <option value="completed">completed (completados)</option>
+                </select>
+            </div>
+
+            <!-- Barra de progreso pedidos -->
+            <div id="divProgresoPed" style="display:none;margin-bottom:14px">
+                <div style="font-size:12px;color:#757575;margin-bottom:4px" id="spProgTxtPed">Procesando...</div>
+                <div style="height:8px;background:#f0f0f0;border-radius:4px;overflow:hidden">
+                    <div id="barProgPed" style="height:100%;background:var(--rosa);width:0;transition:width .3s"></div>
+                </div>
+            </div>
+
+            <!-- Resultados pedidos -->
+            <div id="divResPed" style="display:none">
+                <div class="grid-4">
+                    <div class="stat g">
+                        <div class="stat-lbl">Nuevos</div>
+                        <div class="stat-val" id="cntPedNuevos">0</div>
+                    </div>
+                    <div class="stat b">
+                        <div class="stat-lbl">Actualizados</div>
+                        <div class="stat-val" id="cntPedActualizados">0</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-lbl">Sin cambios</div>
+                        <div class="stat-val" id="cntPedSinCambios">0</div>
+                    </div>
+                    <div class="stat r">
+                        <div class="stat-lbl">Errores</div>
+                        <div class="stat-val" id="cntPedErrores">0</div>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 
-    <!-- Hidden fields -->
+    <!-- Hidden fields y boton postback -->
     <input type="hidden" id="hdAccion" name="hdAccion" value=""/>
-    <input type="hidden" id="hdLote" name="hdLote" value=""/>
-    
-    <asp:Button ID="btnPostBack" runat="server" Text="" 
+    <input type="hidden" id="hdLote"   name="hdLote"   value=""/>
+
+    <asp:Button ID="btnPostBack" runat="server" Text=""
                 Style="display:none" OnClick="btnAccion_Click"/>
 
 </asp:Content>
@@ -121,268 +186,309 @@
 <script type="text/javascript">
 // @ts-nocheck
 
-// Variables globales desde VB.NET (credenciales de FLORERIA_Config)
-var WC_URL = '<%=WcUrl%>';
-var WC_CONSUMER_KEY = '<%=WcConsumerKey%>';
-var WC_CONSUMER_SECRET = '<%=WcConsumerSecret%>';
+// Credenciales inyectadas desde VB.NET
+var WC_URL            = '<%=WcUrl%>';
+var WC_CONSUMER_KEY   = '<%=WcConsumerKey%>';
+var WC_CONSUMER_SECRET= '<%=WcConsumerSecret%>';
 
+//  HELPERS 
 function mostrarAlerta(/** @type {string} */ msg, /** @type {string} */ tipo) {
     var d = document.getElementById('divAlerta');
     if (!d) return;
     d.className = 'alerta show alerta-' + tipo;
     d.textContent = msg;
-    setTimeout(function() {
-        if (tipo !== 'error') {
-            d.className = 'alerta';
-        }
-    }, 8000);
+    if (tipo !== 'error') {
+        setTimeout(function() { d.className = 'alerta'; }, 8000);
+    }
 }
 
 function setHd(/** @type {string} */ id, /** @type {string} */ val) {
     var el = /** @type {HTMLInputElement} */ (document.getElementById(id));
-    if (el) { el.value = val; }
+    if (el) el.value = val;
 }
 
 function validarCredenciales() {
     if (!WC_URL || !WC_CONSUMER_KEY || !WC_CONSUMER_SECRET) {
-        mostrarAlerta('Primero configura las credenciales de WooCommerce en: Configuración > Configuración', 'error');
+        mostrarAlerta('Primero configura las credenciales de WooCommerce en Configuracion > Configuracion', 'error');
         return false;
     }
     return true;
 }
 
-// -- MIGRACION CATEGORIAS ---------------------------------------
+function authHeader() {
+    return 'Basic ' + btoa(WC_CONSUMER_KEY + ':' + WC_CONSUMER_SECRET);
+}
+
+//  CATEGORIAS 
 function migrarCategorias() {
     if (!validarCredenciales()) return;
-    
-    mostrarAlerta('Descargando categorías desde WooCommerce...', 'info');
-    
-    var auth = 'Basic ' + btoa(WC_CONSUMER_KEY + ':' + WC_CONSUMER_SECRET);
+    mostrarAlerta('Descargando categorias desde WooCommerce...', 'info');
+
     var xhr = new XMLHttpRequest();
     xhr.open('GET', WC_URL + '/wp-json/wc/v3/products/categories?per_page=100', true);
-    xhr.setRequestHeader('Authorization', auth);
+    xhr.setRequestHeader('Authorization', authHeader());
     xhr.timeout = 30000;
-    
+
     xhr.onload = function() {
         if (xhr.status !== 200) {
-            mostrarAlerta('Error HTTP ' + xhr.status + ': ' + xhr.statusText + '. Verifica las credenciales en Configuración.', 'error');
+            mostrarAlerta('Error HTTP ' + xhr.status + '. Verifica las credenciales en Configuracion.', 'error');
             return;
         }
-        
         try {
             var cats = JSON.parse(xhr.responseText);
             if (!cats || cats.length === 0) {
-                mostrarAlerta('No se encontraron categorías en WooCommerce.', 'warn');
+                mostrarAlerta('No se encontraron categorias en WooCommerce.', 'warn');
                 return;
             }
-            
-            mostrarAlerta('Descargadas ' + cats.length + ' categorías. Guardando en base de datos...', 'info');
+            mostrarAlerta('Descargadas ' + cats.length + ' categorias. Guardando...', 'info');
             setHd('hdLote', xhr.responseText);
             setHd('hdAccion', 'INSERTAR_CATEGORIAS');
-            var btn = document.getElementById('<%= btnPostBack.ClientID %>');
-            if (btn) { btn.click(); }
+            document.getElementById('<%= btnPostBack.ClientID %>').click();
         } catch (e) {
-            mostrarAlerta('Error al procesar respuesta JSON: ' + e.message, 'error');
+            mostrarAlerta('Error al procesar respuesta: ' + e.message, 'error');
         }
     };
-    
-    xhr.onerror = function() {
-        mostrarAlerta('Error de conexión con WooCommerce. Verifica la URL en Configuración.', 'error');
-    };
-    
-    xhr.ontimeout = function() {
-        mostrarAlerta('Tiempo de espera agotado (30 seg). El servidor no respondió.', 'error');
-    };
-    
+    xhr.onerror   = function() { mostrarAlerta('Error de conexion con WooCommerce.', 'error'); };
+    xhr.ontimeout = function() { mostrarAlerta('Tiempo de espera agotado (30s).', 'error'); };
     xhr.send();
 }
 
-function mostrarResultadoCats(/** @type {number} */ ins, /** @type {number} */ act, 
-                              /** @type {number} */ sin, /** @type {number} */ err) {
-    var d = document.getElementById('divResCats');
-    if (d) { d.style.display = ''; }
-    
-    var n = document.getElementById('cntCatNuevas');
-    var a = document.getElementById('cntCatActualizadas');
-    var s = document.getElementById('cntCatSinCambios');
-    var e = document.getElementById('cntCatErrores');
-    
-    if (n) { n.textContent = String(ins); }
-    if (a) { a.textContent = String(act); }
-    if (s) { s.textContent = String(sin); }
-    if (e) { e.textContent = String(err); }
-    
+function mostrarResultadoCats(/** @type {number} */ ins, /** @type {number} */ act,
+                               /** @type {number} */ sin, /** @type {number} */ err) {
+    document.getElementById('divResCats').style.display = '';
+    document.getElementById('cntCatNuevas').textContent      = String(ins);
+    document.getElementById('cntCatActualizadas').textContent= String(act);
+    document.getElementById('cntCatSinCambios').textContent  = String(sin);
+    document.getElementById('cntCatErrores').textContent     = String(err);
     var total = ins + act;
-    var mensaje = 'Migración completada: ' + total + ' categorías procesadas';
-    if (err > 0) {
-        mensaje += ' (' + err + ' con errores). Revisa la consola de Visual Studio para detalles.';
-    }
-    mostrarAlerta(mensaje, err > 0 ? 'warn' : 'ok');
+    var msg = 'Migracion completada: ' + total + ' categorias procesadas';
+    if (err > 0) msg += ' (' + err + ' con errores)';
+    mostrarAlerta(msg, err > 0 ? 'warn' : 'ok');
 }
 
-// -- MIGRACION PRODUCTOS ---------------------------------------
-var _mTodos = /** @type {Array<any>} */ ([]);
-var _mPag = 0;
+//  PRODUCTOS 
+var _mTodos = [];
+var _mPag   = 0;
 var _mTotalPags = 0;
 
 function migrarProductos() {
     if (!validarCredenciales()) return;
-    
     _mTodos = [];
-    _mPag = 0;
-    
-    var d = document.getElementById('divProgreso');
-    if (d) { d.style.display = ''; }
+    _mPag   = 0;
+    document.getElementById('divProgreso').style.display = '';
     actualizarBarra(0, 'Obteniendo total de productos...');
-    
-    var auth = 'Basic ' + btoa(WC_CONSUMER_KEY + ':' + WC_CONSUMER_SECRET);
+
     var xhr = new XMLHttpRequest();
     xhr.open('GET', WC_URL + '/wp-json/wc/v3/products?per_page=1', true);
-    xhr.setRequestHeader('Authorization', auth);
+    xhr.setRequestHeader('Authorization', authHeader());
     xhr.timeout = 15000;
-    
+
     xhr.onload = function() {
         if (xhr.status !== 200) {
-            mostrarAlerta('Error HTTP ' + xhr.status + ': ' + xhr.statusText, 'error');
-            var d2 = document.getElementById('divProgreso');
-            if (d2) { d2.style.display = 'none'; }
+            mostrarAlerta('Error HTTP ' + xhr.status, 'error');
+            document.getElementById('divProgreso').style.display = 'none';
             return;
         }
-        
         try {
-            var totalHeader = xhr.getResponseHeader('X-WP-Total');
-            var total = totalHeader ? parseInt(totalHeader) : 0;
-            
+            var total = parseInt(xhr.getResponseHeader('X-WP-Total') || '0');
             if (total === 0) {
                 mostrarAlerta('No se encontraron productos en WooCommerce.', 'warn');
-                var d2 = document.getElementById('divProgreso');
-                if (d2) { d2.style.display = 'none'; }
+                document.getElementById('divProgreso').style.display = 'none';
                 return;
             }
-            
             _mTotalPags = Math.ceil(total / 20);
-            actualizarBarra(0, 'Descargando ' + total + ' productos (página 1 de ' + _mTotalPags + ')...');
+            actualizarBarra(0, 'Descargando ' + total + ' productos (pagina 1 de ' + _mTotalPags + ')...');
             _mPag = 1;
             descargarPaginaProd();
         } catch (e) {
             mostrarAlerta('Error: ' + e.message, 'error');
         }
     };
-    
-    xhr.onerror = function() {
-        mostrarAlerta('Error de conexión con WooCommerce.', 'error');
-        var d2 = document.getElementById('divProgreso');
-        if (d2) { d2.style.display = 'none'; }
-    };
-    
-    xhr.ontimeout = function() {
-        mostrarAlerta('Tiempo de espera agotado.', 'error');
-        var d2 = document.getElementById('divProgreso');
-        if (d2) { d2.style.display = 'none'; }
-    };
-    
+    xhr.onerror   = function() { mostrarAlerta('Error de conexion.', 'error'); };
+    xhr.ontimeout = function() { mostrarAlerta('Tiempo agotado.', 'error'); };
     xhr.send();
 }
 
 function descargarPaginaProd() {
-    var auth = 'Basic ' + btoa(WC_CONSUMER_KEY + ':' + WC_CONSUMER_SECRET);
     var xhr = new XMLHttpRequest();
     xhr.open('GET', WC_URL + '/wp-json/wc/v3/products?per_page=20&page=' + _mPag, true);
-    xhr.setRequestHeader('Authorization', auth);
+    xhr.setRequestHeader('Authorization', authHeader());
     xhr.timeout = 30000;
-    
+
     xhr.onload = function() {
-        if (xhr.status !== 200) {
+        if (xhr.status === 200) {
+            try {
+                var lote = JSON.parse(xhr.responseText);
+                _mTodos = _mTodos.concat(lote);
+                var pct = Math.round((_mPag / _mTotalPags) * 50);
+                actualizarBarra(pct, 'Descargados ' + _mTodos.length + ' productos (pagina ' + _mPag + ' de ' + _mTotalPags + ')...');
+                if (lote.length < 20 || _mPag >= _mTotalPags) {
+                    enviarProductosAlServidor();
+                } else {
+                    _mPag++;
+                    descargarPaginaProd();
+                }
+            } catch (e) {
+                mostrarAlerta('Error al parsear: ' + e.message, 'error');
+            }
+        } else {
             _mPag++;
-            if (_mPag > _mTotalPags) {
-                enviarAlServidor();
-            } else {
-                descargarPaginaProd();
-            }
-            return;
-        }
-        
-        try {
-            var lote = JSON.parse(xhr.responseText);
-            _mTodos = _mTodos.concat(lote);
-            var pct = Math.round((_mPag / _mTotalPags) * 50);
-            actualizarBarra(pct, 'Descargados ' + _mTodos.length + ' productos (página ' + _mPag + ' de ' + _mTotalPags + ')...');
-            
-            if (lote.length < 20 || _mPag >= _mTotalPags) {
-                enviarAlServidor();
-            } else {
-                _mPag++;
-                descargarPaginaProd();
-            }
-        } catch (e) {
-            mostrarAlerta('Error al parsear respuesta: ' + e.message, 'error');
+            if (_mPag > _mTotalPags) enviarProductosAlServidor();
+            else descargarPaginaProd();
         }
     };
-    
-    xhr.onerror = function() {
-        _mPag++;
-        if (_mPag > _mTotalPags) {
-            enviarAlServidor();
-        } else {
-            descargarPaginaProd();
-        }
-    };
-    
-    xhr.ontimeout = function() {
-        mostrarAlerta('Tiempo agotado en página ' + _mPag, 'warn');
-        _mPag++;
-        if (_mPag > _mTotalPags) {
-            enviarAlServidor();
-        } else {
-            descargarPaginaProd();
-        }
-    };
-    
+    xhr.onerror   = function() { _mPag++; if (_mPag > _mTotalPags) enviarProductosAlServidor(); else descargarPaginaProd(); };
+    xhr.ontimeout = function() { _mPag++; if (_mPag > _mTotalPags) enviarProductosAlServidor(); else descargarPaginaProd(); };
     xhr.send();
 }
 
-function enviarAlServidor() {
+function enviarProductosAlServidor() {
     actualizarBarra(55, 'Insertando ' + _mTodos.length + ' productos en base de datos...');
     setHd('hdLote', JSON.stringify(_mTodos));
     setHd('hdAccion', 'INSERTAR_PRODUCTOS');
-    var btn = document.getElementById('<%= btnPostBack.ClientID %>');
-    if (btn) { btn.click(); }
+    document.getElementById('<%= btnPostBack.ClientID %>').click();
 }
 
 function actualizarBarra(/** @type {number} */ pct, /** @type {string} */ txt) {
     var b = document.getElementById('barProg');
     var t = document.getElementById('spProgTxt');
-    if (b) { b.style.width = pct + '%'; }
-    if (t) { t.textContent = txt; }
+    if (b) b.style.width = pct + '%';
+    if (t) t.textContent = txt;
 }
 
-function mostrarResultadoProd(/** @type {number} */ ins, /** @type {number} */ act, 
-                              /** @type {number} */ sin, /** @type {number} */ err) {
+function mostrarResultadoProd(/** @type {number} */ ins, /** @type {number} */ act,
+                               /** @type {number} */ sin, /** @type {number} */ err) {
     actualizarBarra(100, 'Completado');
-    var d = document.getElementById('divResProd');
-    if (d) { d.style.display = ''; }
-    
-    var n = document.getElementById('cntProdNuevos');
-    var a = document.getElementById('cntProdActualizados');
-    var s = document.getElementById('cntProdSinCambios');
-    var e = document.getElementById('cntProdErrores');
-    
-    if (n) { n.textContent = String(ins); }
-    if (a) { a.textContent = String(act); }
-    if (s) { s.textContent = String(sin); }
-    if (e) { e.textContent = String(err); }
-    
+    document.getElementById('divResProd').style.display     = '';
+    document.getElementById('cntProdNuevos').textContent     = String(ins);
+    document.getElementById('cntProdActualizados').textContent= String(act);
+    document.getElementById('cntProdSinCambios').textContent  = String(sin);
+    document.getElementById('cntProdErrores').textContent     = String(err);
     var total = ins + act;
-    var mensaje = 'Migración completada: ' + total + ' productos procesados';
-    if (err > 0) {
-        mensaje += ' (' + err + ' con errores). Revisa la consola de Visual Studio para detalles.';
-    }
-    mostrarAlerta(mensaje, err > 0 ? 'warn' : 'ok');
+    var msg = 'Migracion completada: ' + total + ' productos procesados';
+    if (err > 0) msg += ' (' + err + ' con errores)';
+    mostrarAlerta(msg, err > 0 ? 'warn' : 'ok');
 }
 
-// -- MIGRACION PEDIDOS ---------------------------------------
+//  PEDIDOS 
+var _pedTodos = [];
+var _pedPag   = 0;
+var _pedTotalPags = 0;
+
 function migrarPedidos() {
-    mostrarAlerta('La migración de pedidos aún no está implementada. Se habilitará cuando las tablas de pedidos estén creadas en la base de datos.', 'info');
+    if (!validarCredenciales()) return;
+
+    var desde = document.getElementById('txPedFechaDesde').value;
+    var hasta = document.getElementById('txPedFechaHasta').value;
+    var estado= document.getElementById('selEstadoWC').value;
+
+    if (!desde || !hasta) {
+        mostrarAlerta('Selecciona el rango de fechas', 'warn');
+        return;
+    }
+
+    _pedTodos = [];
+    _pedPag   = 0;
+    document.getElementById('divProgresoPed').style.display = '';
+    actualizarBarraPed(0, 'Obteniendo total de pedidos...');
+
+    var params = '?per_page=1&after=' + desde + 'T00:00:00&before=' + hasta + 'T23:59:59';
+    if (estado !== 'any') params += '&status=' + estado;
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', WC_URL + '/wp-json/wc/v3/orders' + params, true);
+    xhr.setRequestHeader('Authorization', authHeader());
+    xhr.timeout = 15000;
+
+    xhr.onload = function() {
+        if (xhr.status !== 200) {
+            mostrarAlerta('Error HTTP ' + xhr.status, 'error');
+            document.getElementById('divProgresoPed').style.display = 'none';
+            return;
+        }
+        try {
+            var total = parseInt(xhr.getResponseHeader('X-WP-Total') || '0');
+            if (total === 0) {
+                mostrarAlerta('No se encontraron pedidos en el rango indicado.', 'info');
+                document.getElementById('divProgresoPed').style.display = 'none';
+                return;
+            }
+            _pedTotalPags = Math.ceil(total / 20);
+            actualizarBarraPed(0, 'Descargando ' + total + ' pedidos...');
+            _pedPag = 1;
+            descargarPaginaPed(desde, hasta, estado);
+        } catch (e) {
+            mostrarAlerta('Error: ' + e.message, 'error');
+        }
+    };
+    xhr.onerror   = function() { mostrarAlerta('Error de conexion.', 'error'); };
+    xhr.ontimeout = function() { mostrarAlerta('Tiempo agotado.', 'error'); };
+    xhr.send();
+}
+
+function descargarPaginaPed(/** @type {string} */ desde, /** @type {string} */ hasta, /** @type {string} */ estado) {
+    var params = '?per_page=20&page=' + _pedPag +
+        '&after=' + desde + 'T00:00:00&before=' + hasta + 'T23:59:59';
+    if (estado !== 'any') params += '&status=' + estado;
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', WC_URL + '/wp-json/wc/v3/orders' + params, true);
+    xhr.setRequestHeader('Authorization', authHeader());
+    xhr.timeout = 30000;
+
+    xhr.onload = function() {
+        if (xhr.status === 200) {
+            try {
+                var lote = JSON.parse(xhr.responseText);
+                _pedTodos = _pedTodos.concat(lote);
+                var pct = Math.round((_pedPag / _pedTotalPags) * 50);
+                actualizarBarraPed(pct, 'Descargados ' + _pedTodos.length + ' pedidos (pag. ' + _pedPag + ')...');
+                if (lote.length < 20 || _pedPag >= _pedTotalPags) {
+                    enviarPedidosAlServidor();
+                } else {
+                    _pedPag++;
+                    descargarPaginaPed(desde, hasta, estado);
+                }
+            } catch (e) {
+                mostrarAlerta('Error al parsear pedidos: ' + e.message, 'error');
+            }
+        } else {
+            _pedPag++;
+            if (_pedPag > _pedTotalPags) enviarPedidosAlServidor();
+            else descargarPaginaPed(desde, hasta, estado);
+        }
+    };
+    xhr.onerror   = function() { _pedPag++; if (_pedPag > _pedTotalPags) enviarPedidosAlServidor(); else descargarPaginaPed(desde, hasta, estado); };
+    xhr.ontimeout = function() { _pedPag++; if (_pedPag > _pedTotalPags) enviarPedidosAlServidor(); else descargarPaginaPed(desde, hasta, estado); };
+    xhr.send();
+}
+
+function enviarPedidosAlServidor() {
+    actualizarBarraPed(55, 'Insertando ' + _pedTodos.length + ' pedidos en base de datos...');
+    setHd('hdLote', JSON.stringify(_pedTodos));
+    setHd('hdAccion', 'INSERTAR_PEDIDOS');
+    document.getElementById('<%= btnPostBack.ClientID %>').click();
+}
+
+function actualizarBarraPed(/** @type {number} */ pct, /** @type {string} */ txt) {
+    var b = document.getElementById('barProgPed');
+    var t = document.getElementById('spProgTxtPed');
+    if (b) b.style.width = pct + '%';
+    if (t) t.textContent = txt;
+}
+
+function mostrarResultadoPed(/** @type {number} */ ins, /** @type {number} */ act,
+                              /** @type {number} */ sin, /** @type {number} */ err) {
+    actualizarBarraPed(100, 'Completado');
+    document.getElementById('divResPed').style.display      = '';
+    document.getElementById('cntPedNuevos').textContent      = String(ins);
+    document.getElementById('cntPedActualizados').textContent = String(act);
+    document.getElementById('cntPedSinCambios').textContent   = String(sin);
+    document.getElementById('cntPedErrores').textContent      = String(err);
+    var total = ins + act;
+    var msg = 'Migracion completada: ' + total + ' pedidos procesados';
+    if (err > 0) msg += ' (' + err + ' con errores)';
+    mostrarAlerta(msg, err > 0 ? 'warn' : 'ok');
 }
 </script>
 </asp:Content>

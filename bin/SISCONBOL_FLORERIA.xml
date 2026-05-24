@@ -107,6 +107,24 @@ SISCONBOL_FLORERIA
  Valida formulario de Pre-Pedido
  </summary>
 </member>
+<member name="M:SISCONBOL_FLORERIA.WooCommerceSync.ProcesarOrdenWebhook(System.String)">
+ <summary>
+ Procesa una orden recibida via webhook de WooCommerce
+ Crea o actualiza el pedido en FLORERIA_Pedido
+ </summary>
+ <param name="jsonData">JSON completo del webhook (payload de WooCommerce)</param>
+ <returns>Dictionary con ok, mensaje, pedido_id</returns>
+</member>
+<member name="M:SISCONBOL_FLORERIA.WooCommerceSync.ObtenerOCrearPrePedidoWebhook(System.Data.SqlClient.SqlConnection,System.String,System.String)">
+ <summary>
+ Obtiene o crea un PrePedido temporal para órdenes web
+ </summary>
+</member>
+<member name="M:SISCONBOL_FLORERIA.WooCommerceSync.MapearEstadoPagoWC(System.String)">
+ <summary>
+ Mapea el estado de WooCommerce a estado de pago de SISCONBOL
+ </summary>
+</member>
 <member name="M:SISCONBOL_FLORERIA.Login.ObtenerExpiraBolivia">
  <summary>
  Calcula las 23:59:59 de HOY en hora de Bolivia (UTC-4)
@@ -132,10 +150,23 @@ SISCONBOL_FLORERIA
  Obtiene el usuario_id de la Session de forma segura
  </summary>
 </member>
+<member name="M:SISCONBOL_FLORERIA.SesionHelper.ObtenerUsuarioNombre(System.Web.HttpContext)">
+ <summary>
+ Obtiene el nombre completo del usuario de la Session
+ </summary>
+</member>
 <member name="M:SISCONBOL_FLORERIA.SesionHelper.GenerarMenuHtml(System.Web.HttpContext,System.Web.UI.Page)">
  <summary>
  Genera el HTML del sidebar con menu dinamico
  </summary>
+</member>
+<member name="M:SISCONBOL_FLORERIA.SesionHelper.RedirectSeguro(System.Web.HttpContext,System.String,System.Boolean)">
+ <summary>
+ Redirige de forma segura sin causar ThreadAbortException
+ </summary>
+ <param name="context">HttpContext actual</param>
+ <param name="url">URL de destino</param>
+ <param name="endResponse">Si debe terminar la respuesta (default: True)</param>
 </member>
 </members>
 </doc>

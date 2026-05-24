@@ -116,7 +116,7 @@ Partial Public Class Modulos_Pedidos_PrePedido_Crear
             Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
                 conn.Open()
 
-                ' Crear pre-pedido
+                ' Crear pre-pedido (o detectar duplicado)
                 Using cmd As New SqlCommand("FLORERIA_sp_PrePedido_Crear", conn)
                     cmd.CommandType = CommandType.StoredProcedure
                     cmd.Parameters.AddWithValue("@tipo_registro", tipoRegistro)
@@ -132,10 +132,22 @@ Partial Public Class Modulos_Pedidos_PrePedido_Crear
                     pCod.Direction = ParameterDirection.Output
                     cmd.Parameters.Add(pCod)
 
-                    cmd.ExecuteNonQuery()
+                    ' Leer resultado con DataReader para obtener flag ya_existia
+                    Dim yaExistia As Boolean = False
+                    Using dr As SqlDataReader = cmd.ExecuteReader()
+                        If dr.Read() Then
+                            prepedidoId = Convert.ToInt32(dr("prepedido_id"))
+                            codigoGenerado = dr("codigo").ToString()
+                            
+                            ' Leer flag ya_existia
+                            If Not IsDBNull(dr("ya_existia")) Then
+                                yaExistia = Convert.ToBoolean(dr("ya_existia"))
+                            End If
+                        End If
+                    End Using
 
-                    ' Verificar valores de salida
-                    If pId.Value Is DBNull.Value OrElse pId.Value Is Nothing Then
+                    ' Verificar si se obtuvo ID
+                    If prepedidoId <= 0 Then
                         MensajeAlerta = "Error: No se pudo crear el pre-pedido"
                         ValorCelular = celular
                         ValorNombre = nombre
@@ -143,13 +155,10 @@ Partial Public Class Modulos_Pedidos_PrePedido_Crear
                         ValorEmail = email
                         Return
                     End If
-
-                    prepedidoId = Convert.ToInt32(pId.Value)
-                    codigoGenerado = pCod.Value.ToString()
                 End Using
 
-                ' Actualizar datos del cliente si se creó correctamente
-                If prepedidoId > 0 Then
+                ' Si NO es duplicado, actualizar datos del cliente
+                If prepedidoId > 0 AndAlso Not yaExistia Then
                     Using cmd2 As New SqlCommand("FLORERIA_sp_PrePedido_ActualizarCliente", conn)
                         cmd2.CommandType = CommandType.StoredProcedure
                         cmd2.Parameters.AddWithValue("@prepedido_id", prepedidoId)
@@ -182,8 +191,13 @@ Partial Public Class Modulos_Pedidos_PrePedido_Crear
                 End If
             End Using
 
-            ' Éxito - redirigir a página de links
-            SesionHelper.RedirectSeguro(HttpContext.Current, "PrePedido_Links.aspx?id=" & prepedidoId)
+            ' Redirigir a página de links con parámetro adicional si es duplicado
+            Dim url As String = "PrePedido_Links.aspx?id=" & prepedidoId
+            If yaExistia Then
+                url &= "&existia=1"
+            End If
+            
+            SesionHelper.RedirectSeguro(HttpContext.Current, url)
             Return
 
         Catch ex As Exception

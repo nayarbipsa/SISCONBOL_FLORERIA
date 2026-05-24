@@ -15,7 +15,8 @@ Partial Public Class Login
             If cookie IsNot Nothing Then
                 Dim token As String = cookie.Value
                 If token <> "" AndAlso ValidarToken(token) Then
-                    Response.Redirect("~/Default.aspx")
+                    SesionHelper.RedirectSeguro(HttpContext.Current, "~/Default.aspx")
+                    Return
                 End If
             End If
         End If
@@ -102,9 +103,11 @@ Partial Public Class Login
                                     Response.Cookies.Add(cookieNombre)
 
                                     If CBool(dr("debe_cambiar_pwd")) Then
-                                        Response.Redirect("~/CambiarPassword.aspx")
+                                        SesionHelper.RedirectSeguro(HttpContext.Current, "~/CambiarPassword.aspx")
+                                        Return
                                     Else
-                                        Response.Redirect("~/Default.aspx")
+                                        SesionHelper.RedirectSeguro(HttpContext.Current, "~/Default.aspx")
+                                        Return
                                     End If
 
                                 Case "BLOQUEADO_TEMP"
