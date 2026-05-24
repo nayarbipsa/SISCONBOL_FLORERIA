@@ -110,14 +110,17 @@ Partial Public Class Modulos_Pedidos_PrePedido_Links
                                 End If
                                 
                                 ' ============================================================
-                                ' MENSAJE SUGERIDO PARA WHATSAPP (SIN EMOJIS)
+                                ' MENSAJE SUGERIDO PARA WHATSAPP (PRIMER CONTACTO)
                                 ' ============================================================
-                                MensajeSugerido = "Hola " & ClienteNombre & "!" & vbCrLf & vbCrLf &
-                                                 "Tu pre-pedido " & Codigo & " esta listo." & vbCrLf & vbCrLf &
-                                                 "Por favor completa tu pedido aqui:" & vbCrLf &
+                                Dim nombreAgente As String = SesionHelper.ObtenerUsuarioNombre(HttpContext.Current)
+                                
+                                MensajeSugerido = "Buen dia! Mi nombre es " & nombreAgente & ", con mucho gusto le atiendo." & vbCrLf & vbCrLf &
+                                                 "Su pre registro en sistema es " & Codigo & ":" & vbCrLf &
                                                  LinkCliente & vbCrLf & vbCrLf &
-                                                 "Valido hasta: " & FechaExpiracion & vbCrLf & vbCrLf &
-                                                 "Cualquier duda, estamos para ayudarte!"
+                                                 "Para poder abrir el link, por favor guarde este numero como contacto en su celular." & vbCrLf & vbCrLf &
+                                                 "Si desea ver nuestro catalogo completo puede ingresar a:" & vbCrLf &
+                                                 "www.miss-flores.com" & vbCrLf & vbCrLf &
+                                                 "Estoy para ayudarle en lo que necesite!"
                             Else
                                 ' Si no hay token, generar uno
                                 GenerarToken(prepedidoId)

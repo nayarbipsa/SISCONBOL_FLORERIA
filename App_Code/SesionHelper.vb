@@ -106,6 +106,31 @@ Public Class SesionHelper
     End Function
 
     ''' <summary>
+    ''' Obtiene el nombre completo del usuario de la Session
+    ''' </summary>
+    Public Shared Function ObtenerUsuarioNombre(context As HttpContext) As String
+        Dim nombres As String = ""
+        Dim apellidos As String = ""
+        
+        If context.Session("nombres") IsNot Nothing Then
+            nombres = context.Session("nombres").ToString().Trim()
+        End If
+        
+        If context.Session("apellidos") IsNot Nothing Then
+            apellidos = context.Session("apellidos").ToString().Trim()
+        End If
+        
+        If nombres <> "" Then
+            If apellidos <> "" Then
+                Return nombres & " " & apellidos
+            End If
+            Return nombres
+        End If
+        
+        Return "Miss Flores"
+    End Function
+
+    ''' <summary>
     ''' Genera el HTML del sidebar con menu dinamico
     ''' </summary>
     Public Shared Function GenerarMenuHtml(context As HttpContext, page As System.Web.UI.Page) As String

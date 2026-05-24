@@ -70,49 +70,54 @@
     <div class="success-icon">
         <i class="ti ti-circle-check"></i>
     </div>
-    <h2 class="success-title">Pre-Pedido <%=Codigo%> creado exitosamente</h2>
-    <p>Cliente: <%=ClienteNombre%></p>
+    <% If Request.QueryString("existia") = "1" Then %>
+        <h2 class="success-title">Ya tienes un pre-pedido activo: <%=Codigo%></h2>
+        <p style="font-size: 14px; opacity: 0.9;">Este cliente ya tiene un pre-pedido en proceso. Puedes enviar los links nuevamente o editarlo.</p>
+    <% Else %>
+        <h2 class="success-title">Pre-Pedido <%=Codigo%> creado exitosamente</h2>
+        <p>Cliente: <%=ClienteNombre%></p>
+    <% End If %>
 </div>
 
-<!-- LINK CLIENTE -->
+<!-- LINK PRINCIPAL PARA CLIENTE -->
 <div class="link-section">
     <h3 class="link-title">
         <i class="ti ti-link"></i>
-        Link para el cliente (formulario web)
+        Primer mensaje al cliente
     </h3>
     <div class="link-url"><%=LinkCliente%></div>
     <button type="button" class="btn-whatsapp" onclick="enviarLinkCliente()">
         <i class="ti ti-brand-whatsapp"></i>
-        Enviar por WhatsApp
+        Enviar primer mensaje
     </button>
     <button type="button" class="btn btn-sm" onclick="copiarTexto('<%=LinkCliente%>')">
         <i class="ti ti-copy"></i>
-        Copiar
+        Copiar link
     </button>
     <div style="margin-top: 0.75rem; font-size: 13px; color: #666;">
         <i class="ti ti-clock"></i>
-        Valido hasta: <%=FechaExpiracion%>
+        Enviar apenas el cliente escriba para no perder el contacto
     </div>
 </div>
 
-<!-- LINK INTERNO -->
+<!-- LINK SEGUIMIENTO (OPCIONAL) -->
 <div class="link-section">
     <h3 class="link-title">
         <i class="ti ti-link"></i>
-        Link interno (acceso rapido para ti)
+        Link de seguimiento (opcional)
     </h3>
     <div class="link-url"><%=LinkInterno%></div>
     <button type="button" class="btn-whatsapp" onclick="enviarLinkInterno()">
         <i class="ti ti-brand-whatsapp"></i>
-        Enviarte a ti mismo
+        Enviar link adicional
     </button>
     <button type="button" class="btn btn-sm" onclick="copiarTexto('<%=LinkInterno%>')">
         <i class="ti ti-copy"></i>
-        Copiar
+        Copiar link
     </button>
     <div style="margin-top: 0.75rem; font-size: 13px; color: #666;">
         <i class="ti ti-info-circle"></i>
-        Guardalo para retomar dias despues
+        Enviar más tarde si el cliente quiere ver su pedido nuevamente
     </div>
 </div>
 
@@ -130,6 +135,25 @@
     <button type="button" class="btn btn-sm" onclick="copiarMensaje()">
         <i class="ti ti-copy"></i>
         Copiar mensaje
+    </button>
+</div>
+
+<!-- GUARDAR PARA EL AGENTE -->
+<div class="link-section" style="background: #E8F5E9; border-color: #4CAF50;">
+    <h3 class="link-title" style="color: #2E7D32;">
+        <i class="ti ti-bookmark"></i>
+        Guardar para ti (agente)
+    </h3>
+    <p style="font-size: 14px; color: #555; margin-bottom: 1rem;">
+        Envíate el link a ti mismo para tener acceso rápido al pre-pedido desde tu WhatsApp.
+    </p>
+    <button type="button" class="btn-whatsapp" onclick="guardarParaMi()">
+        <i class="ti ti-brand-whatsapp"></i>
+        Enviarme el link
+    </button>
+    <button type="button" class="btn btn-sm" onclick="copiarTexto('<%=LinkInterno%>')">
+        <i class="ti ti-copy"></i>
+        Copiar link
     </button>
 </div>
 
@@ -197,8 +221,9 @@ function enviarLinkCliente() {
 }
 
 function enviarLinkInterno() {
+    var celular = document.getElementById('hdCelular').value;
     var link = '<%=LinkInterno%>';
-    var url = 'https://api.whatsapp.com/send?text=' + encodeURIComponent(link);
+    var url = 'https://api.whatsapp.com/send?phone=' + celular + '&text=' + encodeURIComponent(link);
     window.open(url, '_blank');
 }
 
@@ -213,6 +238,16 @@ function enviarMensajeCompleto() {
     
     var mensaje = hdMensaje.value;
     var url = 'https://api.whatsapp.com/send?phone=' + celular + '&text=' + encodeURIComponent(mensaje);
+    window.open(url, '_blank');
+}
+
+function guardarParaMi() {
+    var link = '<%=LinkInterno%>';
+    var codigo = '<%=Codigo%>';
+    var mensaje = 'Pre-pedido ' + codigo + ' - Link de acceso:\n' + link;
+    
+    // Abre WhatsApp SIN número para que el agente elija enviárselo a sí mismo
+    var url = 'https://api.whatsapp.com/send?text=' + encodeURIComponent(mensaje);
     window.open(url, '_blank');
 }
 </script>
