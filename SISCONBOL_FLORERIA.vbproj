@@ -107,6 +107,7 @@
     <Content Include="Modulos\Config\Webhooks_Monitor.aspx" />
     <Content Include="Modulos\Pedidos\Pedido_Agregar.aspx" />
     <Content Include="Modulos\Pedidos\PrePedido_Links.aspx" />
+    <Content Include="pp.aspx" />
     <Content Include="Scripts\site.js" />
     <Content Include="Login.aspx" />
     <Content Include="Modulos\Catalogo\Categorias.aspx" />
@@ -218,6 +219,10 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
     </Compile>
     <Compile Include="App_Code\SesionHelper.vb" />
+    <Compile Include="pp.aspx.vb">
+      <DependentUpon>pp.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
     <Compile Include="Site.master.vb">
       <DependentUpon>Site.master</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>

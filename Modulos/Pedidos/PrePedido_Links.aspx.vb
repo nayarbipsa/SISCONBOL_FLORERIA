@@ -2,7 +2,7 @@ Imports System.Data.SqlClient
 Imports System.Web
 
 ' ============================================================
-' SISCONBOL - Modal Links Pre-Pedido (CORREGIDO PARA WHATSAPP)
+' SISCONBOL - Modal Links Pre-Pedido (CON DETECCIÓN DUPLICADOS)
 ' Archivo: Modulos/Pedidos/PrePedido_Links.aspx.vb
 ' MasterPage: Site.Master
 ' ============================================================
@@ -36,11 +36,19 @@ Partial Public Class Modulos_Pedidos_PrePedido_Links
                 Return
             End If
 
-            CargarDatos(id)
+            ' ============================================================
+            ' DETECTAR SI ES UN PRE-PEDIDO DUPLICADO (existia=1)
+            ' ============================================================
+            Dim yaExistia As Boolean = False
+            If Request.QueryString("existia") = "1" Then
+                yaExistia = True
+            End If
+
+            CargarDatos(id, yaExistia)
         End If
     End Sub
 
-    Private Sub CargarDatos(prepedidoId As Integer)
+    Private Sub CargarDatos(prepedidoId As Integer, Optional yaExistia As Boolean = False)
         Try
             ' Guardar el ID para usarlo en la vista
             PrePedidoId = prepedidoId
@@ -113,22 +121,40 @@ Partial Public Class Modulos_Pedidos_PrePedido_Links
                                 End If
                                 
                                 ' ============================================================
-                                ' MENSAJE SUGERIDO PARA WHATSAPP (PRIMER CONTACTO)
+                                ' MENSAJE SUGERIDO PARA WHATSAPP (CONDICIONAL)
                                 ' ============================================================
                                 Dim nombreAgente As String = SesionHelper.ObtenerUsuarioNombre(HttpContext.Current)
                                 
-                                MensajeSugerido = "Buen dia! Mi nombre es " & nombreAgente & ", con mucho gusto le atiendo." & vbCrLf & vbCrLf &
-                                                 "Ya esta pre registrado con el codigo " & Codigo & vbCrLf &
-                                                 LinkInterno & vbCrLf & vbCrLf &
-                                                 "Para poder abrir el link que le enviare, por favor guarde este numero como contacto en su celular." & vbCrLf & vbCrLf &
-                                                 "Si desea ver nuestro catalogo completo puede ingresar a:" & vbCrLf &
-                                                 "www.miss-flores.com" & vbCrLf & vbCrLf &
-                                                 "Estoy para ayudarle en lo que necesite!"
+                                ' ============================================================
+                                ' SI ES DUPLICADO → Mensaje diferente
+                                ' ============================================================
+                                If yaExistia Then
+                                    MensajeSugerido = "Hola! Vi que ya tienes un pre-pedido activo con el codigo " & Codigo & vbCrLf &
+                                                     LinkInterno & vbCrLf & vbCrLf &
+                                                     "Si necesitas hacer cambios o agregar algo, avisame y con gusto te ayudo!" & vbCrLf & vbCrLf &
+                                                     "Si deseas ver nuestro catalogo completo puedes ingresar a:" & vbCrLf &
+                                                     "www.miss-flores.com"
+                                Else
+                                    ' ============================================================
+                                    ' SI ES NUEVO → Mensaje de bienvenida
+                                    ' ============================================================
+                                    MensajeSugerido = "Buen dia! Mi nombre es " & nombreAgente & ", con mucho gusto le atiendo." & vbCrLf & vbCrLf &
+                                                     "Ya esta pre registrado con el codigo " & Codigo & vbCrLf &
+                                                     LinkInterno & vbCrLf & vbCrLf &
+                                                     "Para poder abrir el link que le enviare, por favor guarde este numero como contacto en su celular." & vbCrLf & vbCrLf &
+                                                     "Si desea ver nuestro catalogo completo puede ingresar a:" & vbCrLf &
+                                                     "www.miss-flores.com" & vbCrLf & vbCrLf &
+                                                     "Estoy para ayudarle en lo que necesite!"
+                                End If
                             Else
                                 ' Si no hay token, generar uno
                                 GenerarToken(prepedidoId)
-                                ' Recargar la pagina para mostrar el token nuevo
-                                SesionHelper.RedirectSeguro(HttpContext.Current, "PrePedido_Links.aspx?id=" & prepedidoId)
+                                ' Recargar la pagina MANTENIENDO el parámetro existia
+                                Dim urlReload As String = "PrePedido_Links.aspx?id=" & prepedidoId
+                                If yaExistia Then
+                                    urlReload &= "&existia=1"
+                                End If
+                                SesionHelper.RedirectSeguro(HttpContext.Current, urlReload)
                                 Return
                             End If
                         Else

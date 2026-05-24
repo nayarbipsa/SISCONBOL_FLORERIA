@@ -3,7 +3,7 @@ Imports System.Data.SqlClient
 Imports System.Web
 
 ' ============================================================
-' SISCONBOL - Crear Pre-Pedido
+' SISCONBOL - Crear Pre-Pedido (CON DETECCIÓN DUPLICADOS)
 ' Archivo: Modulos/Pedidos/PrePedido_Crear.aspx.vb
 ' MasterPage: Site.Master (sesión verificada automáticamente)
 ' ============================================================
@@ -48,37 +48,27 @@ Partial Public Class Modulos_Pedidos_PrePedido_Crear
     ' CrearPrePedido - Lógica de creación
     ' ============================================================
     Private Sub CrearPrePedido()
-        ' Leer formulario
+        ' Capturar valores del formulario
+        Dim tipoRegistro As String = "PRE_PEDIDO"
         Dim celular As String = Request.Form("txCelular")
-        Dim nombre As String = Request.Form("txNombre")
-        Dim apellidos As String = Request.Form("txApellidos")
-        Dim email As String = Request.Form("txEmail")
-        Dim tipoRegistro As String = Request.Form("selTipo")
-        Dim paisIdStr As String = Request.Form("hdPaisId")
-
-        ' Normalizar nulls
         If celular Is Nothing Then celular = ""
-        If nombre Is Nothing Then nombre = ""
-        If apellidos Is Nothing Then apellidos = ""
-        If email Is Nothing Then email = ""
-        If tipoRegistro Is Nothing Then tipoRegistro = "PRE_PEDIDO"
-        If paisIdStr Is Nothing Then paisIdStr = ""
-
         celular = celular.Trim()
-        nombre = nombre.Trim()
-        apellidos = apellidos.Trim()
-        email = email.Trim()
-        tipoRegistro = tipoRegistro.Trim()
-        paisIdStr = paisIdStr.Trim()
 
-        ' ============================================================
-        ' VALIDACIONES CON CLASE VALIDADOR
-        ' ============================================================
-        Dim resultadoValidacion = Validador.ValidarFormularioPrePedido(celular, nombre, apellidos, email)
-        
-        If Not resultadoValidacion.EsValido Then
-            MensajeAlerta = resultadoValidacion.Mensaje
-            ' Mantener valores para que usuario no pierda lo que escribió
+        Dim nombre As String = Request.Form("txNombre")
+        If nombre Is Nothing Then nombre = ""
+        nombre = nombre.Trim()
+
+        Dim apellidos As String = Request.Form("txApellidos")
+        If apellidos Is Nothing Then apellidos = ""
+        apellidos = apellidos.Trim()
+
+        Dim email As String = Request.Form("txEmail")
+        If email Is Nothing Then email = ""
+        email = email.Trim()
+
+        ' Validar celular obligatorio
+        If celular = "" Then
+            MensajeAlerta = "El número de celular es obligatorio"
             ValorCelular = celular
             ValorNombre = nombre
             ValorApellidos = apellidos
@@ -86,22 +76,14 @@ Partial Public Class Modulos_Pedidos_PrePedido_Crear
             Return
         End If
 
-        ' Detectar país (fallback si JavaScript no detectó)
-        Dim paisId As Object = DBNull.Value
-        If paisIdStr <> "" Then
-            Dim tmp As Integer = 0
-            If Integer.TryParse(paisIdStr, tmp) Then
-                paisId = tmp
-            End If
-        End If
-
-        ' Fallback manual si no se detectó
-        If paisId Is DBNull.Value Then
+        ' Determinar país según celular
+        Dim paisId As Integer = 0
+        If celular.Length > 0 Then
             If celular.StartsWith("+591") OrElse celular.StartsWith("591") Then
                 paisId = 1
             ElseIf celular.StartsWith("+51") OrElse celular.StartsWith("51") Then
                 paisId = 2
-            ElseIf (celular.StartsWith("6") OrElse celular.StartsWith("7")) AndAlso _
+            ElseIf (celular.StartsWith("6") OrElse celular.StartsWith("7")) AndAlso
                    (celular.Length = 7 OrElse celular.Length = 8) Then
                 paisId = 1
             End If
@@ -112,11 +94,18 @@ Partial Public Class Modulos_Pedidos_PrePedido_Crear
         Dim ip As String = Request.UserHostAddress
         If ip Is Nothing Then ip = ""
 
+        ' ============================================================
+        ' DECLARAR VARIABLE ANTES DEL TRY (para usarla después)
+        ' ============================================================
+        Dim yaExistia As Boolean = False
+
         Try
             Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
                 conn.Open()
 
-                ' Crear pre-pedido
+                ' ============================================================
+                ' CREAR PRE-PEDIDO (O DETECTAR DUPLICADO)
+                ' ============================================================
                 Using cmd As New SqlCommand("FLORERIA_sp_PrePedido_Crear", conn)
                     cmd.CommandType = CommandType.StoredProcedure
                     cmd.Parameters.AddWithValue("@tipo_registro", tipoRegistro)
@@ -132,10 +121,23 @@ Partial Public Class Modulos_Pedidos_PrePedido_Crear
                     pCod.Direction = ParameterDirection.Output
                     cmd.Parameters.Add(pCod)
 
-                    cmd.ExecuteNonQuery()
+                    ' ============================================================
+                    ' LEER RESULTADO CON DataReader (para obtener ya_existia)
+                    ' ============================================================
+                    Using dr As SqlDataReader = cmd.ExecuteReader()
+                        If dr.Read() Then
+                            prepedidoId = Convert.ToInt32(dr("prepedido_id"))
+                            codigoGenerado = dr("codigo").ToString()
 
-                    ' Verificar valores de salida
-                    If pId.Value Is DBNull.Value OrElse pId.Value Is Nothing Then
+                            ' Leer flag ya_existia si existe
+                            If Not IsDBNull(dr("ya_existia")) Then
+                                yaExistia = Convert.ToBoolean(dr("ya_existia"))
+                            End If
+                        End If
+                    End Using
+
+                    ' Verificar si se obtuvo ID
+                    If prepedidoId <= 0 Then
                         MensajeAlerta = "Error: No se pudo crear el pre-pedido"
                         ValorCelular = celular
                         ValorNombre = nombre
@@ -143,13 +145,12 @@ Partial Public Class Modulos_Pedidos_PrePedido_Crear
                         ValorEmail = email
                         Return
                     End If
-
-                    prepedidoId = Convert.ToInt32(pId.Value)
-                    codigoGenerado = pCod.Value.ToString()
                 End Using
 
-                ' Actualizar datos del cliente si se creó correctamente
-                If prepedidoId > 0 Then
+                ' ============================================================
+                ' ACTUALIZAR DATOS DEL CLIENTE (SOLO SI NO ES DUPLICADO)
+                ' ============================================================
+                If prepedidoId > 0 AndAlso Not yaExistia Then
                     Using cmd2 As New SqlCommand("FLORERIA_sp_PrePedido_ActualizarCliente", conn)
                         cmd2.CommandType = CommandType.StoredProcedure
                         cmd2.Parameters.AddWithValue("@prepedido_id", prepedidoId)
@@ -182,8 +183,15 @@ Partial Public Class Modulos_Pedidos_PrePedido_Crear
                 End If
             End Using
 
-            ' Éxito - redirigir a página de links
-            SesionHelper.RedirectSeguro(HttpContext.Current, "PrePedido_Links.aspx?id=" & prepedidoId)
+            ' ============================================================
+            ' REDIRIGIR CON PARÁMETRO ADICIONAL SI ES DUPLICADO
+            ' ============================================================
+            Dim url As String = "PrePedido_Links.aspx?id=" & prepedidoId
+            If yaExistia Then
+                url &= "&existia=1"
+            End If
+
+            SesionHelper.RedirectSeguro(HttpContext.Current, url)
             Return
 
         Catch ex As Exception
