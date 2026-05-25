@@ -34,6 +34,19 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
     Public Property TotalGeneral As String = "0.00"
     Public Property HtmlPedidos As String = ""
 
+    ' --- Borradores (FLORERIA_PrePedido_Entrega estado='BORRADOR') ---
+    Public Property CantidadBorradores As Integer = 0
+    Public Property HtmlBorradores As String = ""
+
+    ' --- Estado del link al cliente ---
+    Public Property EstadoLink As Integer = 0    ' 0=no enviado, 1=esperando, 2=cliente confirmo
+    Public Property TokenWeb As String = ""
+    Public Property TokenExpira As DateTime = DateTime.MinValue
+    Public Property TokenAbiertoEn As DateTime = DateTime.MinValue
+    Public Property TokenConfirmadoEn As DateTime = DateTime.MinValue
+    Public Property LinkExpirado As Boolean = False
+    Public Property HorasParaExpirar As Integer = 0
+
     ' ============================================================
     ' Page_Load
     ' ============================================================
@@ -70,7 +83,8 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
                 ' ============================================================
                 Dim sql As String = "SELECT p.codigo, p.estado, p.tipo_registro, " &
                     "p.cliente_nombre, p.cliente_apellidos, p.cliente_celular, p.cliente_email, " &
-                    "p.token_web, p.token_expira, p.creado_en, " &
+                    "p.token_web, p.token_expira, p.token_abierto_en, p.token_confirmado_por_cliente_en, " &
+                    "p.creado_en, " &
                     "u.nombres + ' ' + u.apellidos AS agente_nombre " &
                     "FROM FLORERIA_PrePedido p " &
                     "LEFT JOIN FLORERIA_Usuario u ON p.creado_por = u.usuario_id " &
@@ -124,18 +138,26 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
                             ' Agente
                             NombreAgente = If(IsDBNull(dr("agente_nombre")), "Desconocido", dr("agente_nombre").ToString())
                             
-                            ' Link web
+                            ' Link web (token)
                             If Not IsDBNull(dr("token_web")) Then
                                 Dim token As String = dr("token_web").ToString()
                                 If token <> "" Then
+                                    TokenWeb = token
                                     LinkWebGenerado = True
-                                    LinkCompleto = "https://miss-flores.com/pedido?t=" & token
-                                    
+                                    ' La URL real se construye en PrePedido_Handler.ashx (respeta el dominio)
+                                    LinkCompleto = ""
+
                                     If Not IsDBNull(dr("token_expira")) Then
-                                        Dim expira As DateTime = CDate(dr("token_expira"))
-                                        FechaExpiracion = expira.ToString("dd/MM/yyyy HH:mm")
+                                        TokenExpira = CDate(dr("token_expira"))
+                                        FechaExpiracion = TokenExpira.ToString("dd/MM/yyyy HH:mm")
                                     End If
                                 End If
+                            End If
+                            If Not IsDBNull(dr("token_abierto_en")) Then
+                                TokenAbiertoEn = CDate(dr("token_abierto_en"))
+                            End If
+                            If Not IsDBNull(dr("token_confirmado_por_cliente_en")) Then
+                                TokenConfirmadoEn = CDate(dr("token_confirmado_por_cliente_en"))
                             End If
                         Else
                             Response.Redirect("PrePedidos.aspx")
@@ -144,10 +166,14 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
                     End Using
                 End Using
 
+                ' ----- Calcular EstadoLink y horas para expirar -----
+                CalcularEstadoLink()
+
                 ' ============================================================
                 ' 2. CARGAR PEDIDOS (ENTREGAS)
                 ' ============================================================
                 CargarPedidos(conn)
+                CargarBorradores(conn)
 
             End Using
         Catch ex As Exception
@@ -230,9 +256,9 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
                     sb.AppendLine("      <p class='pedido-desc'>Para " & receptor & If(celReceptor <> "", " • " & celReceptor, "") & "</p>")
                     sb.AppendLine("    </div>")
                     sb.AppendLine("    <div style='display:flex;gap:6px;'>")
-                    sb.AppendLine("      <a href='Entrega_Agregar.aspx?prepedido=" & PrePedidoId & "&entrega=" & pedidoId & "' class='btn btn-sm'>")
-                    sb.AppendLine("        <i class='ti ti-edit'></i> Editar")
-                    sb.AppendLine("      </a>")
+                    sb.AppendLine("      <span style='background:#E8F5E9;color:#2E7D32;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:500'>")
+                    sb.AppendLine("        <i class='ti ti-check' style='font-size:13px;vertical-align:-2px'></i> CONFIRMADO")
+                    sb.AppendLine("      </span>")
                     sb.AppendLine("    </div>")
                     sb.AppendLine("  </div>")
                     
@@ -293,6 +319,128 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
     End Sub
 
     ' ============================================================
+    ' CargarBorradores - Lista de entregas en estado BORRADOR
+    ' (FLORERIA_PrePedido_Entrega + agregados de detalle)
+    ' ============================================================
+    Private Sub CargarBorradores(conn As SqlConnection)
+        Dim sb As New StringBuilder()
+        Dim cant As Integer = 0
+
+        Dim sql As String = "SELECT " &
+            "e.prepedido_entrega_id, e.receptor_nombre, e.receptor_celular, " &
+            "e.tipo_entrega, e.direccion, e.fecha_entrega, " &
+            "c.nombre AS ciudad_nombre, z.nombre AS zona_nombre, " &
+            "su.nombre AS sucursal_nombre, " &
+            "s.hora_inicio, s.hora_fin, " &
+            "ISNULL((SELECT COUNT(*) FROM FLORERIA_PrePedido_Entrega_Detalle d " &
+            "        WHERE d.prepedido_entrega_id = e.prepedido_entrega_id), 0) AS cant_items, " &
+            "ISNULL((SELECT SUM(subtotal_bs) FROM FLORERIA_PrePedido_Entrega_Detalle d " &
+            "        WHERE d.prepedido_entrega_id = e.prepedido_entrega_id), 0) AS subtotal_bs, " &
+            "e.modificado_en, e.creado_en " &
+            "FROM FLORERIA_PrePedido_Entrega e " &
+            "LEFT JOIN FLORERIA_Ciudad c ON e.ciudad_id = c.ciudad_id " &
+            "LEFT JOIN FLORERIA_Zona z ON e.zona_id = z.zona_id " &
+            "LEFT JOIN FLORERIA_Sucursal su ON e.sucursal_id = su.sucursal_id " &
+            "LEFT JOIN FLORERIA_Slot_Horario s ON e.slot_id = s.slot_id " &
+            "WHERE e.prepedido_id = @id AND e.estado = 'BORRADOR' " &
+            "ORDER BY e.prepedido_entrega_id"
+
+        Using cmd As New SqlCommand(sql, conn)
+            cmd.Parameters.AddWithValue("@id", PrePedidoId)
+
+            Using dr As SqlDataReader = cmd.ExecuteReader()
+                While dr.Read()
+                    cant += 1
+                    Dim entId As Integer = CInt(dr("prepedido_entrega_id"))
+                    Dim receptor As String = If(IsDBNull(dr("receptor_nombre")), "", dr("receptor_nombre").ToString())
+                    Dim celReceptor As String = If(IsDBNull(dr("receptor_celular")), "", dr("receptor_celular").ToString())
+
+                    Dim fechaEnt As String = "Sin fecha"
+                    If Not IsDBNull(dr("fecha_entrega")) Then
+                        fechaEnt = CDate(dr("fecha_entrega")).ToString("dd MMM yyyy")
+                    End If
+
+                    Dim horario As String = "Sin horario"
+                    If Not IsDBNull(dr("hora_inicio")) AndAlso Not IsDBNull(dr("hora_fin")) Then
+                        horario = dr("hora_inicio").ToString() & " - " & dr("hora_fin").ToString()
+                    End If
+
+                    Dim ciudad As String = If(IsDBNull(dr("ciudad_nombre")), "Sin ciudad", dr("ciudad_nombre").ToString())
+                    Dim zona As String = If(IsDBNull(dr("zona_nombre")), "Sin zona", dr("zona_nombre").ToString())
+                    Dim sucursal As String = If(IsDBNull(dr("sucursal_nombre")), "", dr("sucursal_nombre").ToString())
+                    Dim direccion As String = If(IsDBNull(dr("direccion")), "", dr("direccion").ToString())
+                    Dim tipoEnt As String = If(IsDBNull(dr("tipo_entrega")), "DOMICILIO", dr("tipo_entrega").ToString())
+                    Dim cantItems As Integer = CInt(dr("cant_items"))
+                    Dim subtotalBs As Decimal = CDec(dr("subtotal_bs"))
+
+                    ' Etiqueta destino
+                    Dim destinoLabel As String
+                    If tipoEnt = "RECOJO_SUCURSAL" Then
+                        destinoLabel = If(sucursal = "", "Recojo (sin sucursal)", "Recojo en " & sucursal)
+                    Else
+                        destinoLabel = zona & ", " & ciudad
+                    End If
+
+                    ' Receptor: "Sin destinatario" si esta vacio
+                    Dim receptorLabel As String
+                    If receptor = "" Then
+                        receptorLabel = "<span style='color:#999;font-style:italic'>Sin destinatario</span>"
+                    Else
+                        receptorLabel = receptor & If(celReceptor <> "", " &bull; " & celReceptor, "")
+                    End If
+
+                    sb.AppendLine("<div class='pedido-card' style='border-style:dashed;border-color:#F9A825;background:#FFFDE7'>")
+                    sb.AppendLine("  <div class='pedido-header'>")
+                    sb.AppendLine("    <div class='pedido-numero' style='background:#F9A825'>" & cant & "</div>")
+                    sb.AppendLine("    <div class='pedido-info'>")
+                    sb.AppendLine("      <h4 class='pedido-codigo'>Borrador #" & entId & " " &
+                                  "<span style='font-size:10px;background:#FFF3CD;color:#856404;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:500;text-transform:uppercase'>" &
+                                  "<i class='ti ti-pencil' style='font-size:11px;vertical-align:-1px'></i> Borrador</span></h4>")
+                    sb.AppendLine("      <p class='pedido-desc'>Para " & receptorLabel & "</p>")
+                    sb.AppendLine("    </div>")
+                    sb.AppendLine("    <div style='display:flex;gap:6px;'>")
+                    sb.AppendLine("      <a href='Entrega_Agregar.aspx?prepedido=" & PrePedidoId & "&entrega=" & entId & "' class='btn btn-primary btn-sm'>")
+                    sb.AppendLine("        <i class='ti ti-edit'></i> Continuar editando")
+                    sb.AppendLine("      </a>")
+                    sb.AppendLine("    </div>")
+                    sb.AppendLine("  </div>")
+
+                    sb.AppendLine("  <div class='pedido-grid'>")
+                    sb.AppendLine("    <div class='pedido-field'>")
+                    sb.AppendLine("      <div class='pedido-field-label'>Fecha entrega</div>")
+                    sb.AppendLine("      <div class='pedido-field-value'>" & fechaEnt & "</div>")
+                    sb.AppendLine("    </div>")
+                    sb.AppendLine("    <div class='pedido-field'>")
+                    sb.AppendLine("      <div class='pedido-field-label'>Horario</div>")
+                    sb.AppendLine("      <div class='pedido-field-value'>" & horario & "</div>")
+                    sb.AppendLine("    </div>")
+                    sb.AppendLine("    <div class='pedido-field'>")
+                    sb.AppendLine("      <div class='pedido-field-label'>Destino</div>")
+                    sb.AppendLine("      <div class='pedido-field-value'>" & destinoLabel & "</div>")
+                    sb.AppendLine("    </div>")
+                    sb.AppendLine("    <div class='pedido-field'>")
+                    sb.AppendLine("      <div class='pedido-field-label'>Productos</div>")
+                    sb.AppendLine("      <div class='pedido-field-value'>" & cantItems & " items &mdash; Bs " & subtotalBs.ToString("N2") & "</div>")
+                    sb.AppendLine("    </div>")
+                    sb.AppendLine("  </div>")
+
+                    If direccion <> "" Then
+                        sb.AppendLine("  <div style='margin-bottom:0.5rem;'>")
+                        sb.AppendLine("    <div class='pedido-field-label'>Direccion</div>")
+                        sb.AppendLine("    <div style='font-size:13px;color:#424242;margin-top:4px;'>" & direccion & "</div>")
+                        sb.AppendLine("  </div>")
+                    End If
+
+                    sb.AppendLine("</div>")
+                End While
+            End Using
+        End Using
+
+        CantidadBorradores = cant
+        HtmlBorradores = sb.ToString()
+    End Sub
+
+    ' ============================================================
     ' Funciones auxiliares
     ' ============================================================
     Private Function GenerarBadgeEstado(estado As String) As String
@@ -332,6 +480,36 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
             Return fecha.ToString("dd MMM yyyy")
         End If
     End Function
+
+    ' ============================================================
+    ' CalcularEstadoLink:
+    '   0 = sin token (no enviado)
+    '   1 = token vigente, esperando que cliente confirme
+    '   2 = cliente confirmo
+    '   Tambien marca LinkExpirado y HorasParaExpirar
+    ' ============================================================
+    Private Sub CalcularEstadoLink()
+        If TokenWeb = "" Then
+            EstadoLink = 0
+            Return
+        End If
+
+        If TokenExpira > DateTime.MinValue Then
+            If TokenExpira <= DateTime.Now Then
+                LinkExpirado = True
+                HorasParaExpirar = 0
+            Else
+                LinkExpirado = False
+                HorasParaExpirar = CInt(Math.Max(0, Math.Ceiling(TokenExpira.Subtract(DateTime.Now).TotalHours)))
+            End If
+        End If
+
+        If TokenConfirmadoEn > DateTime.MinValue Then
+            EstadoLink = 2
+        Else
+            EstadoLink = 1
+        End If
+    End Sub
 End Class
 
 

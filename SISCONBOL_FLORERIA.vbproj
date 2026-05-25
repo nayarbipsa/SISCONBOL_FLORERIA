@@ -97,6 +97,7 @@
     <Content Include="03_TODOS_LOS_SPS.sql" />
     <Content Include="04_DATOS_INICIALES.sql" />
     <Content Include="CambiarPassword.aspx" />
+    <Content Include="cliente\index.aspx" />
     <Content Include="Default.aspx" />
     <Content Include="Error.aspx" />
     <Content Include="Estilos\site.css" />
@@ -106,6 +107,7 @@
     <Content Include="Modulos\Config\Migrar.aspx" />
     <Content Include="Modulos\Config\Webhooks_Monitor.aspx" />
     <Content Include="Modulos\Pedidos\Entrega_Agregar.aspx" />
+    <Content Include="Modulos\Pedidos\MODAL_BUSCADOR.html" />
     <Content Include="Modulos\Pedidos\Pedido_Agregar.aspx" />
     <Content Include="Modulos\Pedidos\PrePedido_Links.aspx" />
     <Content Include="pp.aspx" />
@@ -127,6 +129,10 @@
     <Compile Include="App_Code\WooCommerceSync.vb" />
     <Compile Include="CambiarPassword.aspx.vb">
       <DependentUpon>CambiarPassword.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="cliente\index.aspx.vb">
+      <DependentUpon>index.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
     </Compile>
     <Compile Include="Default.aspx.vb">
@@ -246,7 +252,9 @@
     <Content Include="jsconfig.json" />
     <Content Include="CHECKLIST_OBLIGATORIO_VB.md" />
     <Content Include="DEFINICIONES_BD.md" />
-    <Content Include="ESTRUCTURA_COMPLETA_BD_MASTER.md" />
+    <Content Include="Modulos\Pedidos\Entrega_Handler.ashx" />
+    <Content Include="cliente\Cliente_PublicHandler.ashx" />
+    <Content Include="Modulos\Pedidos\PrePedido_Handler.ashx" />
     <None Include="My Project\Application.myapp">
       <Generator>MyApplicationCodeGenerator</Generator>
       <LastGenOutput>Application.Designer.vb</LastGenOutput>
@@ -262,6 +270,7 @@
     <Content Include="REGLAS_DEFINITIVAS_V3.md" />
     <Content Include="TestWebhook.ashx" />
     <Content Include="TestWooCommerceSync.ashx" />
+    <Content Include="PROTOCOLO_ACTUALIZADO_FINAL.md" />
     <None Include="Web.Debug.config">
       <DependentUpon>Web.config</DependentUpon>
     </None>

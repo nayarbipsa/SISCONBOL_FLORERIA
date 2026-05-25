@@ -129,10 +129,17 @@ Partial Public Class Modulos_Pedidos_PrePedido_Crear
                             prepedidoId = Convert.ToInt32(dr("prepedido_id"))
                             codigoGenerado = dr("codigo").ToString()
 
-                            ' Leer flag ya_existia si existe
-                            If Not IsDBNull(dr("ya_existia")) Then
-                                yaExistia = Convert.ToBoolean(dr("ya_existia"))
-                            End If
+                            ' Leer flag ya_existia de forma defensiva
+                            ' (puede no venir si el SP es version vieja)
+                            Try
+                                Dim idxYaExistia As Integer = dr.GetOrdinal("ya_existia")
+                                If Not dr.IsDBNull(idxYaExistia) Then
+                                    yaExistia = Convert.ToBoolean(dr(idxYaExistia))
+                                End If
+                            Catch
+                                ' Columna no existe en el resultset -> asumir false
+                                yaExistia = False
+                            End Try
                         End If
                     End Using
 

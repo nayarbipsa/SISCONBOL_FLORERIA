@@ -11,6 +11,13 @@ GO
 -- ============================================================
 
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+USE [SISCONBOL]
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_CambiarPassword]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- ────────────────────────────────────────
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_CambiarPassword]
@@ -49,22 +56,18 @@ BEGIN
 
     SELECT 1 AS ok, 'Contraseña actualizada correctamente.' AS mensaje;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_CargarMenu
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_CargarMenu]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
--- ────────────────────────────────────────
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_CargarMenu]
     @usuario_id INT
 AS
 BEGIN
     SET NOCOUNT ON;
-
     SELECT
         m.menu_id,
         m.padre_id,
@@ -91,7 +94,11 @@ BEGIN
             WHEN um.tipo_excepcion = 'QUITAR' THEN 0
             WHEN um.tipo_excepcion = 'AGREGAR' THEN um.puede_eliminar
             ELSE ISNULL(tm.puede_eliminar, 0)
-        END AS puede_eliminar
+        END AS puede_eliminar,
+        CASE
+            WHEN EXISTS(SELECT 1 FROM FLORERIA_Menu hijos WHERE hijos.padre_id = m.menu_id AND hijos.activo = 1) THEN 1
+            ELSE 0
+        END AS tiene_hijos
     FROM FLORERIA_Menu m
     JOIN FLORERIA_Usuario u ON u.usuario_id = @usuario_id
     LEFT JOIN FLORERIA_TipoUsuario_Menu tm
@@ -105,14 +112,12 @@ BEGIN
           )
     ORDER BY m.padre_id, m.orden;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Categoria_Actualizar
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_Actualizar]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- SP: Actualizar categoría
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Categoria_Actualizar]
@@ -181,14 +186,12 @@ BEGIN
 
     SELECT 1 AS ok, 'Categoria actualizada correctamente.' AS mensaje;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Categoria_AgregarProductos
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_AgregarProductos]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- ══════════════════════════════════════════════════════════════════════════════
 -- SP: Agregar productos a una categoría
@@ -273,14 +276,12 @@ AS BEGIN
         @agregados AS agregados,
         @duplicados AS duplicados;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Categoria_BajaProductos
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_BajaProductos]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- SP: Dar de baja masiva de productos de una categoría
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Categoria_BajaProductos]
@@ -334,14 +335,12 @@ BEGIN
            CAST(@total AS VARCHAR) + ' productos dados de baja correctamente.' AS mensaje,
            @total AS total_afectados;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Categoria_CambiarOrden
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_CambiarOrden]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- SP: Cambiar orden (drag & drop)
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Categoria_CambiarOrden]
@@ -384,14 +383,12 @@ BEGIN
 
     SELECT 1 AS ok, 'Orden actualizado.' AS mensaje;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Categoria_Crear
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_Crear]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- SP: Crear categoría
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Categoria_Crear]
@@ -449,14 +446,12 @@ BEGIN
 
     SELECT 1 AS ok, 'Categoria creada correctamente.' AS mensaje, @nueva_id AS categoria_id;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Categoria_Eliminar
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_Eliminar]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- SP: Eliminar categoría (solo si no tiene productos ni hijos)
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Categoria_Eliminar]
@@ -502,14 +497,12 @@ BEGIN
 
     SELECT 1 AS ok, 'Categoria eliminada correctamente.' AS mensaje;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Categoria_GuardarWcId
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_GuardarWcId]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Categoria_GuardarWcId]
     @categoria_id   INT,
@@ -523,14 +516,12 @@ BEGIN
         wc_sync_fecha  = GETDATE()
     WHERE categoria_id = @categoria_id;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Categoria_HabilitarProductos
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_HabilitarProductos]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Categoria_HabilitarProductos]
     @categoria_id   INT,
@@ -578,14 +569,12 @@ BEGIN
            CAST(@total AS VARCHAR) + ' productos habilitados correctamente.' AS mensaje,
            @total AS total_afectados;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Categoria_Listar
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_Listar]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- ============================================================
 -- STORED PROCEDURES
@@ -619,14 +608,12 @@ BEGIN
     LEFT JOIN FLORERIA_Usuario u2 ON c.modificado_por = u2.usuario_id
     ORDER BY c.padre_id, c.orden, c.nombre;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Categoria_ListarProductos
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_ListarProductos]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- ══════════════════════════════════════════════════════════════════════════════
 -- SP: Listar productos de una categoría específica
@@ -710,14 +697,12 @@ AS BEGIN
         CASE WHEN pc.es_principal = 1 THEN 0 ELSE 1 END,
         p.nombre;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Categoria_MarcarPrincipal
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_MarcarPrincipal]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- ══════════════════════════════════════════════════════════════════════════════
 -- SP: Marcar un producto como principal de una categoría
@@ -759,14 +744,12 @@ AS BEGIN
     
     SELECT 1 AS ok, 'Producto marcado como principal' AS mensaje;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Categoria_MarcarSincronizada
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_MarcarSincronizada]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Categoria_MarcarSincronizada]
     @categoria_id INT
@@ -778,14 +761,12 @@ BEGIN
         wc_sync_fecha  = GETDATE()
     WHERE categoria_id = @categoria_id;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Categoria_ObtenerStats
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_ObtenerStats]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- ══════════════════════════════════════════════════════════════════════════════
 -- SP: Obtener stats de productos de una categoría
@@ -804,14 +785,12 @@ AS BEGIN
     INNER JOIN FLORERIA_Producto_Categoria pc ON p.producto_id = pc.producto_id
     WHERE pc.categoria_id = @categoria_id;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Categoria_ProductosDisponibles
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_ProductosDisponibles]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- ══════════════════════════════════════════════════════════════════════════════
 -- SP: Listar productos disponibles para agregar (NO están en la categoría)
@@ -859,14 +838,12 @@ AS BEGIN
            p.sku LIKE '%' + @buscar + '%')
     ORDER BY p.nombre;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Categoria_QuitarProducto
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_QuitarProducto]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- ══════════════════════════════════════════════════════════════════════════════
 -- SP: Quitar un producto de una categoría
@@ -916,14 +893,12 @@ AS BEGIN
     
     SELECT 1 AS ok, 'Producto quitado de la categoria' AS mensaje;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Categoria_QuitarProductosMasivo
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_QuitarProductosMasivo]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- ══════════════════════════════════════════════════════════════════════════════
 -- SP: Quitar múltiples productos de una categoría (masivo)
@@ -975,14 +950,12 @@ AS BEGIN
         'Se quitaron ' + CAST(@eliminados AS VARCHAR) + ' producto(s)' AS mensaje,
         @eliminados AS eliminados;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_CerrarSesion
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_CerrarSesion]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- ────────────────────────────────────────
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_CerrarSesion]
@@ -995,14 +968,12 @@ BEGIN
         cerrada_por = 'USUARIO'
     WHERE token = @token AND activa = 1;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Config_Guardar
--- ============================================================
------t
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Config_Guardar]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- Corregir SP Guardar para hacer UPSERT (INSERT si no existe, UPDATE si existe)
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Config_Guardar]
@@ -1051,14 +1022,12 @@ BEGIN
 
     SELECT 1 AS ok, 'Configuracion guardada.' AS mensaje;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Config_ListarTodas
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Config_ListarTodas]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Config_ListarTodas]
 AS
@@ -1077,14 +1046,12 @@ BEGIN
     WHERE c.activo = 1
     ORDER BY c.clave;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Config_Obtener
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Config_Obtener]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- Corregir SP Obtener para retornar solo el valor
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Config_Obtener]
@@ -1096,14 +1063,79 @@ BEGIN
     FROM FLORERIA_Config
     WHERE clave = @clave AND activo = 1;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Login
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Dashboard_Estadisticas]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[FLORERIA_sp_Dashboard_Estadisticas]
+    @usuario_id INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    DECLARE @hoy DATE = CAST(GETDATE() AS DATE)
+    DECLARE @ayer DATE = DATEADD(DAY, -1, @hoy)
+    DECLARE @manana DATE = DATEADD(DAY, 1, @hoy)
+    DECLARE @en_48h DATETIME = DATEADD(HOUR, 48, GETDATE())
+    
+    SELECT
+        -- Pre-Pedidos
+        (SELECT COUNT(*) 
+         FROM FLORERIA_PrePedido 
+         WHERE estado NOT IN ('COMPLETADO', 'CANCELADO', 'EXPIRADO')
+           AND agente_actual_id = @usuario_id) AS total_prepedidos,
+        
+        (SELECT COUNT(*) 
+         FROM FLORERIA_PrePedido 
+         WHERE CAST(creado_en AS DATE) = @hoy
+           AND agente_actual_id = @usuario_id) AS prepedidos_hoy,
+        
+        -- Ventas Hoy
+        (SELECT ISNULL(SUM(total_general_bs), 0)
+         FROM FLORERIA_PrePedido
+         WHERE estado = 'PAGADO'
+           AND CAST(creado_en AS DATE) = @hoy
+           AND agente_actual_id = @usuario_id) AS ventas_hoy_bs,
+        
+        -- Ventas Ayer (para comparación)
+        (SELECT ISNULL(SUM(total_general_bs), 0)
+         FROM FLORERIA_PrePedido
+         WHERE estado = 'PAGADO'
+           AND CAST(creado_en AS DATE) = @ayer
+           AND agente_actual_id = @usuario_id) AS ventas_ayer_bs,
+        
+        -- Por Entregar Mañana
+        (SELECT COUNT(DISTINCT p.pedido_id)
+         FROM FLORERIA_Pedido p
+         INNER JOIN FLORERIA_PrePedido pp ON p.prepedido_id = pp.prepedido_id
+         WHERE p.fecha_entrega = @manana
+           AND pp.estado IN ('PAGADO', 'WC_CREADO')
+           AND pp.agente_actual_id = @usuario_id) AS por_entregar_manana,
+        
+        -- Pendientes de Pago
+        (SELECT COUNT(*)
+         FROM FLORERIA_PrePedido
+         WHERE estado IN ('COMPROBANTE_ENVIADO')
+           AND agente_actual_id = @usuario_id) AS pendientes_pago,
+        
+        -- Por Vencer en 48 horas
+        (SELECT COUNT(*)
+         FROM FLORERIA_PrePedido
+         WHERE estado IN ('FORM_ENVIADO', 'FORM_COMPLETADO')
+           AND token_expira <= @en_48h
+           AND token_expira > GETDATE()
+           AND agente_actual_id = @usuario_id) AS por_vencer_48h
+        
+END
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Login]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 -- ============================================================
 -- CORRECCION: FLORERIA_sp_Login
 -- Problema: expira_en usaba GETDATE() que es hora del servidor
@@ -1112,7 +1144,7 @@ GO
 -- Ejecutar en: SSMS conectado a Somee
 -- ============================================================
 
-CREATE   PROCEDURE FLORERIA_sp_Login
+CREATE   PROCEDURE [dbo].[FLORERIA_sp_Login]
     @carnet        VARCHAR(8),
     @password_hash VARCHAR(200),
     @ip            VARCHAR(50),
@@ -1204,7 +1236,7 @@ BEGIN
     BEGIN
         SELECT 'VENCIDO' AS resultado, 'Su acceso ha vencido. Contacte al administrador.' AS mensaje,
                NULL AS usuario_id, NULL AS token, NULL AS debe_cambiar_pwd,
-        NULL AS nombres, NULL AS apellidos, NULL AS tipo_id
+               NULL AS nombres, NULL AS apellidos, NULL AS tipo_id
         RETURN
     END
 
@@ -1269,118 +1301,37 @@ BEGIN
         @apellidos        AS apellidos,
         @tipo_id          AS tipo_id
 END
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Pedido_AgregarProducto
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
--- =============================================
--- SP 7: FLORERIA_sp_Pedido_AgregarProducto
--- Descripción: Agregar producto al pedido
--- =============================================
-CREATE   PROCEDURE [dbo].[FLORERIA_sp_Pedido_AgregarProducto]
-    @pedido_id           INT,
-    @producto_id         INT,
-    @variacion_id        INT,
-    @es_personalizado    BIT,
-    @nombre_producto     VARCHAR(200),
-    @descripcion         NVARCHAR(500),
-    @cantidad            INT,
-    @precio_unitario_bs  DECIMAL(10,2),
-    @precio_unitario_usd DECIMAL(10,2),
-    @personalizacion     NVARCHAR(500)
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Pedido_AgregarProducto]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE PROCEDURE [dbo].[FLORERIA_sp_Pedido_AgregarProducto]
+    @pedido_id INT, @producto_id INT = NULL, @variacion_id INT = NULL,
+    @es_personalizado BIT, @nombre_producto VARCHAR(200), @descripcion NVARCHAR(500) = NULL,
+    @cantidad INT, @precio_unitario_bs DECIMAL(10,2), @precio_unitario_usd DECIMAL(10,2) = 0,
+    @personalizacion NVARCHAR(500) = NULL -- Asegura este campo
 AS
 BEGIN
-    SET NOCOUNT ON;
-    
-    -- Validar pedido existe
-    IF NOT EXISTS (SELECT 1 FROM FLORERIA_Pedido WHERE pedido_id = @pedido_id)
-    BEGIN
-        RAISERROR('El pedido no existe', 16, 1);
-        RETURN;
-    END
-    
-    -- Validar cantidad
-    IF @cantidad <= 0
-    BEGIN
-        RAISERROR('La cantidad debe ser mayor a 0', 16, 1);
-        RETURN;
-    END
-    
-    -- Validar precio
-    IF @precio_unitario_bs <= 0
-    BEGIN
-        RAISERROR('El precio debe ser mayor a 0', 16, 1);
-        RETURN;
-    END
-    
-    BEGIN TRY
-        BEGIN TRANSACTION;
-        
-        -- Calcular subtotales
-        DECLARE @subtotal_bs DECIMAL(10,2) = @cantidad * @precio_unitario_bs;
-        DECLARE @subtotal_usd DECIMAL(10,2) = @cantidad * @precio_unitario_usd;
-        
-        -- Insertar detalle
-        INSERT INTO FLORERIA_Pedido_Detalle (
-            pedido_id, producto_id, variacion_id, es_personalizado,
-            nombre_producto, descripcion, cantidad,
-            precio_unitario_bs, precio_unitario_usd,
-            subtotal_bs, subtotal_usd,
-            personalizacion, creado_en
-        )
-        VALUES (
-            @pedido_id, @producto_id, @variacion_id, @es_personalizado,
-            @nombre_producto, @descripcion, @cantidad,
-            @precio_unitario_bs, @precio_unitario_usd,
-            @subtotal_bs, @subtotal_usd,
-            @personalizacion, GETDATE()
-        );
-        
-        -- Actualizar totales del pedido
-        UPDATE FLORERIA_Pedido
-        SET subtotal_productos_bs = subtotal_productos_bs + @subtotal_bs,
-            subtotal_productos_usd = subtotal_productos_usd + @subtotal_usd,
-            total_bs = subtotal_productos_bs + @subtotal_bs + envio_bs + recargo_express_bs + recargo_horario_bs,
-            total_usd = subtotal_productos_usd + @subtotal_usd + envio_usd + recargo_express_usd + recargo_horario_usd,
-            saldo_bs = total_bs - anticipo_bs
-        WHERE pedido_id = @pedido_id;
-        
-        -- Actualizar total general del pre-pedido
-        DECLARE @prepedido_id INT;
-        SELECT @prepedido_id = prepedido_id FROM FLORERIA_Pedido WHERE pedido_id = @pedido_id;
-        
-        UPDATE FLORERIA_PrePedido
-        SET total_general_bs = (
-                SELECT SUM(total_bs) FROM FLORERIA_Pedido WHERE prepedido_id = @prepedido_id
-            ),
-            total_general_usd = (
-                SELECT SUM(total_usd) FROM FLORERIA_Pedido WHERE prepedido_id = @prepedido_id
-            ),
-            modificado_en = GETDATE()
-        WHERE prepedido_id = @prepedido_id;
-        
-        COMMIT TRANSACTION;
-        
-    END TRY
-    BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        RAISERROR(@ErrorMessage, 16, 1);
-    END CATCH
+    INSERT INTO [dbo].[FLORERIA_Pedido_Detalle] (
+        pedido_id, producto_id, variacion_id, es_personalizado, nombre_producto, 
+        descripcion, cantidad, precio_unitario_bs, precio_unitario_usd, 
+        subtotal_bs, subtotal_usd, personalizacion, creado_en
+    )
+    VALUES (
+        @pedido_id, @producto_id, @variacion_id, @es_personalizado, @nombre_producto,
+        @descripcion, @cantidad, @precio_unitario_bs, @precio_unitario_usd,
+        (@cantidad * @precio_unitario_bs), (@cantidad * @precio_unitario_usd),
+        @personalizacion, GETDATE()
+    );
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Pedido_CalcularEnvio
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Pedido_CalcularEnvio]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- =============================================
 -- SP 8: FLORERIA_sp_Pedido_CalcularEnvio
@@ -1485,225 +1436,150 @@ BEGIN
         COMMIT TRANSACTION;
         
     END TRY
- BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        RAISERROR(@ErrorMessage, 16, 1);
-    END CATCH
-END;
-
-GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Pedido_Crear
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
--- =============================================
--- SP 6: FLORERIA_sp_Pedido_Crear
--- Descripción: Crear pedido dentro de pre-pedido
--- =============================================
-CREATE   PROCEDURE [dbo].[FLORERIA_sp_Pedido_Crear]
-    @prepedido_id        INT,
-    @receptor_nombre     VARCHAR(200),
-    @receptor_celular    VARCHAR(20),
-    @ciudad_id           SMALLINT,
-    @zona_id             INT,
-    @sucursal_id         SMALLINT,
-    @tipo_entrega        VARCHAR(20),
-    @direccion           VARCHAR(300),
-    @referencia          VARCHAR(300),
-    @fecha_entrega       DATE,
-    @slot_id             SMALLINT,
-    @es_express          BIT,
-    @dedicatoria         NVARCHAR(500),
-    @firma_tarjeta       VARCHAR(100),
-    @creado_por          INT,
-    @ip                  VARCHAR(50),
-    @pedido_id           INT OUTPUT,
-    @codigo              VARCHAR(20) OUTPUT
-AS
-BEGIN
-    SET NOCOUNT ON;
-    
-    -- Validar pre-pedido existe
-    IF NOT EXISTS (SELECT 1 FROM FLORERIA_PrePedido WHERE prepedido_id = @prepedido_id)
-    BEGIN
-        RAISERROR('El pre-pedido no existe', 16, 1);
-        RETURN;
-    END
-    
-    -- Validar tipo_entrega
-    IF @tipo_entrega NOT IN ('DOMICILIO', 'RECOJO_SUCURSAL')
-    BEGIN
-        RAISERROR('Tipo de entrega inválido', 16, 1);
-        RETURN;
-    END
-    
-    -- Validar: si es RECOJO debe tener sucursal_id
-    IF @tipo_entrega = 'RECOJO_SUCURSAL' AND @sucursal_id IS NULL
-    BEGIN
-        RAISERROR('Para recojo en sucursal debe especificar la sucursal', 16, 1);
-        RETURN;
-    END
-    
-    -- Validar: si es DOMICILIO debe tener zona_id
-    IF @tipo_entrega = 'DOMICILIO' AND @zona_id IS NULL
-    BEGIN
-        RAISERROR('Para entrega a domicilio debe especificar la zona', 16, 1);
-        RETURN;
-    END
-    
-    -- Validar fecha entrega (mínimo 2 horas después)
-    IF @fecha_entrega < CAST(GETDATE() AS DATE)
-    BEGIN
-        RAISERROR('La fecha de entrega no puede ser anterior a hoy', 16, 1);
-        RETURN;
-    END
-    
-    -- Validar dedicatoria sin emojis (básico)
-    IF @dedicatoria IS NOT NULL AND @dedicatoria LIKE '%[😀-🙏]%'
-    BEGIN
-        RAISERROR('La dedicatoria no puede contener emojis', 16, 1);
-        RETURN;
-    END
-    
-    BEGIN TRY
-        BEGIN TRANSACTION;
-        
-        -- Generar código PED-XXXXXX
-        DECLARE @ultimo_numero INT;
-        SELECT @ultimo_numero = ISNULL(MAX(CAST(SUBSTRING(codigo, 5, 6) AS INT)), 0)
-        FROM FLORERIA_Pedido
-        WHERE codigo LIKE 'PED-%';
-        
-        SET @codigo = 'PED-' + RIGHT('000000' + CAST(@ultimo_numero + 1 AS VARCHAR), 6);
-        
-        -- Obtener tasa de cambio del pre-pedido
-        DECLARE @tasa_cambio DECIMAL(10,4);
-        SELECT @tasa_cambio = tasa_cambio FROM FLORERIA_PrePedido WHERE prepedido_id = @prepedido_id;
-        
-        -- Insertar pedido
-        INSERT INTO FLORERIA_Pedido (
-            prepedido_id, codigo, receptor_nombre, receptor_celular,
-            ciudad_id, zona_id, sucursal_id, tipo_entrega,
-            direccion, referencia, fecha_entrega, slot_id, es_express,
-            dedicatoria, firma_tarjeta,
-            subtotal_productos_bs, subtotal_productos_usd,
-            envio_bs, envio_usd,
-            recargo_express_bs, recargo_express_usd,
-            recargo_horario_bs, recargo_horario_usd,
-            total_bs, total_usd,
-            anticipo_bs, saldo_bs, estado_pago,
-            wc_sync_estado,
-            creado_por, creado_en
-        )
-        VALUES (
-            @prepedido_id, @codigo, @receptor_nombre, @receptor_celular,
-            @ciudad_id, @zona_id, @sucursal_id, @tipo_entrega,
-            @direccion, @referencia, @fecha_entrega, @slot_id, @es_express,
-            @dedicatoria, @firma_tarjeta,
-            0, 0,  -- subtotales iniciales
-            0, 0,  -- envío se calcula después
-            0, 0,  -- recargo express
-            0, 0,  -- recargo horario
-          0, 0,  -- totales
-            0, 0, 'PENDIENTE',
-            'PENDIENTE',
-            @creado_por, GETDATE()
-        );
-        
-        SET @pedido_id = SCOPE_IDENTITY();
-        
-        -- Auditoría
-        INSERT INTO FLORERIA_Auditoria (
-            usuario_id, ip, tabla, registro_id, accion,
-            valor_nuevo, motivo, fecha_hora
-        )
-        VALUES (
-            @creado_por, @ip, 'FLORERIA_Pedido',
-            CAST(@pedido_id AS VARCHAR), 'INSERTAR',
-            '{"codigo":"' + @codigo + '","receptor":"' + @receptor_nombre + '"}',
-            'Creación de pedido', GETDATE()
-        );
-        
-        COMMIT TRANSACTION;
-        
-    END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
         DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
         RAISERROR(@ErrorMessage, 16, 1);
     END CATCH
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_PrePedido_ActualizarCliente
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
--- PASO 3: SP ActualizarCliente — NUNCA toca token_web
-CREATE   PROCEDURE FLORERIA_sp_PrePedido_ActualizarCliente
-    @prepedido_id      INT,
-    @cliente_nombre    VARCHAR(200),
-    @cliente_apellidos VARCHAR(200),
-    @cliente_email     VARCHAR(100),
-    @cliente_pais_id   TINYINT,
-    @cliente_ciudad_id SMALLINT,
-    @modificado_por    INT,
-    @ip                VARCHAR(50)
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Pedido_Crear]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE PROCEDURE [dbo].[FLORERIA_sp_Pedido_Crear]
+    @prepedido_id INT, @receptor_nombre VARCHAR(200), @receptor_celular VARCHAR(20),
+    @ciudad_id SMALLINT, @zona_id INT = NULL, @sucursal_id SMALLINT = NULL,
+    @tipo_entrega VARCHAR(20), @direccion VARCHAR(300) = NULL, @referencia VARCHAR(300) = NULL,
+    @fecha_entrega DATE, @slot_id SMALLINT = NULL, @es_express BIT = 0,
+    @dedicatoria NVARCHAR(500) = NULL, @firma_tarjeta VARCHAR(100) = NULL,
+    @wc_order_id INT = NULL,
+    @tipo_ocacion VARCHAR(30) = 'OTRO',
+    @nota_floreria NVARCHAR(500) = NULL,
+    @creado_por INT = NULL, @ip VARCHAR(50) = NULL,
+    @pedido_id INT OUTPUT, @codigo VARCHAR(20) OUTPUT
 AS
 BEGIN
     SET NOCOUNT ON;
-    BEGIN TRY
-        BEGIN TRANSACTION;
+    DECLARE @ultimo_numero INT;
+    SELECT @ultimo_numero = ISNULL(MAX(CAST(SUBSTRING(codigo, 5, 6) AS INT)), 0) 
+    FROM FLORERIA_Pedido WHERE codigo LIKE 'PED-%';
+    SET @codigo = 'PED-' + RIGHT('000000' + CAST(@ultimo_numero + 1 AS VARCHAR), 6);
 
-        IF NOT EXISTS (SELECT 1 FROM FLORERIA_PrePedido WHERE prepedido_id = @prepedido_id)
+    INSERT INTO [dbo].[FLORERIA_Pedido] (
+        prepedido_id, codigo, wc_order_id, receptor_nombre, receptor_celular, 
+        ciudad_id, zona_id, sucursal_id, tipo_entrega, direccion, referencia, 
+        fecha_entrega, slot_id, es_express, dedicatoria, firma_tarjeta, 
+        tipo_ocacion, nota_floreria, wc_sync_estado, wc_sync_fecha, 
+        creado_por, creado_en
+    )
+    VALUES (
+        @prepedido_id, @codigo, @wc_order_id, ISNULL(@receptor_nombre, 'Sin nombre'), 
+        ISNULL(@receptor_celular, '00000000'), @ciudad_id, ISNULL(@zona_id, 0), @sucursal_id, 
+        ISNULL(@tipo_entrega, 'DOMICILIO'), @direccion, @referencia, @fecha_entrega, 
+        @slot_id, ISNULL(@es_express, 0), @dedicatoria, @firma_tarjeta, 
+        @tipo_ocacion, @nota_floreria, 'SINCRONIZADO', GETDATE(), @creado_por, GETDATE()
+    );
+    SET @pedido_id = SCOPE_IDENTITY();
+END;
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PrePedido_ActualizarCliente]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[FLORERIA_sp_PrePedido_ActualizarCliente]
+    @prepedido_id         INT,
+    @cliente_nombre       VARCHAR(200),
+    @cliente_apellidos    VARCHAR(200),
+    @cliente_email        VARCHAR(100),
+    @cliente_pais_id      TINYINT,
+    @cliente_ciudad_id    SMALLINT,
+    @modificado_por       INT,
+    @ip                   VARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- ========================================================
+    -- VALIDACIONES
+    -- ========================================================
+    
+    -- Validar nombre (solo si no es NULL)
+    IF @cliente_nombre IS NOT NULL
+    BEGIN
+        -- Solo letras, espacios, acentos
+        IF @cliente_nombre LIKE '%[^a-zA-ZáéíóúÁÉÍÓÚñÑ ]%'
         BEGIN
-            RAISERROR('Pre-pedido no encontrado.', 16, 1);
+            RAISERROR('El nombre solo puede contener letras y espacios', 16, 1);
             RETURN;
         END;
 
-        UPDATE FLORERIA_PrePedido
-        SET
-            cliente_nombre    = COALESCE(@cliente_nombre,    cliente_nombre),
-            cliente_apellidos = COALESCE(@cliente_apellidos, cliente_apellidos),
-            cliente_email     = COALESCE(@cliente_email,     cliente_email),
-            cliente_pais_id   = COALESCE(@cliente_pais_id,   cliente_pais_id),
-            cliente_ciudad_id = COALESCE(@cliente_ciudad_id, cliente_ciudad_id),
-            modificado_por    = @modificado_por,
-            modificado_en     = GETDATE()
-        WHERE prepedido_id = @prepedido_id;
+        IF dbo.FLORERIA_fn_ValidarTexto(@cliente_nombre) = 0
+        BEGIN
+            RAISERROR('El nombre contiene caracteres no permitidos', 16, 1);
+            RETURN;
+        END;
+    END;
 
-        COMMIT TRANSACTION;
+    -- Validar apellidos (solo si no es NULL)
+    IF @cliente_apellidos IS NOT NULL
+    BEGIN
+        IF @cliente_apellidos LIKE '%[^a-zA-ZáéíóúÁÉÍÓÚñÑ ]%'
+        BEGIN
+            RAISERROR('Los apellidos solo pueden contener letras y espacios', 16, 1);
+            RETURN;
+        END;
 
-        SELECT prepedido_id, codigo, cliente_nombre, cliente_pais_id
-        FROM FLORERIA_PrePedido
-        WHERE prepedido_id = @prepedido_id;
+        IF dbo.FLORERIA_fn_ValidarTexto(@cliente_apellidos) = 0
+        BEGIN
+            RAISERROR('Los apellidos contienen caracteres no permitidos', 16, 1);
+            RETURN;
+        END;
+    END;
 
-    END TRY
-    BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK;
-        DECLARE @err2 VARCHAR(4000);
-        SET @err2 = ERROR_MESSAGE();
-        RAISERROR(@err2, 16, 1);
-    END CATCH;
+    -- Validar email (solo si no es NULL)
+    IF @cliente_email IS NOT NULL
+    BEGIN
+        IF @cliente_email NOT LIKE '%@%.%'
+        BEGIN
+            RAISERROR('El email tiene un formato inválido', 16, 1);
+            RETURN;
+        END;
+
+        IF dbo.FLORERIA_fn_ValidarTexto(@cliente_email) = 0
+        BEGIN
+            RAISERROR('El email contiene caracteres no permitidos', 16, 1);
+            RETURN;
+        END;
+    END;
+
+    -- Actualizar
+    UPDATE FLORERIA_PrePedido SET
+        cliente_nombre     = @cliente_nombre,
+        cliente_apellidos  = @cliente_apellidos,
+        cliente_email      = @cliente_email,
+        cliente_pais_id    = @cliente_pais_id,
+        cliente_ciudad_id  = @cliente_ciudad_id,
+        modificado_por     = @modificado_por,
+        modificado_en      = GETDATE()
+    WHERE prepedido_id = @prepedido_id;
+
+    -- Auditoría
+    INSERT INTO FLORERIA_Auditoria (usuario_id, ip, tabla, registro_id, accion, valor_nuevo)
+    VALUES (@modificado_por, @ip, 'FLORERIA_PrePedido', CAST(@prepedido_id AS VARCHAR), 
+            'MODIFICAR', '{"campo":"cliente_datos","detalle":"Actualización de datos del cliente"}');
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_PrePedido_Crear
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PrePedido_Crear]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
--- PASO 2: SP Crear
-CREATE   PROCEDURE FLORERIA_sp_PrePedido_Crear
+CREATE PROCEDURE [dbo].[FLORERIA_sp_PrePedido_Crear]
     @tipo_registro   VARCHAR(20),
     @cliente_celular VARCHAR(20),
     @agente_id       INT,
@@ -1713,23 +1589,64 @@ CREATE   PROCEDURE FLORERIA_sp_PrePedido_Crear
 AS
 BEGIN
     SET NOCOUNT ON;
-    BEGIN TRY
-        BEGIN TRANSACTION;
 
-        IF EXISTS (
-            SELECT 1 FROM FLORERIA_PrePedido 
-            WHERE cliente_celular = @cliente_celular
-              AND estado IN ('BORRADOR','FORM_ENVIADO','FORM_COMPLETADO',
-                             'COMPROBANTE_ENVIADO','PAGADO')
-        )
+    BEGIN TRY
+        -- ========================================================
+        -- 1. VALIDACIONES DE SEGURIDAD
+        -- ========================================================
+        IF dbo.FLORERIA_fn_ValidarCelular(@cliente_celular) = 0
         BEGIN
-            RAISERROR('El cliente ya tiene un pre-pedido activo.', 16, 1);
+            RAISERROR('El celular tiene un formato invalido', 16, 1);
             RETURN;
         END;
 
+        IF dbo.FLORERIA_fn_ValidarTexto(@cliente_celular) = 0
+        BEGIN
+            RAISERROR('El celular contiene caracteres no permitidos', 16, 1);
+            RETURN;
+        END;
+
+        -- ========================================================
+        -- 2. SI YA EXISTE PRE-PEDIDO ACTIVO -> REUTILIZARLO
+        -- ========================================================
+        DECLARE @existente_id INT = NULL;
+        DECLARE @existente_codigo VARCHAR(20) = NULL;
+        DECLARE @existente_estado VARCHAR(30) = NULL;
+
+        SELECT TOP 1
+            @existente_id     = prepedido_id,
+            @existente_codigo = codigo,
+            @existente_estado = estado
+        FROM FLORERIA_PrePedido
+        WHERE cliente_celular = @cliente_celular
+          AND estado IN ('BORRADOR', 'FORM_ENVIADO', 'FORM_COMPLETADO',
+                         'COMPROBANTE_ENVIADO', 'PAGADO')
+        ORDER BY prepedido_id DESC;
+
+        IF @existente_id IS NOT NULL
+        BEGIN
+            -- Asignar OUTPUT
+            SET @prepedido_id = @existente_id;
+            SET @codigo       = @existente_codigo;
+
+            -- Devolver resultset con ya_existia = 1
+            SELECT
+                @existente_id     AS prepedido_id,
+                @existente_codigo AS codigo,
+                @existente_estado AS estado,
+                CAST(1 AS BIT)    AS ya_existia;
+            RETURN;
+        END;
+
+        -- ========================================================
+        -- 3. NO EXISTE -> CREAR NUEVO PRE-PEDIDO
+        -- ========================================================
+        BEGIN TRANSACTION;
+
+        -- Generar codigo secuencial PRE-XXXXXX
         DECLARE @siguiente INT;
         SELECT @siguiente = ISNULL(MAX(
-            CASE WHEN codigo LIKE 'PRE-%' 
+            CASE WHEN codigo LIKE 'PRE-%'
                  THEN CAST(SUBSTRING(codigo, 5, LEN(codigo)) AS INT)
                  ELSE 0 END
         ), 0) + 1
@@ -1737,6 +1654,7 @@ BEGIN
 
         SET @codigo = 'PRE-' + RIGHT('000000' + CAST(@siguiente AS VARCHAR), 6);
 
+        -- Determinar estado segun tipo
         DECLARE @estado VARCHAR(30);
         SET @estado = CASE @tipo_registro
             WHEN 'PRE_PEDIDO'    THEN 'BORRADOR'
@@ -1745,6 +1663,7 @@ BEGIN
             ELSE 'BORRADOR'
         END;
 
+        -- Insertar pre-pedido nuevo
         INSERT INTO FLORERIA_PrePedido (
             codigo, tipo_registro, cliente_celular,
             estado, token_web,
@@ -1761,35 +1680,37 @@ BEGIN
         );
 
         SET @prepedido_id = SCOPE_IDENTITY();
+
         COMMIT TRANSACTION;
 
-        SELECT prepedido_id, codigo, estado FROM FLORERIA_PrePedido WHERE prepedido_id = @prepedido_id;
+        -- Devolver resultset con ya_existia = 0
+        SELECT
+            prepedido_id,
+            codigo,
+            estado,
+            CAST(0 AS BIT) AS ya_existia
+        FROM FLORERIA_PrePedido
+        WHERE prepedido_id = @prepedido_id;
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0 ROLLBACK;
-        DECLARE @err1 VARCHAR(4000);
-        SET @err1 = ERROR_MESSAGE();
-        RAISERROR(@err1, 16, 1);
+        DECLARE @err VARCHAR(4000);
+        SET @err = ERROR_MESSAGE();
+        RAISERROR(@err, 16, 1);
     END CATCH;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_PrePedido_GenerarLink
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PrePedido_GenerarLink]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
--- =============================================
--- SP 3: FLORERIA_sp_PrePedido_GenerarLink
--- Descripción: Generar token y configurar link web
--- =============================================
-CREATE   PROCEDURE [dbo].[FLORERIA_sp_PrePedido_GenerarLink]
+CREATE PROCEDURE [dbo].[FLORERIA_sp_PrePedido_GenerarLink]
     @prepedido_id        INT,
-    @moneda_formulario   CHAR(3),
-    @descuento_bs        DECIMAL(10,2),
-    @descuento_motivo    VARCHAR(300),
+    @moneda_formulario   CHAR(3) = 'BOB',
+    @descuento_bs        DECIMAL(10,2) = 0,
+    @descuento_motivo    VARCHAR(300) = NULL,
     @modificado_por      INT,
     @ip                  VARCHAR(50),
     @token               VARCHAR(100) OUTPUT,
@@ -1798,103 +1719,66 @@ AS
 BEGIN
     SET NOCOUNT ON;
     
-    -- Validar pre-pedido existe
+    DECLARE @codigo VARCHAR(20);
+    
+    -- Verificar que el pre-pedido existe
     IF NOT EXISTS (SELECT 1 FROM FLORERIA_PrePedido WHERE prepedido_id = @prepedido_id)
     BEGIN
-        RAISERROR('El pre-pedido no existe', 16, 1);
+        RAISERROR('Pre-pedido no encontrado', 16, 1);
         RETURN;
     END
     
-    -- Validar moneda
-    IF @moneda_formulario NOT IN ('BOB', 'USD')
-    BEGIN
-        RAISERROR('Moneda inválida. Solo BOB o USD', 16, 1);
-        RETURN;
-    END
+    -- Obtener código
+    SELECT @codigo = codigo FROM FLORERIA_PrePedido WHERE prepedido_id = @prepedido_id;
     
-    -- Validar descuento
-    IF @descuento_bs < 0 OR @descuento_bs > 100
-    BEGIN
-        RAISERROR('El descuento debe estar entre 0 y 100 Bs', 16, 1);
-        RETURN;
-    END
+    -- Generar token único (GUID + GUID = 100 chars sin guiones)
+    SET @token = REPLACE(CAST(NEWID() AS VARCHAR(100)), '-', '') + REPLACE(CAST(NEWID() AS VARCHAR(100)), '-', '');
+    SET @token = SUBSTRING(@token, 1, 100);
     
-    IF @descuento_bs > 0 AND (@descuento_motivo IS NULL OR LEN(LTRIM(RTRIM(@descuento_motivo))) < 10)
-    BEGIN
-        RAISERROR('Si aplica descuento, el motivo es obligatorio (mínimo 10 caracteres)', 16, 1);
-        RETURN;
-    END
+    -- Actualizar pre-pedido
+    UPDATE FLORERIA_PrePedido
+    SET token_web = @token,
+        token_expira = DATEADD(HOUR, 48, GETDATE()),
+        moneda_formulario = @moneda_formulario,
+        descuento_bs = @descuento_bs,
+        descuento_motivo = @descuento_motivo,
+        estado = CASE 
+                    WHEN estado = 'BORRADOR' THEN 'FORM_ENVIADO'
+                    ELSE estado 
+                 END,
+        modificado_por = @modificado_por,
+        modificado_en = GETDATE()
+    WHERE prepedido_id = @prepedido_id;
     
-    BEGIN TRY
-        BEGIN TRANSACTION;
-        
-        -- Generar token único (GUID + GUID sin guiones)
-        DECLARE @guid1 VARCHAR(50) = REPLACE(CAST(NEWID() AS VARCHAR(50)), '-', '');
-        DECLARE @guid2 VARCHAR(50) = REPLACE(CAST(NEWID() AS VARCHAR(50)), '-', '');
-        SET @token = @guid1 + @guid2;
-        
-        -- Calcular expiración (48 horas)
-        DECLARE @expiracion DATETIME = DATEADD(HOUR, 48, GETDATE());
-        
-        -- Calcular descuento en USD
-        DECLARE @tasa_cambio DECIMAL(10,4);
-        SELECT @tasa_cambio = tasa_cambio FROM FLORERIA_PrePedido WHERE prepedido_id = @prepedido_id;
-        
-        DECLARE @descuento_usd DECIMAL(10,2) = @descuento_bs / @tasa_cambio;
-        
-        -- Actualizar pre-pedido
-        UPDATE FLORERIA_PrePedido
-        SET token_web = @token,
-            token_expira = @expiracion,
-            moneda_formulario = @moneda_formulario,
-            descuento_bs = @descuento_bs,
-            descuento_usd = @descuento_usd,
-            descuento_motivo = @descuento_motivo,
-            estado = 'FORM_ENVIADO',
-            fecha_limite_pago = DATEADD(HOUR, 48, GETDATE()),
-            modificado_por = @modificado_por,
-            modificado_en = GETDATE()
-        WHERE prepedido_id = @prepedido_id;
-        
-        -- Construir URL completa
-        -- Obtener configuración de URL base
-        DECLARE @url_base VARCHAR(200);
-        SELECT @url_base = ISNULL(valor, 'https://miss-flores.com')
-        FROM FLORERIA_Config
-        WHERE clave = 'URL_FORMULARIO_WEB' AND activo = 1;
-        
-        SET @url_completa = @url_base + '/pedido?t=' + @token + '&m=' + @moneda_formulario;
-        
-        -- Auditoría
-        INSERT INTO FLORERIA_Auditoria (
-            usuario_id, ip, tabla, registro_id, accion,
-            valor_nuevo, motivo, fecha_hora
-        )
-        VALUES (
-            @modificado_por, @ip, 'FLORERIA_PrePedido',
-            CAST(@prepedido_id AS VARCHAR), 'MODIFICAR',
-            '{"accion":"generar_link","token":"' + @token + '","expira":"' + 
-            CONVERT(VARCHAR, @expiracion, 120) + '"}',
-            'Generación de link web', GETDATE()
-        );
-        
-        COMMIT TRANSACTION;
-        
-    END TRY
-    BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        RAISERROR(@ErrorMessage, 16, 1);
-    END CATCH
-END;
-
+    -- Construir URL
+    SET @url_completa = 'https://miss-flores.com/pedido?t=' + @token + '&m=' + @moneda_formulario;
+    
+    -- Auditoría (usando valores PERMITIDOS)
+    INSERT INTO FLORERIA_Auditoria (
+        usuario_id, 
+        ip, 
+        tabla, 
+        registro_id, 
+        accion,              -- ✅ DEBE SER: 'INSERTAR', 'MODIFICAR', o 'ELIMINAR'
+        valor_nuevo
+    )
+    VALUES (
+        @modificado_por, 
+        @ip, 
+        'FLORERIA_PrePedido', 
+        CAST(@prepedido_id AS VARCHAR), 
+        'MODIFICAR',         -- ✅ CORREGIDO: era 'GENERAR_LINK', ahora 'MODIFICAR'
+        '{"codigo":"' + @codigo + '","accion":"generar_link","url":"' + @url_completa + '"}'
+    );
+    
+    SELECT @token AS token, @url_completa AS url;
+END
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_PrePedido_Listar
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PrePedido_Listar]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- =============================================
 -- SP 5: FLORERIA_sp_PrePedido_Listar
@@ -1973,14 +1857,44 @@ BEGIN
     FETCH NEXT @por_pagina ROWS ONLY;
     
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_PrePedido_ObtenerPorToken
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PrePedido_ListarRecientes]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[FLORERIA_sp_PrePedido_ListarRecientes]
+    @usuario_id  INT,
+    @cantidad    INT = 5
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    SELECT TOP (@cantidad)
+        pp.prepedido_id,
+        pp.codigo,
+        pp.tipo_registro,
+        pp.cliente_celular,
+        pp.cliente_nombre,
+        pp.cliente_apellidos,
+        pp.estado,
+        pp.total_general_bs,
+        pp.total_general_usd,
+        pp.creado_en,
+        u.nombres + ' ' + u.apellidos AS agente_nombre
+    FROM FLORERIA_PrePedido pp
+    LEFT JOIN FLORERIA_Usuario u ON pp.agente_actual_id = u.usuario_id
+    WHERE pp.agente_actual_id = @usuario_id
+    ORDER BY pp.prepedido_id DESC
+    
+END
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PrePedido_ObtenerPorToken]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- =============================================
 -- SP 4: FLORERIA_sp_PrePedido_ObtenerPorToken
@@ -2104,14 +2018,12 @@ BEGIN
     ORDER BY pd.pedido_id, pd.detalle_id;
     
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Producto_Actualizar
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Producto_Actualizar]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- SP: Actualizar producto
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Producto_Actualizar]
@@ -2187,14 +2099,12 @@ BEGIN
 
     SELECT 1 AS ok, 'Producto actualizado correctamente.' AS mensaje;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Producto_CambiarEstado
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Producto_CambiarEstado]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- SP: Cambiar estado activo/inactivo
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Producto_CambiarEstado]
@@ -2231,14 +2141,12 @@ BEGIN
     SET @msg = CASE WHEN @activo = 1 THEN 'Producto activado.' ELSE 'Producto desactivado.' END;
     SELECT 1 AS ok, @msg AS mensaje;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Producto_Crear
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Producto_Crear]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- SP: Crear producto completo
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Producto_Crear]
@@ -2306,14 +2214,12 @@ BEGIN
 
     SELECT 1 AS ok, 'Producto creado correctamente.' AS mensaje, @nuevo_id AS producto_id;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Producto_GuardarCategorias
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Producto_GuardarCategorias]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- SP: Guardar categorías de un producto (muchos a muchos)
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Producto_GuardarCategorias]
@@ -2364,14 +2270,12 @@ BEGIN
 
     SELECT 1 AS ok, 'Categorias guardadas.' AS mensaje;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Producto_GuardarVariaciones
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Producto_GuardarVariaciones]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- SP: Guardar variaciones (borra las existentes y reinserta)
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Producto_GuardarVariaciones]
@@ -2391,14 +2295,12 @@ BEGIN
 
     SELECT 1 AS ok, 'Variaciones actualizadas.' AS mensaje;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Producto_Listar
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Producto_Listar]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- SP con paginacion
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Producto_Listar]
@@ -2450,14 +2352,12 @@ BEGIN
     ORDER BY p.destacado DESC, p.menu_order, p.nombre
     OFFSET @offset ROWS FETCH NEXT @por_pagina ROWS ONLY;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Producto_ObtenerPorId
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Producto_ObtenerPorId]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Producto_ObtenerPorId]
     @producto_id INT
@@ -2500,14 +2400,12 @@ BEGIN
     INNER JOIN FLORERIA_Categoria c ON pc.categoria_id = c.categoria_id
     WHERE pc.producto_id = @producto_id;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Usuario_Actualizar
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Usuario_Actualizar]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Usuario_Actualizar]
     @usuario_id     INT,
@@ -2569,14 +2467,12 @@ BEGIN
 
     SELECT 1 AS ok, 'Usuario actualizado correctamente.' AS mensaje;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Usuario_CambiarBloqueo
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Usuario_CambiarBloqueo]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Usuario_CambiarBloqueo]
     @usuario_id     INT,
@@ -2613,14 +2509,12 @@ BEGIN
     SET @msg = CASE WHEN @bloquear = 1 THEN 'Usuario bloqueado.' ELSE 'Usuario desbloqueado.' END;
     SELECT 1 AS ok, @msg AS mensaje;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Usuario_CambiarPassword
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Usuario_CambiarPassword]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Usuario_CambiarPassword]
     @usuario_id      INT,
@@ -2668,14 +2562,12 @@ BEGIN
 
     SELECT 1 AS ok, 'Contrasena actualizada correctamente.' AS mensaje;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Usuario_Crear
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Usuario_Crear]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Usuario_Crear]
     @tipo_id        SMALLINT,
@@ -2738,14 +2630,12 @@ BEGIN
 
     SELECT 1 AS ok, 'Usuario creado correctamente.' AS mensaje, @nuevo_id AS usuario_id;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Usuario_Listar
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Usuario_Listar]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Usuario_Listar]
     @buscar     VARCHAR(100) = NULL,
@@ -2801,14 +2691,12 @@ BEGIN
     )
     ORDER BY u.apellidos, u.nombres;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Usuario_ObtenerPorId
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Usuario_ObtenerPorId]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Usuario_ObtenerPorId]
     @usuario_id INT
@@ -2827,14 +2715,12 @@ BEGIN
     JOIN FLORERIA_TipoUsuario t ON u.tipo_id = t.tipo_id
     WHERE u.usuario_id = @usuario_id;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Usuario_ResetearPassword
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Usuario_ResetearPassword]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Usuario_ResetearPassword]
     @usuario_id     INT,
@@ -2881,83 +2767,83 @@ BEGIN
 
     SELECT 1 AS ok, 'Contrasena reseteada. El usuario debera cambiarla al ingresar.' AS mensaje;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_ValidarSesion
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_ValidarSesion]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
--- ============================================================
--- CORRECCION: FLORERIA_sp_ValidarSesion
--- Problema: comparaba expira_en con GETDATE() (hora servidor)
---           en vez de hora Bolivia
--- ============================================================
-
-CREATE   PROCEDURE FLORERIA_sp_ValidarSesion
-    @token VARCHAR(100),
-    @ip    VARCHAR(50)
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    -- Hora actual en Bolivia (UTC-4)
-    DECLARE @horaBolivia DATETIME = DATEADD(HOUR, -4, GETUTCDATE())
-
-    DECLARE @sesion_id  BIGINT
-    DECLARE @usuario_id INT
-    DECLARE @expira_en  DATETIME
-    DECLARE @activa     BIT
-
-    SELECT
-        @sesion_id  = sesion_id,
-        @usuario_id = usuario_id,
-        @expira_en  = expira_en,
-        @activa     = activa
-    FROM FLORERIA_Sesion
-    WHERE token = @token
-
-    -- Token no existe
-    IF @sesion_id IS NULL
-    BEGIN
-        SELECT 0 AS valida, 'Token no existe' AS mensaje, NULL AS usuario_id
-        RETURN
-    END
-
-    -- Sesion cerrada
-    IF @activa = 0
-    BEGIN
-        SELECT 0 AS valida, 'Sesion cerrada' AS mensaje, NULL AS usuario_id
-        RETURN
-    END
-
-    -- Sesion expirada (comparar con hora Bolivia)
-    IF @horaBolivia > @expira_en
-    BEGIN
-        UPDATE FLORERIA_Sesion SET activa = 0, cerrada_por = 'SISTEMA'
-        WHERE sesion_id = @sesion_id
-
-        SELECT 0 AS valida, 'Sesion expirada' AS mensaje, NULL AS usuario_id
-        RETURN
-    END
-
-    -- Sesion valida — actualizar ultimo acceso con hora Bolivia
-    UPDATE FLORERIA_Sesion
-    SET ultimo_acceso = @horaBolivia
-    WHERE sesion_id = @sesion_id
-
-    SELECT 1 AS valida, 'OK' AS mensaje, @usuario_id AS usuario_id
+CREATE   PROCEDURE [dbo].[FLORERIA_sp_ValidarSesion]  
+    @token VARCHAR(100),  
+    @ip    VARCHAR(50)  
+AS  
+BEGIN  
+    SET NOCOUNT ON;  
+  
+    -- Hora actual en Bolivia (UTC-4)  
+    DECLARE @horaBolivia DATETIME = DATEADD(HOUR, -4, GETUTCDATE())  
+  
+    DECLARE @sesion_id  BIGINT  
+    DECLARE @usuario_id INT  
+    DECLARE @expira_en  DATETIME  
+    DECLARE @activa     BIT  
+  
+    SELECT  
+        @sesion_id  = sesion_id,  
+        @usuario_id = usuario_id,  
+        @expira_en  = expira_en,  
+        @activa     = activa  
+    FROM FLORERIA_Sesion  
+    WHERE token = @token  
+  
+    -- Token no existe  
+    IF @sesion_id IS NULL  
+    BEGIN  
+        SELECT 0 AS valida, 'Token no existe' AS mensaje, NULL AS usuario_id, NULL AS nombres, NULL AS apellidos, NULL AS tipo_nombre
+        RETURN  
+    END  
+  
+    -- Sesion cerrada  
+    IF @activa = 0  
+    BEGIN  
+        SELECT 0 AS valida, 'Sesion cerrada' AS mensaje, NULL AS usuario_id, NULL AS nombres, NULL AS apellidos, NULL AS tipo_nombre
+        RETURN  
+    END  
+  
+    -- Sesion expirada (comparar con hora Bolivia)  
+    IF @horaBolivia > @expira_en  
+    BEGIN  
+        UPDATE FLORERIA_Sesion SET activa = 0, cerrada_por = 'SISTEMA'  
+        WHERE sesion_id = @sesion_id  
+  
+        SELECT 0 AS valida, 'Sesion expirada' AS mensaje, NULL AS usuario_id, NULL AS nombres, NULL AS apellidos, NULL AS tipo_nombre
+        RETURN  
+    END  
+  
+    -- Sesion valida — actualizar ultimo acceso con hora Bolivia  
+    UPDATE FLORERIA_Sesion  
+    SET ultimo_acceso = @horaBolivia  
+    WHERE sesion_id = @sesion_id  
+  
+    -- Retornar datos completos del usuario
+    SELECT  
+        1 AS valida,
+        'OK' AS mensaje,
+        u.usuario_id,
+        u.nombres,
+        u.apellidos,
+        t.nombre AS tipo_nombre
+    FROM FLORERIA_Usuario u
+    INNER JOIN FLORERIA_TipoUsuario t ON u.tipo_id = t.tipo_id
+    WHERE u.usuario_id = @usuario_id
 END
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Variacion_Eliminar
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Variacion_Eliminar]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- SP: Eliminar variación
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Variacion_Eliminar]
@@ -2974,14 +2860,12 @@ BEGIN
     WHERE variacion_id = @variacion_id;
     SELECT 1 AS ok, 'Variacion eliminada.' AS mensaje;
 END;
-
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_Variacion_Guardar
--- ============================================================
---Text
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Variacion_Guardar]    Script Date: 25/05/2026 0:36:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
 -- SP: Guardar una variación individual
 CREATE   PROCEDURE [dbo].[FLORERIA_sp_Variacion_Guardar]
@@ -3065,268 +2949,4 @@ BEGIN
         SELECT 1 AS ok, 'Variacion actualizada.' AS mensaje, @variacion_id AS variacion_id;
     END;
 END;
-
 GO
- 
--- =============================================
--- FIN - TOTAL 48 SPs
--- =============================================
- 
-
-
-
-
-
-
-
-
- -- ============================================================
--- ACTUALIZACIÓN PARA: 03_TODOS_LOS_SPS.sql
--- REEMPLAZAR LOS SPs DE PRE-PEDIDO CON ESTAS VERSIONES
--- ============================================================
-
-USE SISCONBOL;
-GO
-
--- ============================================================
--- SP: FLORERIA_sp_PrePedido_Crear (CON VALIDACIONES)
--- ============================================================
-
-IF OBJECT_ID('dbo.FLORERIA_sp_PrePedido_Crear', 'P') IS NOT NULL
-    DROP PROCEDURE dbo.FLORERIA_sp_PrePedido_Crear;
-GO
-
-CREATE PROCEDURE FLORERIA_sp_PrePedido_Crear
-    @tipo_registro   VARCHAR(20),
-    @cliente_celular VARCHAR(20),
-    @agente_id       INT,
-    @ip              VARCHAR(50),
-    @prepedido_id    INT OUTPUT,
-    @codigo          VARCHAR(20) OUTPUT
-AS
-BEGIN
-    SET NOCOUNT ON;
-    BEGIN TRY
-        BEGIN TRANSACTION;
-
-        -- ========================================================
-        -- VALIDACIONES DE SEGURIDAD
-        -- ========================================================
-        
-        -- Validar celular con función
-        IF dbo.FLORERIA_fn_ValidarCelular(@cliente_celular) = 0
-        BEGIN
-            RAISERROR('El celular tiene un formato inválido', 16, 1);
-            RETURN;
-        END;
-
-        -- Validar contra patrones peligrosos
-        IF dbo.FLORERIA_fn_ValidarTexto(@cliente_celular) = 0
-        BEGIN
-            RAISERROR('El celular contiene caracteres no permitidos', 16, 1);
-            RETURN;
-        END;
-
-        -- Verificar que no exista pre-pedido activo
-        IF EXISTS (
-            SELECT 1 FROM FLORERIA_PrePedido 
-            WHERE cliente_celular = @cliente_celular
-              AND estado IN ('BORRADOR','FORM_ENVIADO','FORM_COMPLETADO',
-                             'COMPROBANTE_ENVIADO','PAGADO')
-        )
-        BEGIN
-            RAISERROR('El cliente ya tiene un pre-pedido activo.', 16, 1);
-            RETURN;
-        END;
-
-        -- ========================================================
-        -- GENERAR CÓDIGO SECUENCIAL
-        -- ========================================================
-        DECLARE @siguiente INT;
-        SELECT @siguiente = ISNULL(MAX(
-            CASE WHEN codigo LIKE 'PRE-%' 
-                 THEN CAST(SUBSTRING(codigo, 5, LEN(codigo)) AS INT)
-                 ELSE 0 END
-        ), 0) + 1
-        FROM FLORERIA_PrePedido;
-
-        SET @codigo = 'PRE-' + RIGHT('000000' + CAST(@siguiente AS VARCHAR), 6);
-
-        -- ========================================================
-        -- DETERMINAR ESTADO SEGÚN TIPO
-        -- ========================================================
-        DECLARE @estado VARCHAR(30);
-        SET @estado = CASE @tipo_registro
-            WHEN 'PRE_PEDIDO'    THEN 'BORRADOR'
-            WHEN 'VENTA_TIENDA'  THEN 'PAGADO'
-            WHEN 'VENTA_ANTIGUA' THEN 'COMPLETADO'
-            ELSE 'BORRADOR'
-        END;
-
-        -- ========================================================
-        -- INSERTAR PRE-PEDIDO
-        -- ========================================================
-        INSERT INTO FLORERIA_PrePedido (
-            codigo, tipo_registro, cliente_celular,
-            estado, token_web,
-            total_general_bs, total_general_usd, tasa_cambio,
-            descuento_bs, descuento_usd,
-            agente_actual_id, creado_por, creado_en
-        )
-        VALUES (
-            @codigo, @tipo_registro, @cliente_celular,
-            @estado, NULL,
-            0, 0, 7.0000,
-            0, 0,
-            @agente_id, @agente_id, GETDATE()
-        );
-
-        SET @prepedido_id = SCOPE_IDENTITY();
-        COMMIT TRANSACTION;
-
-        -- Retornar datos del pre-pedido creado
-        SELECT prepedido_id, codigo, estado 
-        FROM FLORERIA_PrePedido 
-        WHERE prepedido_id = @prepedido_id;
-    END TRY
-    BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK;
-        DECLARE @err1 VARCHAR(4000);
-        SET @err1 = ERROR_MESSAGE();
-        RAISERROR(@err1, 16, 1);
-    END CATCH;
-END;
-GO
-
--- ============================================================
--- SP: FLORERIA_sp_PrePedido_ActualizarCliente (CON VALIDACIONES)
--- ============================================================
-
-IF OBJECT_ID('dbo.FLORERIA_sp_PrePedido_ActualizarCliente', 'P') IS NOT NULL
-    DROP PROCEDURE dbo.FLORERIA_sp_PrePedido_ActualizarCliente;
-GO
-
-CREATE PROCEDURE FLORERIA_sp_PrePedido_ActualizarCliente
-    @prepedido_id         INT,
-    @cliente_nombre       VARCHAR(200),
-    @cliente_apellidos    VARCHAR(200),
-    @cliente_email        VARCHAR(100),
-    @cliente_pais_id      TINYINT,
-    @cliente_ciudad_id    SMALLINT,
-    @modificado_por       INT,
-    @ip                   VARCHAR(50)
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    -- ========================================================
-    -- VALIDACIONES DE SEGURIDAD
-    -- ========================================================
-    
-    -- Validar nombre (solo si no es NULL)
-    IF @cliente_nombre IS NOT NULL
-    BEGIN
-        -- Solo letras, espacios, acentos, ñ
-        IF @cliente_nombre LIKE '%[^a-zA-ZáéíóúÁÉÍÓÚñÑ ]%'
-        BEGIN
-            RAISERROR('El nombre solo puede contener letras y espacios', 16, 1);
-            RETURN;
-        END;
-
-        -- Validar contra patrones peligrosos
-        IF dbo.FLORERIA_fn_ValidarTexto(@cliente_nombre) = 0
-        BEGIN
-            RAISERROR('El nombre contiene caracteres no permitidos', 16, 1);
-            RETURN;
-        END;
-
-        -- Validar longitud
-        IF LEN(@cliente_nombre) > 200
-        BEGIN
-            RAISERROR('El nombre no puede exceder 200 caracteres', 16, 1);
-            RETURN;
-        END;
-    END;
-
-    -- Validar apellidos (solo si no es NULL)
-    IF @cliente_apellidos IS NOT NULL
-    BEGIN
-        IF @cliente_apellidos LIKE '%[^a-zA-ZáéíóúÁÉÍÓÚñÑ ]%'
-        BEGIN
-            RAISERROR('Los apellidos solo pueden contener letras y espacios', 16, 1);
-            RETURN;
-        END;
-
-        IF dbo.FLORERIA_fn_ValidarTexto(@cliente_apellidos) = 0
-        BEGIN
-            RAISERROR('Los apellidos contienen caracteres no permitidos', 16, 1);
-            RETURN;
-        END;
-
-        IF LEN(@cliente_apellidos) > 200
-        BEGIN
-            RAISERROR('Los apellidos no pueden exceder 200 caracteres', 16, 1);
-            RETURN;
-        END;
-    END;
-
-    -- Validar email (solo si no es NULL)
-    IF @cliente_email IS NOT NULL
-    BEGIN
-        -- Debe tener @ y .
-        IF @cliente_email NOT LIKE '%@%.%'
-        BEGIN
-            RAISERROR('El email tiene un formato inválido', 16, 1);
-            RETURN;
-        END;
-
-        IF dbo.FLORERIA_fn_ValidarTexto(@cliente_email) = 0
-        BEGIN
-            RAISERROR('El email contiene caracteres no permitidos', 16, 1);
-            RETURN;
-        END;
-
-        IF LEN(@cliente_email) > 100
-        BEGIN
-            RAISERROR('El email no puede exceder 100 caracteres', 16, 1);
-            RETURN;
-        END;
-    END;
-
-    -- ========================================================
-    -- ACTUALIZAR DATOS DEL CLIENTE
-    -- ========================================================
-    UPDATE FLORERIA_PrePedido SET
-        cliente_nombre     = @cliente_nombre,
-        cliente_apellidos  = @cliente_apellidos,
-        cliente_email      = @cliente_email,
-        cliente_pais_id    = @cliente_pais_id,
-        cliente_ciudad_id  = @cliente_ciudad_id,
-        modificado_por     = @modificado_por,
-        modificado_en      = GETDATE()
-    WHERE prepedido_id = @prepedido_id;
-
-    -- ========================================================
-    -- REGISTRAR EN AUDITORÍA
-    -- ========================================================
-    INSERT INTO FLORERIA_Auditoria (
-        usuario_id, ip, tabla, registro_id, accion, valor_nuevo
-    )
-    VALUES (
-        @modificado_por, 
-        @ip, 
-        'FLORERIA_PrePedido', 
-        CAST(@prepedido_id AS VARCHAR), 
-        'MODIFICAR', 
-        '{"campo":"cliente_datos","detalle":"Actualización de datos del cliente"}'
-    );
-END;
-GO
-
-PRINT 'SPs de Pre-Pedido actualizados con validaciones de seguridad';
-GO
-
-
-
-
-

@@ -356,24 +356,23 @@ Partial Public Class Modulos_Config_Migrar
     '   Estrategia: 1 orden WC = 1 PrePedido + 1 Pedido
     '   Si ya existe (wc_order_id) lo marca sin cambios (S)
     ' ============================================================
-    Private Function InsertarPedido(conn As SqlConnection, p As WcPedido,
-                                    uid As Integer, ip As String) As String
+    ' ============================================================
+    ' InsertarPedido - Versión Sincronizada con WC
+    ' ============================================================
+
+
+    Private Function InsertarPedido(conn As SqlConnection, p As WcPedido, uid As Integer, ip As String) As String
         Try
-            ' Verificar si ya existe por wc_order_id
-            Using chk As New SqlCommand(
-                "SELECT pedido_id FROM FLORERIA_Pedido WHERE wc_order_id=@w", conn)
+            ' 1. Verificar si ya existe por wc_order_id
+            Using chk As New SqlCommand("SELECT pedido_id FROM FLORERIA_Pedido WHERE wc_order_id=@w", conn)
                 chk.Parameters.AddWithValue("@w", p.WcId)
                 Using dr As SqlDataReader = chk.ExecuteReader()
-                    If dr.Read() Then Return "S"   ' ya migrado
+                    If dr.Read() Then Return "S" ' Ya migrado
                 End Using
             End Using
 
-            Dim uidP As Object = If(uid > 0, CObj(uid), DBNull.Value)
-
-            '  1. Crear PrePedido (tipo VENTA_ANTIGUA) 
+            ' 2. Crear PrePedido (Llamada a SP existente)
             Dim preId As Integer = 0
-            Dim preCod As String = ""
-
             Using cmd As New SqlCommand("FLORERIA_sp_PrePedido_Crear", conn)
                 cmd.CommandType = CommandType.StoredProcedure
                 cmd.Parameters.AddWithValue("@tipo_registro", "VENTA_ANTIGUA")
@@ -381,140 +380,112 @@ Partial Public Class Modulos_Config_Migrar
                 cmd.Parameters.AddWithValue("@agente_id", uid)
                 cmd.Parameters.AddWithValue("@ip", ip)
 
-                Dim pId As New SqlParameter("@prepedido_id", SqlDbType.Int)
-                pId.Direction = ParameterDirection.Output
-                cmd.Parameters.Add(pId)
-
-                Dim pCod As New SqlParameter("@codigo", SqlDbType.VarChar, 20)
-                pCod.Direction = ParameterDirection.Output
-                cmd.Parameters.Add(pCod)
-
+                Dim pId As New SqlParameter("@prepedido_id", SqlDbType.Int) With {.Direction = ParameterDirection.Output}
+                Dim pCod As New SqlParameter("@codigo", SqlDbType.VarChar, 20) With {.Direction = ParameterDirection.Output}
+                cmd.Parameters.Add(pId) : cmd.Parameters.Add(pCod)
                 cmd.ExecuteNonQuery()
-
-                If pId.Value Is DBNull.Value OrElse pId.Value Is Nothing Then
-                    System.Diagnostics.Debug.WriteLine("WARN InsertarPedido: sp_PrePedido_Crear no devolvio id")
-                    Return "E"
-                End If
                 preId = Convert.ToInt32(pId.Value)
-                preCod = pCod.Value.ToString()
             End Using
 
-            ' Actualizar datos del cliente en el PrePedido
-            If p.ClienteNombre <> "" OrElse p.ClienteEmail <> "" Then
-                Using cmd2 As New SqlCommand("FLORERIA_sp_PrePedido_ActualizarCliente", conn)
-                    cmd2.CommandType = CommandType.StoredProcedure
-                    cmd2.Parameters.AddWithValue("@prepedido_id", preId)
-                    cmd2.Parameters.AddWithValue("@cliente_nombre", If(p.ClienteNombre <> "", CObj(p.ClienteNombre), DBNull.Value))
-                    cmd2.Parameters.AddWithValue("@cliente_apellidos", DBNull.Value)
-                    cmd2.Parameters.AddWithValue("@cliente_email", If(p.ClienteEmail <> "", CObj(p.ClienteEmail), DBNull.Value))
-                    cmd2.Parameters.AddWithValue("@cliente_pais_id", DBNull.Value)
-                    cmd2.Parameters.AddWithValue("@cliente_ciudad_id", DBNull.Value)
-                    cmd2.Parameters.AddWithValue("@modificado_por", uidP)
-                    cmd2.Parameters.AddWithValue("@ip", ip)
-                    cmd2.ExecuteNonQuery()
-                End Using
-            End If
-
-            '  2. Crear Pedido 
+            ' 3. Crear Pedido (Llamada a nuestro nuevo SP optimizado)
             Dim pedId As Integer = 0
-            Dim pedCod As String = ""
+            Dim codPed As String = ""
 
-            ' ciudad_id = 1 (Santa Cruz, primera ciudad activa en la BD)
-            Dim ciudadId As Integer = 1
-
-            ' Fecha entrega: usar fecha del pedido WC o manana si es null
-            Dim fechaEntrega As String = DateTime.Now.AddDays(1).ToString("yyyy-MM-dd")
-            If p.FechaEntrega.HasValue Then
-                fechaEntrega = p.FechaEntrega.Value.ToString("yyyy-MM-dd")
-            End If
+            ' Extraer valores desde el meta_data que parseaste previamente en ParsearPedidos
+            Dim ocacion As String = "p.MetaOcacion" ' Asegúrate de mapear esto en ParsearPedidos
+            Dim nota As String = "p.MetaNota"       ' Asegúrate de mapear esto en ParsearPedidos
 
             Using cmd As New SqlCommand("FLORERIA_sp_Pedido_Crear", conn)
                 cmd.CommandType = CommandType.StoredProcedure
                 cmd.Parameters.AddWithValue("@prepedido_id", preId)
                 cmd.Parameters.AddWithValue("@receptor_nombre", If(p.DestNombre <> "", p.DestNombre, p.ClienteNombre))
                 cmd.Parameters.AddWithValue("@receptor_celular", If(p.DestTelefono <> "", p.DestTelefono, If(p.ClienteTelefono <> "", p.ClienteTelefono, "00000000")))
-                cmd.Parameters.AddWithValue("@ciudad_id", ciudadId)
-                cmd.Parameters.AddWithValue("@zona_id", DBNull.Value)
-                cmd.Parameters.AddWithValue("@sucursal_id", DBNull.Value)
+                cmd.Parameters.AddWithValue("@ciudad_id", 1) ' Default La Paz/SCZ
                 cmd.Parameters.AddWithValue("@tipo_entrega", "DOMICILIO")
-                cmd.Parameters.AddWithValue("@direccion", If(p.DireccionEntrega <> "", CObj(p.DireccionEntrega), DBNull.Value))
-                cmd.Parameters.AddWithValue("@referencia", DBNull.Value)
-                cmd.Parameters.AddWithValue("@fecha_entrega", fechaEntrega)
-                cmd.Parameters.AddWithValue("@slot_id", DBNull.Value)
-                cmd.Parameters.AddWithValue("@es_express", 0)
-                cmd.Parameters.AddWithValue("@dedicatoria", If(p.MensajeTarjeta <> "", CObj(p.MensajeTarjeta), DBNull.Value))
-                cmd.Parameters.AddWithValue("@firma_tarjeta", DBNull.Value)
+                cmd.Parameters.AddWithValue("@direccion", If(p.DireccionEntrega <> "", p.DireccionEntrega, "Sin dirección"))
+                cmd.Parameters.AddWithValue("@fecha_entrega", If(p.FechaEntrega.HasValue, p.FechaEntrega.Value, DateTime.Now.AddDays(1)))
+                cmd.Parameters.AddWithValue("@dedicatoria", If(p.MensajeTarjeta <> "", p.MensajeTarjeta, DBNull.Value))
+                cmd.Parameters.AddWithValue("@wc_order_id", p.WcId)
+                cmd.Parameters.AddWithValue("@tipo_ocacion", If(ocacion <> "", ocacion, "OTRO"))
+                cmd.Parameters.AddWithValue("@nota_floreria", If(nota <> "", nota, DBNull.Value))
                 cmd.Parameters.AddWithValue("@creado_por", uid)
                 cmd.Parameters.AddWithValue("@ip", ip)
 
-                Dim pPedId As New SqlParameter("@pedido_id", SqlDbType.Int)
-                pPedId.Direction = ParameterDirection.Output
-                cmd.Parameters.Add(pPedId)
-
-                Dim pCodP As New SqlParameter("@codigo", SqlDbType.VarChar, 20)
-                pCodP.Direction = ParameterDirection.Output
-                cmd.Parameters.Add(pCodP)
+                Dim pPedId As New SqlParameter("@pedido_id", SqlDbType.Int) With {.Direction = ParameterDirection.Output}
+                Dim pCodP As New SqlParameter("@codigo", SqlDbType.VarChar, 20) With {.Direction = ParameterDirection.Output}
+                cmd.Parameters.Add(pPedId) : cmd.Parameters.Add(pCodP)
 
                 cmd.ExecuteNonQuery()
-
-                If pPedId.Value Is DBNull.Value OrElse pPedId.Value Is Nothing Then
-                    System.Diagnostics.Debug.WriteLine("WARN InsertarPedido: sp_Pedido_Crear no devolvio id")
-                    Return "E"
-                End If
                 pedId = Convert.ToInt32(pPedId.Value)
-                pedCod = pCodP.Value.ToString()
+
+
+
+
+                ' ============================================================
+                ' FORZAR ACTUALIZACIÓN (Bypass para asegurar que el SP no deje Nulos)
+                ' ============================================================
+                Try
+                    Dim finalNom As String = If(p.DestNombre <> "", p.DestNombre, p.ClienteNombre)
+                    If finalNom = "" Then finalNom = "Sin nombre"
+                    Dim finalDir As String = If(p.DireccionEntrega <> "", p.DireccionEntrega, "Sin dirección")
+
+                    ' NOTA: Si tu columna en BD no se llama 'direccion' (ej. se llama 'direccion_entrega'), cámbialo en el SET
+                    Using updCmd As New SqlCommand(
+                    "UPDATE FLORERIA_Pedido SET " &
+                    "receptor_nombre=@rn, direccion=@dir, dedicatoria=@ded, " &
+                    "wc_order_id=@wc, tipo_ocacion=@oc, nota_floreria=@not " &
+                    "WHERE pedido_id=@pid", conn)
+
+                        updCmd.Parameters.AddWithValue("@rn", finalNom)
+                        updCmd.Parameters.AddWithValue("@dir", finalDir)
+                        updCmd.Parameters.AddWithValue("@ded", If(p.MensajeTarjeta <> "", p.MensajeTarjeta, DBNull.Value))
+                        updCmd.Parameters.AddWithValue("@wc", p.WcId)
+                        updCmd.Parameters.AddWithValue("@oc", If(p.MetaOcacion <> "", p.MetaOcacion, DBNull.Value))
+                        updCmd.Parameters.AddWithValue("@not", If(p.MetaNota <> "", p.MetaNota, DBNull.Value))
+                        updCmd.Parameters.AddWithValue("@pid", pedId)
+
+                        updCmd.ExecuteNonQuery()
+                    End Using
+                Catch exUpd As Exception
+                    System.Diagnostics.Debug.WriteLine("Aviso UPDATE directo: " & exUpd.Message)
+                End Try
+                ' ============================================================
+
+
             End Using
 
-            ' Guardar wc_order_id en el pedido recien creado
-            Using updWc As New SqlCommand(
-                "UPDATE FLORERIA_Pedido SET wc_order_id=@w, wc_sync_estado='SINCRONIZADO', wc_sync_fecha=GETDATE() " &
-                "WHERE pedido_id=@id", conn)
-                updWc.Parameters.AddWithValue("@w", p.WcId)
-                updWc.Parameters.AddWithValue("@id", pedId)
-                updWc.ExecuteNonQuery()
-            End Using
-
-            '  3. Agregar items del pedido 
+            ' 4. Agregar items del pedido
             For Each item As WcPedidoItem In p.Items
                 Try
-                    ' Buscar producto_id por wc_product_id
                     Dim prodId As Object = DBNull.Value
-                    Using pCmd As New SqlCommand(
-                        "SELECT producto_id FROM FLORERIA_Producto WHERE wc_product_id=@w", conn)
+                    Using pCmd As New SqlCommand("SELECT producto_id FROM FLORERIA_Producto WHERE wc_product_id=@w", conn)
                         pCmd.Parameters.AddWithValue("@w", item.WcProductId)
                         Dim pObj As Object = pCmd.ExecuteScalar()
-                        If pObj IsNot Nothing AndAlso Not IsDBNull(pObj) Then
-                            prodId = CInt(pObj)
-                        End If
+                        If pObj IsNot Nothing AndAlso Not IsDBNull(pObj) Then prodId = pObj
                     End Using
 
                     Using dCmd As New SqlCommand("FLORERIA_sp_Pedido_AgregarProducto", conn)
                         dCmd.CommandType = CommandType.StoredProcedure
                         dCmd.Parameters.AddWithValue("@pedido_id", pedId)
                         dCmd.Parameters.AddWithValue("@producto_id", prodId)
-                        dCmd.Parameters.AddWithValue("@variacion_id", DBNull.Value)
                         dCmd.Parameters.AddWithValue("@es_personalizado", 0)
                         dCmd.Parameters.AddWithValue("@nombre_producto", item.NombreProducto)
-                        dCmd.Parameters.AddWithValue("@descripcion", DBNull.Value)
                         dCmd.Parameters.AddWithValue("@cantidad", item.Cantidad)
                         dCmd.Parameters.AddWithValue("@precio_unitario_bs", item.PrecioUnitarioBs)
-                        dCmd.Parameters.AddWithValue("@precio_unitario_usd", DBNull.Value)
-                        dCmd.Parameters.AddWithValue("@personalizacion", DBNull.Value)
+                        dCmd.Parameters.AddWithValue("@personalizacion", If(item.Personalizacion <> "", item.Personalizacion, DBNull.Value))
                         dCmd.ExecuteNonQuery()
                     End Using
                 Catch exItem As Exception
-                    System.Diagnostics.Debug.WriteLine("WARN Item " & item.NombreProducto & ": " & exItem.Message)
+                    System.Diagnostics.Debug.WriteLine("Error item: " & exItem.Message)
                 End Try
             Next
 
             Return "I"
-
         Catch ex As Exception
-            System.Diagnostics.Debug.WriteLine("ERROR InsertarPedido WC#" & p.WcId & ": " & ex.Message)
+            System.Diagnostics.Debug.WriteLine("ERROR CRÍTICO InsertarPedido: " & ex.Message)
             Return "E"
         End Try
     End Function
-
     ' ============================================================
     ' ParsearCats - extrae lista de WcCat del JSON de WooCommerce
     ' ============================================================
@@ -598,50 +569,41 @@ Partial Public Class Modulos_Config_Migrar
                 Dim ped As New WcPedido()
                 ped.WcId = ExtraerEntero(obj, "id")
 
-                ' Cliente (billing)
-                Dim billing As String = ExtraerObjeto(obj, ExtraerPosicion(obj, "billing"))
-                If billing = "" Then
-                    ' Intentar extraccion simple de campos billing
-                    ped.ClienteNombre = ExtraerStr(obj, "first_name")
-                    ped.ClienteTelefono = ExtraerStr(obj, "phone")
-                    ped.ClienteEmail = ExtraerStr(obj, "email")
-                Else
-                    ped.ClienteNombre = (ExtraerStr(billing, "first_name") & " " & ExtraerStr(billing, "last_name")).Trim()
-                    ped.ClienteTelefono = ExtraerStr(billing, "phone")
-                    ped.ClienteEmail = ExtraerStr(billing, "email")
-                    ped.DireccionEntrega = ExtraerStr(billing, "address_1") & " " & ExtraerStr(billing, "address_2")
-                    ped.DireccionEntrega = ped.DireccionEntrega.Trim()
-                End If
+                ' --- 1. Datos Billing (Extracción directa) ---
+                ped.ClienteNombre = (ExtraerStr(obj, "first_name") & " " & ExtraerStr(obj, "last_name")).Trim()
+                ped.ClienteTelefono = ExtraerStr(obj, "phone")
+                ped.ClienteEmail = ExtraerStr(obj, "email")
 
-                ' Shipping (receptor)
-                Dim shipping As String = ExtraerObjeto(obj, ExtraerPosicion(obj, "shipping"))
-                If shipping <> "" Then
-                    Dim sNom As String = (ExtraerStr(shipping, "first_name") & " " & ExtraerStr(shipping, "last_name")).Trim()
+                ' --- 2. Datos Shipping (Buscamos a partir de donde dice "shipping") ---
+                Dim posShipping As Integer = obj.IndexOf("""shipping""")
+                If posShipping > 0 Then
+                    Dim shipStr As String = obj.Substring(posShipping)
+                    Dim sNom As String = (ExtraerStr(shipStr, "first_name") & " " & ExtraerStr(shipStr, "last_name")).Trim()
                     If sNom <> "" Then ped.DestNombre = sNom
-                    Dim sDir As String = (ExtraerStr(shipping, "address_1") & " " & ExtraerStr(shipping, "address_2")).Trim()
-                    If sDir <> "" Then ped.DireccionEntrega = sDir
+                    ped.DireccionEntrega = (ExtraerStr(shipStr, "address_1") & " " & ExtraerStr(shipStr, "address_2")).Trim()
                 End If
 
-                ' Totales
-                Dim totalStr As String = ExtraerStr(obj, "total")
-                If totalStr <> "" Then Decimal.TryParse(totalStr, ped.TotalBs)
+                ' --- 3. Metadatos (Extracción ultra rápida y directa) ---
+                ped.MensajeTarjeta = ExtraerValorMetaDirecto(obj, "mensaje_tarjeta")
+                If ped.MensajeTarjeta = "" Then ped.MensajeTarjeta = ExtraerValorMetaDirecto(obj, "dedicatoria")
+                ped.MetaOcacion = ExtraerValorMetaDirecto(obj, "tipo_de_ocacion")
+                ped.MetaNota = ExtraerValorMetaDirecto(obj, "firma_tarjeta")
 
-                ' Fecha creacion
+                Dim telMeta As String = ExtraerValorMetaDirecto(obj, "TelefonoRecibe")
+                Dim shipPhone As String = If(posShipping > 0, ExtraerStr(obj.Substring(posShipping), "phone"), "")
+                ped.DestTelefono = If(telMeta <> "", telMeta, shipPhone)
+
+                ' --- 4. Totales y Fechas ---
+                Dim totalStr As String = ExtraerStr(obj, "total")
+                Decimal.TryParse(totalStr, ped.TotalBs)
+
                 Dim fechaStr As String = ExtraerStr(obj, "date_created")
                 If fechaStr <> "" Then
                     Dim dtParsed As DateTime
-                    If DateTime.TryParse(fechaStr, dtParsed) Then ped.FechaEntrega = dtParsed.AddDays(2)
+                    If DateTime.TryParse(fechaStr, dtParsed) Then ped.FechaEntrega = dtParsed
                 End If
 
-                ' Metadatos personalizados (campo dedicatoria / mensaje tarjeta)
-                Dim metaJson As String = ExtraerArray(obj, "meta_data")
-                If metaJson <> "" Then
-                    ped.MensajeTarjeta = ExtraerMetaValor(metaJson, "dedicatoria")
-                    If ped.MensajeTarjeta = "" Then ped.MensajeTarjeta = ExtraerMetaValor(metaJson, "mensaje_tarjeta")
-                    ped.DestTelefono = ExtraerMetaValor(metaJson, "celular_receptor")
-                End If
-
-                ' Line items (productos)
+                ' --- 5. Productos ---
                 Dim lineItemsJson As String = ExtraerArray(obj, "line_items")
                 If lineItemsJson <> "" Then
                     ped.Items = ParsearLineItems(lineItemsJson)
@@ -658,6 +620,17 @@ Partial Public Class Modulos_Config_Migrar
         Return lista
     End Function
 
+    ' NUEVA FUNCIÓN: Busca directamente la clave sin importar si los { } del cliente están mal escritos
+    Private Function ExtraerValorMetaDirecto(json As String, clave As String) As String
+        Try
+            Dim posKey As Integer = json.IndexOf("""" & clave & """")
+            If posKey < 0 Then Return ""
+            Return ExtraerStr(json.Substring(posKey), "value")
+        Catch
+            Return ""
+        End Try
+    End Function
+
     Private Function ParsearLineItems(json As String) As List(Of WcPedidoItem)
         Dim lista As New List(Of WcPedidoItem)()
         Try
@@ -669,10 +642,18 @@ Partial Public Class Modulos_Config_Migrar
                 item.WcProductId = ExtraerEntero(obj, "product_id")
                 item.NombreProducto = ExtraerStr(obj, "name")
                 item.Cantidad = ExtraerEntero(obj, "quantity")
+
+                ' Extraer la personalización si existe en los metadatos del item
+                Dim metaJson As String = ExtraerArray(obj, "meta_data")
+                If metaJson <> "" Then
+                    item.Personalizacion = ExtraerMetaValor(metaJson, "personalizacion") ' Ajusta la clave según tu WC
+                End If
+
                 If item.Cantidad <= 0 Then item.Cantidad = 1
                 Dim precStr As String = ExtraerStr(obj, "price")
                 If precStr <> "" Then Decimal.TryParse(precStr, item.PrecioUnitarioBs)
                 If item.PrecioUnitarioBs <= 0 Then item.PrecioUnitarioBs = 1
+
                 If item.NombreProducto <> "" Then lista.Add(item)
                 idx = json.IndexOf("{"c, idx + obj.Length)
                 If idx < 0 Then Exit While
@@ -683,6 +664,9 @@ Partial Public Class Modulos_Config_Migrar
         Return lista
     End Function
 
+
+
+
     ' Extrae el valor de un meta_data con una clave especifica
     Private Function ExtraerMetaValor(metaJson As String, clave As String) As String
         Try
@@ -690,14 +674,17 @@ Partial Public Class Modulos_Config_Migrar
             While idx < metaJson.Length
                 Dim obj As String = ExtraerObjeto(metaJson, idx)
                 If obj = "" Then Exit While
+
                 Dim k As String = ExtraerStr(obj, "key")
                 If k.ToLower() = clave.ToLower() Then
                     Return ExtraerStr(obj, "value")
                 End If
+
                 idx = metaJson.IndexOf("{"c, idx + obj.Length)
                 If idx < 0 Then Exit While
             End While
         Catch
+            Return ""
         End Try
         Return ""
     End Function
@@ -865,6 +852,8 @@ Partial Public Class Modulos_Config_Migrar
         Public Property DestTelefono As String = ""
         Public Property DireccionEntrega As String = ""
         Public Property MensajeTarjeta As String = ""
+        Public Property MetaOcacion As String = ""  ' NUEVO
+        Public Property MetaNota As String = ""    ' NUEVO
         Public Property TotalBs As Decimal
         Public Property FechaEntrega As DateTime?
         Public Property Items As New List(Of WcPedidoItem)()
@@ -875,6 +864,8 @@ Partial Public Class Modulos_Config_Migrar
         Public Property NombreProducto As String = ""
         Public Property Cantidad As Integer = 1
         Public Property PrecioUnitarioBs As Decimal
+        ' Agrega esta línea para corregir el error:
+        Public Property Personalizacion As String = ""
     End Class
 
 End Class

@@ -298,49 +298,118 @@
     </div>
 </div>
 
-<!-- LINK WEB GENERADO -->
-<%If LinkWebGenerado Then%>
-<div class="link-section">
-    <div class="link-header">
-        <i class="ti ti-link" style="font-size: 18px; color: #2E7D32;"></i>
-        <h3 class="link-title">Link generado para el cliente</h3>
-    </div>
-    <div class="link-url"><%=LinkCompleto%></div>
-    <div class="link-actions">
-        <button type="button" class="btn btn-sm" onclick="copiarLink()">
-            <i class="ti ti-copy"></i>
-            Copiar
-        </button>
-        <button type="button" class="btn btn-sm" onclick="enviarWhatsApp()" style="background: #25D366; color: white; border-color: #25D366;">
-            <i class="ti ti-brand-whatsapp"></i>
-            Enviar WhatsApp
-        </button>
-        <button type="button" class="btn btn-sm" onclick="verEnNavegador()">
-            <i class="ti ti-external-link"></i>
-            Abrir
-        </button>
-    </div>
-    <div style="margin-top: 0.5rem; font-size: 12px; color: #2E7D32;">
-        <i class="ti ti-clock" style="font-size: 14px; vertical-align: -2px;"></i>
-        Valido hasta: <%=FechaExpiracion%>
-    </div>
-</div>
-<%End If%>
-
-<!-- PEDIDOS (ENTREGAS) -->
+<!-- ESTADO DEL LINK PARA EL CLIENTE -->
 <div class="panel">
     <div class="panel-head">
         <div class="panel-title">
-            <i class="ti ti-truck-delivery"></i>
-            Pedidos (Entregas)
-            <span style="background: #e0e0e0; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-left: 8px;">
-                <%=CantidadPedidos%> entregas
+            <i class="ti ti-link" style="color:#3B5BDB"></i>
+            Link para el cliente
+            <% If EstadoLink = 0 Then %>
+                <span style="background:#f5f5f5;color:#666;padding:2px 8px;border-radius:4px;font-size:11px;margin-left:8px">No enviado</span>
+            <% ElseIf EstadoLink = 1 AndAlso LinkExpirado Then %>
+                <span style="background:#FFEBEE;color:#C62828;padding:2px 8px;border-radius:4px;font-size:11px;margin-left:8px">Expirado</span>
+            <% ElseIf EstadoLink = 1 Then %>
+                <span style="background:#FFF3CD;color:#856404;padding:2px 8px;border-radius:4px;font-size:11px;margin-left:8px">Esperando cliente</span>
+            <% Else %>
+                <span style="background:#E8F5E9;color:#2E7D32;padding:2px 8px;border-radius:4px;font-size:11px;margin-left:8px">Cliente confirmó</span>
+            <% End If %>
+        </div>
+    </div>
+    <div class="panel-body" style="padding-top:0.75rem">
+
+        <% If EstadoLink = 0 Then %>
+            <p style="margin:0 0 12px;font-size:13px;color:#666">
+                Genera y envia al cliente un link para que confirme sus datos, direccion, fecha y metodo de pago.
+            </p>
+            <button type="button" onclick="enviarLinkCliente()" style="width:100%;max-width:320px;padding:11px;font-size:13px;background:#25D366;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:500">
+                <i class="ti ti-brand-whatsapp" style="font-size:15px;vertical-align:-2px;margin-right:5px"></i> Enviar link por WhatsApp
+            </button>
+
+        <% ElseIf EstadoLink = 1 AndAlso LinkExpirado Then %>
+            <div style="background:#FFEBEE;padding:10px 12px;border-radius:6px;margin-bottom:10px;font-size:12px;color:#C62828">
+                <i class="ti ti-alert-triangle" style="font-size:14px;vertical-align:-2px;margin-right:4px"></i>
+                El link expiro el <%=FechaExpiracion%>. Genera uno nuevo.
+            </div>
+            <button type="button" onclick="enviarLinkCliente()" style="padding:9px 16px;font-size:12px;background:#25D366;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:500">
+                <i class="ti ti-refresh" style="font-size:14px;vertical-align:-2px"></i> Regenerar y reenviar
+            </button>
+
+        <% ElseIf EstadoLink = 1 Then %>
+            <% If TokenAbiertoEn > DateTime.MinValue Then %>
+                <div style="background:#E3F2FD;padding:8px 12px;border-radius:6px;margin-bottom:8px;font-size:12px;color:#1565C0">
+                    <i class="ti ti-eye" style="font-size:14px;vertical-align:-2px;margin-right:4px"></i> Cliente abrio el link el <%=TokenAbiertoEn.ToString("dd/MM HH:mm")%>
+                </div>
+            <% Else %>
+                <div style="background:#FFF8E1;padding:8px 12px;border-radius:6px;margin-bottom:8px;font-size:12px;color:#F57F17">
+                    <i class="ti ti-clock" style="font-size:14px;vertical-align:-2px;margin-right:4px"></i> Cliente aun no abrio el link
+                </div>
+            <% End If %>
+            <div style="font-size:11px;color:#666;margin-bottom:10px">Expira en <%=HorasParaExpirar%>h &middot; <%=FechaExpiracion%></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" onclick="location.reload()" class="btn btn-sm">
+                    <i class="ti ti-refresh"></i> Verificar
+                </button>
+                <button type="button" onclick="copiarLink()" class="btn btn-sm">
+                    <i class="ti ti-copy"></i> Copiar link
+                </button>
+                <button type="button" onclick="enviarLinkCliente()" class="btn btn-sm">
+                    <i class="ti ti-brand-whatsapp" style="color:#25D366"></i> Reenviar WhatsApp
+                </button>
+            </div>
+
+        <% Else %>
+            <div style="background:#E8F5E9;padding:10px 12px;border-radius:6px;margin-bottom:10px;font-size:12px;color:#1B5E20">
+                <p style="margin:0;font-weight:500"><i class="ti ti-check" style="font-size:14px;vertical-align:-2px"></i> Cliente confirmo el <%=TokenConfirmadoEn.ToString("dd/MM HH:mm")%></p>
+                <p style="margin:4px 0 0;font-size:11px;color:#2E7D32">Revisa los datos abajo y confirma el pedido cuando estes listo</p>
+            </div>
+            <button type="button" onclick="copiarLink()" class="btn btn-sm">
+                <i class="ti ti-copy"></i> Copiar link
+            </button>
+        <% End If %>
+
+    </div>
+</div>
+
+<!-- BORRADORES (ENTREGAS EN PROCESO) -->
+<%If CantidadBorradores > 0 Then%>
+<div class="panel">
+    <div class="panel-head">
+        <div class="panel-title">
+            <i class="ti ti-pencil" style="color:#F9A825"></i>
+            Borradores en proceso
+            <span style="background: #FFF3CD; color:#856404; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-left: 8px;">
+                <%=CantidadBorradores%>
             </span>
         </div>
         <button type="button" class="btn btn-primary btn-sm" onclick="agregarEntrega()">
             <i class="ti ti-plus"></i>
-            Agregar pedido
+            Nueva entrega
         </button>
+    </div>
+    <div class="panel-body">
+        <div class="pedidos-section">
+            <%=HtmlBorradores%>
+        </div>
+    </div>
+</div>
+<%End If%>
+
+<!-- PEDIDOS CONFIRMADOS -->
+<div class="panel">
+    <div class="panel-head">
+        <div class="panel-title">
+            <i class="ti ti-truck-delivery"></i>
+            Pedidos confirmados
+            <span style="background: #e0e0e0; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-left: 8px;">
+                <%=CantidadPedidos%>
+            </span>
+        </div>
+        <%If CantidadBorradores = 0 Then%>
+        <button type="button" class="btn btn-primary btn-sm" onclick="agregarEntrega()">
+            <i class="ti ti-plus"></i>
+            Nueva entrega
+        </button>
+        <%End If%>
     </div>
     <div class="panel-body">
         
@@ -348,18 +417,24 @@
             <div class="pedidos-section">
                 <%=HtmlPedidos%>
             </div>
-        <%Else%>
+        <%ElseIf CantidadBorradores = 0 Then%>
             <div class="empty-state">
                 <div class="empty-icon">
                     <i class="ti ti-package-off"></i>
                 </div>
                 <div class="empty-text">
-                    No hay pedidos agregados aun
+                    No hay entregas registradas aun
                 </div>
                 <button type="button" class="btn btn-primary" onclick="agregarEntrega()">
                     <i class="ti ti-plus"></i>
-                    Agregar primer pedido
+                    Agregar primera entrega
                 </button>
+            </div>
+        <%Else%>
+            <div class="empty-state" style="padding: 1.5rem;">
+                <div class="empty-text" style="color:#999;font-size:13px">
+                    No hay pedidos confirmados todavia
+                </div>
             </div>
         <%End If%>
         
@@ -427,7 +502,6 @@
 <!-- Hidden fields -->
 <input type="hidden" id="hdPrePedidoId" value="<%=PrePedidoId%>" />
 <input type="hidden" id="hdCelular" value="<%=ClienteCelular%>" />
-<input type="hidden" id="hdLink" value="<%=LinkCompleto%>" />
 
 </asp:Content>
 
@@ -435,27 +509,53 @@
 <script type="text/javascript">
 // @ts-nocheck
 
+// ============================================================
+// LINK PUBLICO CLIENTE
+// ============================================================
+function enviarLinkCliente() {
+    var prepedidoId = parseInt(document.getElementById('hdPrePedidoId').value) || 0;
+    if (prepedidoId === 0) { alert('Pre-pedido invalido'); return; }
+
+    var formData = new FormData();
+    formData.append('accion', 'GENERAR_TOKEN');
+    formData.append('prepedido_id', prepedidoId);
+
+    fetch('PrePedido_Handler.ashx', { method: 'POST', body: formData })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (!data.ok) { alert('Error: ' + (data.msg || 'no se pudo generar el link')); return; }
+
+        var mensaje = 'Hola! Aqui esta el link para confirmar tu pedido en Miss Flores:\n' + data.url;
+        var url = data.celular_cliente
+            ? ('https://wa.me/' + data.celular_cliente + '?text=' + encodeURIComponent(mensaje))
+            : ('https://wa.me/?text=' + encodeURIComponent(mensaje));
+        window.open(url, '_blank');
+
+        setTimeout(function() { location.reload(); }, 800);
+    })
+    .catch(function() { alert('Error de red al generar el link'); });
+}
+
 function copiarLink() {
-    var link = document.getElementById('hdLink').value;
-    if (navigator.clipboard) {
-        navigator.clipboard.writeText(link).then(function() {
-            alert('✓ Link copiado al portapapeles');
-        });
-    } else {
-        alert('Link: ' + link);
-    }
-}
+    var prepedidoId = parseInt(document.getElementById('hdPrePedidoId').value) || 0;
+    if (prepedidoId === 0) return;
 
-function enviarWhatsApp() {
-    var celular = document.getElementById('hdCelular').value;
-    var link = document.getElementById('hdLink').value;
-    var url = 'https://wa.me/' + celular + '?text=' + encodeURIComponent(link);
-    window.open(url, '_blank');
-}
+    var formData = new FormData();
+    formData.append('accion', 'GENERAR_TOKEN');
+    formData.append('prepedido_id', prepedidoId);
 
-function verEnNavegador() {
-    var link = document.getElementById('hdLink').value;
-    window.open(link, '_blank');
+    fetch('PrePedido_Handler.ashx', { method: 'POST', body: formData })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (!data.ok) { alert('Error: ' + (data.msg || 'no se pudo obtener el link')); return; }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(data.url)
+                .then(function() { alert('Link copiado:\n' + data.url); })
+                .catch(function() { prompt('Copia este link:', data.url); });
+        } else {
+            prompt('Copia este link:', data.url);
+        }
+    });
 }
 
 function agregarEntrega() {
