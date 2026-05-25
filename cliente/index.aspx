@@ -90,6 +90,13 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:url("data:im
         <i class="ti ti-link-off" style="color:#C62828"></i>
         <h2>Link no valido</h2>
         <p>Este enlace no existe o ha sido cancelado.<br>Comunicate con Miss Flores para obtener uno nuevo.</p>
+        <% If ErrorDebug <> "" Then %>
+        <!-- DEBUG TEMPORAL - eliminar este bloque cuando el bug esté resuelto -->
+        <div style="margin-top:24px;padding:14px;background:#FFEBEE;border-left:4px solid #C62828;border-radius:6px;text-align:left;font-family:monospace;font-size:11px;color:#B71C1C;word-break:break-word;max-height:300px;overflow:auto">
+            <strong style="display:block;margin-bottom:6px;font-family:inherit">DEBUG (mostrar al técnico):</strong>
+            <%= Server.HtmlEncode(ErrorDebug) %>
+        </div>
+        <% End If %>
     </div>
 
 <% ElseIf Estado = "EXPIRADO" Then %>

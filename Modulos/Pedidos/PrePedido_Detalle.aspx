@@ -523,7 +523,15 @@ function enviarLinkCliente() {
     fetch('PrePedido_Handler.ashx', { method: 'POST', body: formData })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-        if (!data.ok) { alert('Error: ' + (data.msg || 'no se pudo generar el link')); return; }
+        if (!data.ok) {
+            // Si el handler devolvió entregas_incompletas, mostrar modal detallado
+            if (data.entregas_incompletas && data.entregas_incompletas.length > 0) {
+                mostrarModalEntregasIncompletas(data.entregas_incompletas);
+                return;
+            }
+            alert('Error: ' + (data.msg || 'no se pudo generar el link'));
+            return;
+        }
 
         var mensaje = 'Hola! Aqui esta el link para confirmar tu pedido en Miss Flores:\n' + data.url;
         var url = data.celular_cliente
@@ -547,7 +555,15 @@ function copiarLink() {
     fetch('PrePedido_Handler.ashx', { method: 'POST', body: formData })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-        if (!data.ok) { alert('Error: ' + (data.msg || 'no se pudo obtener el link')); return; }
+        if (!data.ok) {
+            // Mismo manejo: si hay entregas incompletas, modal detallado
+            if (data.entregas_incompletas && data.entregas_incompletas.length > 0) {
+                mostrarModalEntregasIncompletas(data.entregas_incompletas);
+                return;
+            }
+            alert('Error: ' + (data.msg || 'no se pudo obtener el link'));
+            return;
+        }
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(data.url)
                 .then(function() { alert('Link copiado:\n' + data.url); })
@@ -556,6 +572,86 @@ function copiarLink() {
             prompt('Copia este link:', data.url);
         }
     });
+}
+
+// ============================================================
+// MODAL: entregas incompletas (bloquea envío del link)
+// ============================================================
+function mostrarModalEntregasIncompletas(lista) {
+    // Crear overlay si no existe
+    var overlay = document.getElementById('modalValidacionLink');
+    if (overlay) overlay.parentNode.removeChild(overlay);
+
+    overlay = document.createElement('div');
+    overlay.id = 'modalValidacionLink';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;overflow-y:auto;padding:20px;display:flex;align-items:flex-start;justify-content:center';
+
+    var prepedidoId = parseInt(document.getElementById('hdPrePedidoId').value) || 0;
+
+    var html = '<div style="background:white;border-radius:12px;max-width:560px;width:100%;margin-top:40px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,0.2)">';
+
+    // Header rojo de alerta
+    html += '<div style="background:#FFEBEE;color:#B71C1C;padding:16px 22px;display:flex;align-items:center;gap:12px;border-bottom:2px solid #FFCDD2">';
+    html += '<i class="ti ti-alert-triangle" style="font-size:28px;color:#C62828"></i>';
+    html += '<div style="flex:1">';
+    html += '<p style="margin:0;font-size:16px;font-weight:600">No se puede enviar el link</p>';
+    html += '<p style="margin:2px 0 0;font-size:13px;color:#7F1D1D">Faltan datos en ' + lista.length + ' entrega' + (lista.length === 1 ? '' : 's') + '. El cliente vería un link inválido.</p>';
+    html += '</div>';
+    html += '<button type="button" onclick="cerrarModalValidacion()" style="border:none;background:none;cursor:pointer;font-size:22px;color:#999"><i class="ti ti-x"></i></button>';
+    html += '</div>';
+
+    // Lista de entregas con campos faltantes
+    html += '<div style="padding:18px 22px;max-height:55vh;overflow-y:auto">';
+    lista.forEach(function(item) {
+        html += '<div style="border:1px solid #FFCDD2;background:#FFF5F5;border-radius:10px;padding:12px 14px;margin-bottom:10px">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+        if (item.entrega_id > 0) {
+            html += '<p style="margin:0;font-size:14px;font-weight:600;color:#B71C1C">Entrega ' + item.numero + ' &mdash; ' + escapeTexto(item.receptor) + '</p>';
+            html += '<button type="button" onclick="irAEntrega(' + item.entrega_id + ')" style="font-size:12px;padding:5px 12px;background:#3B5BDB;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500"><i class="ti ti-edit" style="font-size:13px;vertical-align:-2px"></i> Completar</button>';
+        } else {
+            html += '<p style="margin:0;font-size:14px;font-weight:600;color:#B71C1C">Pre-pedido sin entregas</p>';
+            html += '<button type="button" onclick="agregarEntrega()" style="font-size:12px;padding:5px 12px;background:#3B5BDB;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500"><i class="ti ti-plus" style="font-size:13px;vertical-align:-2px"></i> Crear entrega</button>';
+        }
+        html += '</div>';
+        html += '<ul style="margin:0;padding-left:20px;font-size:13px;color:#7F1D1D;line-height:1.7">';
+        item.faltantes.forEach(function(campo) {
+            html += '<li>' + escapeTexto(campo) + '</li>';
+        });
+        html += '</ul>';
+        html += '</div>';
+    });
+    html += '</div>';
+
+    // Footer
+    html += '<div style="padding:12px 22px;background:#FAFAFA;border-top:1px solid #f0f0f0;display:flex;justify-content:flex-end;gap:8px">';
+    html += '<button type="button" onclick="cerrarModalValidacion()" style="padding:8px 18px;font-size:13px;background:white;color:#555;border:1px solid #d0d0d0;border-radius:6px;cursor:pointer;font-weight:500">Cerrar</button>';
+    html += '</div>';
+
+    html += '</div>';
+    overlay.innerHTML = html;
+    document.body.appendChild(overlay);
+
+    // Cerrar al hacer click fuera del modal
+    overlay.addEventListener('click', function(ev) {
+        if (ev.target === overlay) cerrarModalValidacion();
+    });
+}
+
+function cerrarModalValidacion() {
+    var overlay = document.getElementById('modalValidacionLink');
+    if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+}
+
+function irAEntrega(entregaId) {
+    var ppId = document.getElementById('hdPrePedidoId').value;
+    window.location.href = 'Entrega_Agregar.aspx?prepedido=' + ppId + '&entrega=' + entregaId;
+}
+
+function escapeTexto(s) {
+    if (s === null || s === undefined) return '';
+    var d = document.createElement('div');
+    d.textContent = String(s);
+    return d.innerHTML;
 }
 
 function agregarEntrega() {

@@ -76,16 +76,47 @@ Partial Public Class Modulos_Pedidos_PrePedido_Crear
             Return
         End If
 
-        ' Determinar país según celular
-        Dim paisId As Integer = 0
-        If celular.Length > 0 Then
-            If celular.StartsWith("+591") OrElse celular.StartsWith("591") Then
-                paisId = 1
-            ElseIf celular.StartsWith("+51") OrElse celular.StartsWith("51") Then
-                paisId = 2
-            ElseIf (celular.StartsWith("6") OrElse celular.StartsWith("7")) AndAlso
-                   (celular.Length = 7 OrElse celular.Length = 8) Then
-                paisId = 1
+        ' ============================================================
+        ' NORMALIZAR CELULAR: quitar espacios, guiones, paréntesis
+        ' para que no supere los 20 chars del campo en BD
+        ' Ejemplo: "+591 72 020 979" → "+59172020979"
+        ' ============================================================
+        Dim celularNormalizado As String = celular.Replace(" ", "")
+        celularNormalizado = celularNormalizado.Replace("-", "")
+        celularNormalizado = celularNormalizado.Replace("(", "")
+        celularNormalizado = celularNormalizado.Replace(")", "")
+
+        ' Validar longitud máxima después de normalizar (campo VARCHAR(20))
+        If celularNormalizado.Length > 20 Then
+            MensajeAlerta = "El número de celular es demasiado largo. Máximo 20 caracteres sin espacios."
+            ValorCelular = celular
+            ValorNombre = nombre
+            ValorApellidos = apellidos
+            ValorEmail = email
+            Return
+        End If
+
+        ' ============================================================
+        ' DETERMINAR PAÍS según celular normalizado
+        ' paisId = DBNull.Value cuando no se puede determinar el país
+        ' (evita el error de INTEGER 0 que no existe en FLORERIA_Pais)
+        ' ============================================================
+        Dim paisIdObj As Object = DBNull.Value
+
+        If celularNormalizado.Length > 0 Then
+            If celularNormalizado.StartsWith("+591") OrElse celularNormalizado.StartsWith("591") Then
+                ' Bolivia con prefijo
+                paisIdObj = 1
+            ElseIf (celularNormalizado.StartsWith("6") OrElse celularNormalizado.StartsWith("7")) AndAlso
+                   (celularNormalizado.Length = 7 OrElse celularNormalizado.Length = 8) Then
+                ' Bolivia sin prefijo (número local)
+                paisIdObj = 1
+            ElseIf celularNormalizado.StartsWith("+51") OrElse celularNormalizado.StartsWith("51") Then
+                ' Perú
+                paisIdObj = DBNull.Value  ' País 2 (Perú) puede no existir en BD aún
+            Else
+                ' Internacional u otro país → NULL en BD
+                paisIdObj = DBNull.Value
             End If
         End If
 
@@ -105,11 +136,12 @@ Partial Public Class Modulos_Pedidos_PrePedido_Crear
 
                 ' ============================================================
                 ' CREAR PRE-PEDIDO (O DETECTAR DUPLICADO)
+                ' Usamos celularNormalizado para no superar VARCHAR(20)
                 ' ============================================================
                 Using cmd As New SqlCommand("FLORERIA_sp_PrePedido_Crear", conn)
                     cmd.CommandType = CommandType.StoredProcedure
                     cmd.Parameters.AddWithValue("@tipo_registro", tipoRegistro)
-                    cmd.Parameters.AddWithValue("@cliente_celular", celular)
+                    cmd.Parameters.AddWithValue("@cliente_celular", celularNormalizado)
                     cmd.Parameters.AddWithValue("@agente_id", SesionHelper.ObtenerUsuarioId(HttpContext.Current))
                     cmd.Parameters.AddWithValue("@ip", ip)
 
@@ -130,7 +162,6 @@ Partial Public Class Modulos_Pedidos_PrePedido_Crear
                             codigoGenerado = dr("codigo").ToString()
 
                             ' Leer flag ya_existia de forma defensiva
-                            ' (puede no venir si el SP es version vieja)
                             Try
                                 Dim idxYaExistia As Integer = dr.GetOrdinal("ya_existia")
                                 If Not dr.IsDBNull(idxYaExistia) Then
@@ -181,7 +212,8 @@ Partial Public Class Modulos_Pedidos_PrePedido_Crear
                             cmd2.Parameters.AddWithValue("@cliente_email", email)
                         End If
 
-                        cmd2.Parameters.AddWithValue("@cliente_pais_id", paisId)
+                        ' paisIdObj ya es DBNull.Value si no se pudo determinar el país
+                        cmd2.Parameters.AddWithValue("@cliente_pais_id", paisIdObj)
                         cmd2.Parameters.AddWithValue("@cliente_ciudad_id", DBNull.Value)
                         cmd2.Parameters.AddWithValue("@modificado_por", SesionHelper.ObtenerUsuarioId(HttpContext.Current))
                         cmd2.Parameters.AddWithValue("@ip", ip)

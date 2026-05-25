@@ -48,6 +48,9 @@ Partial Public Class Cliente_Index
     Public Property TotalGeneralBs As Decimal = 0
     Public Property TotalGeneralUsd As Decimal = 0
 
+    ' --- DEBUG: capturar mensaje real de excepción para diagnóstico ---
+    Public Property ErrorDebug As String = ""
+
     ' ============================================================
     ' Page_Load (publico, sin VerificarSesion)
     ' ============================================================
@@ -149,13 +152,56 @@ Partial Public Class Cliente_Index
         Catch ex As Exception
             System.Diagnostics.Debug.WriteLine("ERROR cliente/index Page_Load: " & ex.Message)
             Estado = "INVALIDO"
+            ' DEBUG TEMPORAL: capturar mensaje + stack para diagnóstico
+            ErrorDebug = ex.GetType().Name & ": " & ex.Message
+            If ex.InnerException IsNot Nothing Then
+                ErrorDebug &= " | INNER: " & ex.InnerException.Message
+            End If
+            ErrorDebug &= " | STACK: " & ex.StackTrace
         End Try
     End Sub
 
     ' ============================================================
     ' CargarEntregas - lista las entregas BORRADOR del pre-pedido
+    '
+    ' FIX MARS: ANTES se llamaba a ObtenerHtmlProductos(conn, eId) DENTRO del
+    ' While dr.Read() principal. Eso abre un segundo DataReader sobre la misma
+    ' conexion y SQL Server tira:
+    '   "There is already an open DataReader associated with this Command"
+    '
+    ' Solucion: precargamos TODOS los productos en un Dictionary antes de
+    ' empezar el reader principal, y dentro del bucle solo consultamos el dict.
     ' ============================================================
     Private Sub CargarEntregas(conn As SqlConnection)
+        ' --- 0. Precargar productos de TODAS las entregas BORRADOR de este prepedido ---
+        Dim productosPorEntrega As New System.Collections.Generic.Dictionary(Of Integer, String)
+        Dim sqlProds As String = "SELECT d.prepedido_entrega_id, d.nombre_producto, d.cantidad, d.subtotal_bs " & _
+            "FROM FLORERIA_PrePedido_Entrega_Detalle d " & _
+            "INNER JOIN FLORERIA_PrePedido_Entrega e ON d.prepedido_entrega_id = e.prepedido_entrega_id " & _
+            "WHERE e.prepedido_id = @id AND e.estado = 'BORRADOR' " & _
+            "ORDER BY d.prepedido_entrega_id, d.detalle_id"
+
+        Using cmdP As New SqlCommand(sqlProds, conn)
+            cmdP.Parameters.AddWithValue("@id", PrePedidoId)
+            Using drP As SqlDataReader = cmdP.ExecuteReader()
+                While drP.Read()
+                    Dim eid As Integer = CInt(drP("prepedido_entrega_id"))
+                    Dim nombre As String = drP("nombre_producto").ToString()
+                    Dim cant As Integer = CInt(drP("cantidad"))
+                    Dim sub_ As Decimal = CDec(drP("subtotal_bs"))
+                    Dim cantTxt As String = If(cant > 1, " x" & cant, "")
+                    Dim linea As String = "      <div class='res-line'><span>" & HE(nombre) & cantTxt & "</span><span>Bs " & sub_.ToString("N2") & "</span></div>" & vbCrLf
+
+                    If productosPorEntrega.ContainsKey(eid) Then
+                        productosPorEntrega(eid) = productosPorEntrega(eid) & linea
+                    Else
+                        productosPorEntrega(eid) = linea
+                    End If
+                End While
+            End Using
+        End Using
+
+        ' --- 1. Ahora si: consulta principal de entregas ---
         Dim sb As New System.Text.StringBuilder()
         Dim sql As String = "SELECT e.prepedido_entrega_id, e.receptor_nombre, e.receptor_celular, " &
             "e.tipo_entrega, e.direccion, e.referencia, e.gps, e.fecha_entrega, " &
@@ -193,7 +239,7 @@ Partial Public Class Cliente_Index
                     Dim zona As String = If(IsDBNull(dr("zona_nombre")), "", dr("zona_nombre").ToString())
                     Dim slot As String = If(IsDBNull(dr("slot_etiqueta")), "", dr("slot_etiqueta").ToString())
                     Dim recargoSlot As Decimal = If(IsDBNull(dr("slot_recargo_bs")), 0, CDec(dr("slot_recargo_bs")))
-                    Dim esExpress As Boolean = CBool(dr("es_express"))
+                    Dim esExpress As Boolean = If(IsDBNull(dr("es_express")), False, CBool(dr("es_express")))
                     Dim recargoExpress As Decimal = If(esExpress, 50D, 0D)
                     Dim descuento As Decimal = If(IsDBNull(dr("descuento_valor")), 0, CDec(dr("descuento_valor")))
                     Dim prodBs As Decimal = CDec(dr("prod_bs"))
@@ -207,8 +253,11 @@ Partial Public Class Cliente_Index
                     Dim totalEntrega As Decimal = prodBs + envioBs + recargoSlot + recargoExpress - descuento
                     TotalGeneralBs += totalEntrega
 
-                    ' Productos detalle
-                    Dim htmlProds As String = ObtenerHtmlProductos(conn, eId)
+                    ' Productos detalle - se obtienen del Dictionary precargado (NO se abre nuevo reader)
+                    Dim htmlProds As String = ""
+                    If productosPorEntrega.ContainsKey(eId) Then
+                        htmlProds = productosPorEntrega(eId)
+                    End If
 
                     ' Construir tarjeta
                     sb.AppendLine("<div class='entrega-card' data-entrega-id='" & eId & "'>")

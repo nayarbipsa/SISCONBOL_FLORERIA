@@ -33,6 +33,8 @@ Public Class PrePedido_Handler
             Select Case accion
                 Case "GENERAR_TOKEN"
                     GenerarToken(context)
+                Case "VALIDAR_PARA_LINK"
+                    ValidarParaLink(context)
                 Case Else
                     context.Response.Write("{""ok"":false,""msg"":""Accion no valida""}")
             End Select
@@ -86,6 +88,15 @@ Public Class PrePedido_Handler
 
             If Not existe Then
                 context.Response.Write("{""ok"":false,""msg"":""El pre-pedido no existe""}")
+                Return
+            End If
+
+            ' ----- VALIDACION OBLIGATORIA: bloquear envio si hay entregas incompletas -----
+            ' Esto previene que el cliente reciba un link y vea "Link invalido"
+            ' por campos faltantes.
+            Dim jsonInc As String = ObtenerJsonEntregasIncompletas(conn, ppId)
+            If jsonInc <> "" Then
+                context.Response.Write("{""ok"":false,""msg"":""Hay entregas incompletas. Complete los campos faltantes antes de enviar el link al cliente."",""entregas_incompletas"":" & jsonInc & "}")
                 Return
             End If
 
@@ -145,6 +156,136 @@ Public Class PrePedido_Handler
             context.Response.Write(sb.ToString())
         End Using
     End Sub
+
+    ' ============================================================
+    ' VALIDAR_PARA_LINK
+    ' Recibe: prepedido_id
+    ' Devuelve: ok=true si todo esta listo, ok=false con lista detallada si faltan campos.
+    ' ============================================================
+    Private Sub ValidarParaLink(context As HttpContext)
+        Dim ppId As Integer = 0
+        Integer.TryParse(context.Request.Form("prepedido_id"), ppId)
+
+        If ppId <= 0 Then
+            context.Response.Write("{""ok"":false,""msg"":""prepedido_id invalido""}")
+            Return
+        End If
+
+        Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
+            conn.Open()
+            Dim jsonInc As String = ObtenerJsonEntregasIncompletas(conn, ppId)
+            If jsonInc = "" Then
+                context.Response.Write("{""ok"":true,""msg"":""Listo para enviar""}")
+            Else
+                context.Response.Write("{""ok"":false,""msg"":""Hay entregas incompletas"",""entregas_incompletas"":" & jsonInc & "}")
+            End If
+        End Using
+    End Sub
+
+    ' ============================================================
+    ' ObtenerJsonEntregasIncompletas
+    ' Devuelve el JSON array de entregas incompletas, o "" si todas estan completas.
+    ' Construye el JSON manualmente para evitar dependencias adicionales.
+    '
+    ' Reglas (solo lo que el AGENTE debe llenar antes de enviar el link):
+    '   - Fecha de entrega
+    '   - Slot/Horario
+    '   - Ciudad
+    '   - Si tipo_entrega = 'DOMICILIO': zona_id
+    '   - Si tipo_entrega = 'RECOJO_SUCURSAL': sucursal_id
+    '   - Al menos 1 producto en FLORERIA_PrePedido_Entrega_Detalle
+    '
+    ' NO se valida (lo llena el cliente final):
+    '   - receptor_nombre, receptor_celular, direccion
+    ' ============================================================
+    Private Function ObtenerJsonEntregasIncompletas(conn As SqlConnection, prepedidoId As Integer) As String
+        Dim sql As String = "SELECT e.prepedido_entrega_id, e.receptor_nombre, " & _
+            "e.tipo_entrega, e.fecha_entrega, e.slot_id, " & _
+            "e.ciudad_id, e.zona_id, e.sucursal_id, " & _
+            "ISNULL((SELECT COUNT(*) FROM FLORERIA_PrePedido_Entrega_Detalle d " & _
+            "        WHERE d.prepedido_entrega_id = e.prepedido_entrega_id), 0) AS cant_productos " & _
+            "FROM FLORERIA_PrePedido_Entrega e " & _
+            "WHERE e.prepedido_id = @id AND e.estado = 'BORRADOR' " & _
+            "ORDER BY e.prepedido_entrega_id"
+
+        Dim json As New System.Text.StringBuilder()
+        json.Append("[")
+
+        Dim numero As Integer = 0
+        Dim primero As Boolean = True
+        Dim hayIncompletas As Boolean = False
+
+        Using cmd As New SqlCommand(sql, conn)
+            cmd.Parameters.AddWithValue("@id", prepedidoId)
+            Using dr As SqlDataReader = cmd.ExecuteReader()
+                While dr.Read()
+                    numero = numero + 1
+                    Dim eId As Integer = CInt(dr("prepedido_entrega_id"))
+                    Dim receptor As String = ""
+                    If Not IsDBNull(dr("receptor_nombre")) Then receptor = dr("receptor_nombre").ToString().Trim()
+                    Dim tipoEntrega As String = "DOMICILIO"
+                    If Not IsDBNull(dr("tipo_entrega")) Then tipoEntrega = dr("tipo_entrega").ToString()
+
+                    Dim faltantes As New System.Collections.Generic.List(Of String)
+
+                    If IsDBNull(dr("fecha_entrega")) Then faltantes.Add("Fecha de entrega")
+                    If IsDBNull(dr("slot_id")) Then faltantes.Add("Horario")
+                    If IsDBNull(dr("ciudad_id")) Then faltantes.Add("Ciudad")
+
+                    If tipoEntrega = "DOMICILIO" Then
+                        If IsDBNull(dr("zona_id")) Then faltantes.Add("Zona")
+                    ElseIf tipoEntrega = "RECOJO_SUCURSAL" Then
+                        If IsDBNull(dr("sucursal_id")) Then faltantes.Add("Sucursal de recojo")
+                    End If
+
+                    If CInt(dr("cant_productos")) = 0 Then faltantes.Add("Sin productos (al menos 1)")
+
+                    If faltantes.Count > 0 Then
+                        hayIncompletas = True
+                        If receptor = "" Then receptor = "Sin destinatario"
+                        If Not primero Then json.Append(",")
+                        primero = False
+                        json.Append("{""numero"":" & numero)
+                        json.Append(",""entrega_id"":" & eId)
+                        json.Append(",""receptor"":""" & EscapeJson(receptor) & """")
+                        json.Append(",""faltantes"":[")
+                        For i As Integer = 0 To faltantes.Count - 1
+                            If i > 0 Then json.Append(",")
+                            json.Append("""" & EscapeJson(faltantes(i)) & """")
+                        Next
+                        json.Append("]}")
+                    End If
+                End While
+            End Using
+        End Using
+
+        ' Caso especial: no hay ninguna entrega
+        If numero = 0 Then
+            hayIncompletas = True
+            json.Append("{""numero"":0,""entrega_id"":0,""receptor"":""-"",""faltantes"":[""No hay ninguna entrega creada""]}")
+        End If
+
+        json.Append("]")
+
+        If hayIncompletas Then
+            Return json.ToString()
+        Else
+            Return ""
+        End If
+    End Function
+
+    ' Helper: escapar caracteres especiales para JSON
+    Private Function EscapeJson(s As String) As String
+        If s Is Nothing Then Return ""
+        Dim r As String = s
+        r = r.Replace("\", "\\")
+        r = r.Replace("""", "\""")
+        r = r.Replace(vbCrLf, " ")
+        r = r.Replace(vbLf, " ")
+        r = r.Replace(vbCr, " ")
+        r = r.Replace(vbTab, " ")
+        Return r
+    End Function
 
     Public ReadOnly Property IsReusable As Boolean Implements IHttpHandler.IsReusable
         Get

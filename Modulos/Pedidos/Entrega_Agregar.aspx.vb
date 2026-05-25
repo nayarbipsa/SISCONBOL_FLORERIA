@@ -340,7 +340,7 @@ Partial Public Class Modulos_Pedidos_Entrega_Agregar
                                     sb.AppendLine("    <span class='ea-prod-detail'><span>" & Server.HtmlEncode(personalizacion) & "</span></span>")
                                 End If
                                 sb.AppendLine("  </div>")
-                                sb.AppendLine("  <span style='font-weight:500'>Bs " & precioBs.ToString("N2") & "</span>")
+                                sb.AppendLine("  <span class='ea-prod-precio' data-precio-bs='" & precioBs.ToString("F2") & "' style='font-weight:500'>Bs " & precioBs.ToString("N2") & "</span>")
                             End If
 
                             sb.AppendLine("  <button type='button' style='border:none;background:none;color:#E53935;cursor:pointer;font-size:14px;padding:0' onclick='eliminarDetalle(" & detalleId & ", this)'><i class='ti ti-trash'></i></button>")

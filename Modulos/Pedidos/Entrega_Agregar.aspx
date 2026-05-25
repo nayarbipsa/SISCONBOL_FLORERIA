@@ -13,12 +13,12 @@
 .ea-bar-sep { width:1px; height:20px; background:#e0e0e0; }
 .ea-productos { background:white; border:1px solid #e0e0e0; border-radius:12px; padding:16px 20px; margin-bottom:8px; }
 .ea-prod-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid #f0f0f0; }
-.ea-prod-row { display:grid; grid-template-columns:2fr 85px 30px; gap:6px; align-items:center; padding:8px 6px; background:#fafafa; border-radius:8px; margin-bottom:3px; font-size:12px; }
+.ea-prod-row { display:grid; grid-template-columns:1fr 110px 36px; gap:10px; align-items:center; padding:10px 12px; background:#fafafa; border-radius:8px; margin-bottom:4px; font-size:14px; }
 .ea-prod-row.personalizado { background:#FFF8E1; border:1px solid #FFE082; }
-.ea-prod-name { font-weight:500; }
-.ea-prod-detail { font-size:10px; color:#999; }
+.ea-prod-name { font-weight:500; font-size:14px; display:block; word-break:break-word; line-height:1.35; }
+.ea-prod-detail { font-size:12px; color:#999; display:block; margin-top:2px; }
 .ea-prod-detail span { color:#667eea; }
-.ea-prod-custom { font-size:10px; color:#F57F17; }
+.ea-prod-custom { font-size:12px; color:#F57F17; display:block; margin-top:2px; word-break:break-word; }
 .ea-btn-buscar { font-size:12px; background:#EBF0FF; color:#3B5BDB; border:none; padding:5px 12px; border-radius:8px; cursor:pointer; }
 .ea-btn-buscar:hover { background:#D6E0FF; }
 .ea-btn-wsp { font-size:11px; padding:5px 10px; background:#E8F5E9; color:#2E7D32; border:1px solid #A5D6A7; border-radius:8px; }
@@ -59,7 +59,7 @@
 .ea-descuento-input { display:flex; align-items:center; gap:4px; }
 .ea-pago-resumen { margin-top:10px; padding-top:8px; border-top:1px solid #f0f0f0; font-size:13px; }
 .ea-modal-overlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.45); z-index:9999; overflow-y:auto; padding:20px; }
-.ea-modal { background:white; border-radius:12px; max-width:620px; margin:0 auto; border:1px solid #e0e0e0; }
+.ea-modal { background:white; border-radius:12px; max-width:820px; margin:0 auto; border:1px solid #e0e0e0; }
 .ea-modal-sm { max-width:450px; margin:40px auto; }
 .ea-modal-header { padding:12px 20px; border-bottom:1px solid #f0f0f0; display:flex; justify-content:space-between; align-items:center; background:#fafafa; border-radius:12px 12px 0 0; }
 .ea-modal-close { border:none; background:none; cursor:pointer; font-size:18px; color:#999; }
@@ -68,6 +68,52 @@
 .ea-descuento-row { display:flex; justify-content:space-between; align-items:center; margin-top:4px; padding-top:4px; border-top:1px solid #f0f0f0; }
 .ea-descuento-input { display:flex; align-items:center; gap:4px; }
 .ea-pago-resumen { margin-top:10px; padding-top:8px; border-top:1px solid #f0f0f0; font-size:13px; }
+
+/* === TOAST DE NOTIFICACIÓN === */
+.ea-toast-container { position:fixed; top:20px; right:20px; z-index:10000; display:flex; flex-direction:column; gap:8px; pointer-events:none; }
+.ea-toast { background:white; border-radius:10px; padding:12px 18px; min-width:260px; max-width:380px; box-shadow:0 4px 20px rgba(0,0,0,0.15); display:flex; align-items:center; gap:10px; font-size:14px; font-weight:500; pointer-events:auto; animation:eaToastIn 0.25s ease-out; border-left:4px solid #ccc; }
+.ea-toast.ok { border-left-color:#2E7D32; color:#1B5E20; }
+.ea-toast.ok i { color:#2E7D32; font-size:22px; }
+.ea-toast.warn { border-left-color:#F57F17; color:#E65100; }
+.ea-toast.warn i { color:#F57F17; font-size:22px; }
+.ea-toast.err { border-left-color:#C62828; color:#B71C1C; }
+.ea-toast.err i { color:#C62828; font-size:22px; }
+.ea-toast.fade-out { animation:eaToastOut 0.3s ease-in forwards; }
+@keyframes eaToastIn { from { transform:translateX(420px); opacity:0; } to { transform:translateX(0); opacity:1; } }
+@keyframes eaToastOut { from { transform:translateX(0); opacity:1; } to { transform:translateX(420px); opacity:0; } }
+
+/* === RESPONSIVE: CELULAR/TABLET PEQUEÑO (≤768px) === */
+@media (max-width: 768px) {
+    .ea-bar { flex-direction:column; align-items:stretch; gap:8px; padding:10px 12px; }
+    .ea-bar-left { flex-wrap:wrap; justify-content:space-between; }
+    .ea-bar-sep { display:none; }
+    .ea-grid-2 { grid-template-columns:1fr; gap:8px; }
+    .ea-grid-3 { grid-template-columns:1fr; gap:8px; }
+    .ea-check-grid { grid-template-columns:1fr; }
+    .ea-link-states { grid-template-columns:1fr 1fr 1fr; gap:4px; }
+
+    /* Modales ocupan casi toda la pantalla */
+    .ea-modal-overlay { padding:8px; }
+    .ea-modal, .ea-modal-sm { max-width:100%; margin:0 auto; }
+    .ea-modal-header { padding:10px 14px; }
+
+    /* Filas de productos: nombre + precio en línea, botón eliminar al lado */
+    .ea-prod-row { grid-template-columns:1fr 90px 32px; gap:6px; padding:8px 10px; }
+
+    /* Fila de pagos: cambia a 2 filas (la primera nombre + monto, segunda fecha + estado + acción) */
+    .ea-pago-row { grid-template-columns:1fr 90px 30px; grid-auto-rows:auto; padding:8px 6px; gap:4px; }
+    .ea-pago-row > span:nth-child(3), .ea-pago-row > span:nth-child(4), .ea-pago-row > span:nth-child(5) { font-size:10px; color:#aaa; }
+    .ea-pago-header { display:none; }
+
+    /* Toast ocupa más espacio en mobile */
+    .ea-toast-container { top:10px; left:10px; right:10px; }
+    .ea-toast { min-width:0; max-width:100%; }
+
+    /* Resumen / panels más compactos */
+    .ea-resumen, .ea-productos { padding:12px 14px; }
+    .ea-section-header { padding:10px 14px; }
+    .ea-section-body { padding:0 14px 12px; }
+}
 </style>
 </asp:Content>
 
@@ -95,7 +141,7 @@
 <!-- BARRA ACCIONES -->
 <div class="ea-bar">
     <div class="ea-bar-left">
-        <select id="ddMoneda" name="ddMoneda" class="ea-select" style="width:auto;padding:3px 8px;font-size:12px" onchange="guardarCampo('moneda', this.value)">
+        <select id="ddMoneda" name="ddMoneda" class="ea-select" style="width:auto;padding:3px 8px;font-size:12px" onchange="guardarCampo('moneda', this.value); calcularSubtotal();">
             <option value="BOB" <%=If(MonedaSeleccionada = "BOB", "selected", "")%>>Bs</option>
             <option value="USD" <%=If(MonedaSeleccionada = "USD", "selected", "")%>>USD</option>
         </select>
@@ -129,7 +175,7 @@
         </div>
         <button type="button" class="ea-btn-buscar" onclick="abrirBuscadorProductos()"><i class="ti ti-search" style="font-size:14px;vertical-align:-2px" aria-hidden="true"></i> Buscar producto</button>
     </div>
-    <div style="display:grid;grid-template-columns:2fr 85px 30px;gap:6px;font-size:10px;color:#aaa;text-transform:uppercase;padding:0 6px;margin-bottom:4px">
+    <div style="display:grid;grid-template-columns:1fr 110px 36px;gap:10px;font-size:11px;color:#aaa;text-transform:uppercase;padding:0 12px;margin-bottom:4px">
         <span>Producto</span><span>Precio</span><span></span>
     </div>
     <div id="divProductos"><%=HtmlProductos%></div>
@@ -173,23 +219,23 @@
             <div class="ea-grid-2" style="margin-bottom:8px">
                 <div>
                     <label class="ea-label">Zona *</label>
-                    <input type="text" id="txZonaBuscar" class="ea-input" placeholder="Escriba para buscar zona..." list="dlZonas" autocomplete="off" value="<%=ValorZonaTexto%>" onchange="seleccionarZona(this.value)">
+                    <input type="text" id="txZonaBuscar" class="ea-input" placeholder="Escriba para buscar zona..." list="dlZonas" autocomplete="off" value="<%=ValorZonaTexto%>" onchange="seleccionarZona(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
                     <datalist id="dlZonas"></datalist>
                     <input type="hidden" id="hdZonaId" name="ddZona" value="<%=If(ValorZonaId>0, ValorZonaId.ToString(), "")%>">
                 </div>
                 <div>
                     <label class="ea-label">Direccion *</label>
-                    <input type="text" id="txDireccion" name="txDireccion" class="ea-input" value="<%=ValorDireccion%>" onblur="guardarCampo('direccion', this.value)">
+                    <input type="text" id="txDireccion" name="txDireccion" class="ea-input" value="<%=ValorDireccion%>" onblur="guardarCampo('direccion', this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();return false;}">
                 </div>
             </div>
             <div class="ea-grid-2">
                 <div>
                     <label class="ea-label">Referencia</label>
-                    <input type="text" id="txReferencia" name="txReferencia" class="ea-input" value="<%=ValorReferencia%>" onblur="guardarCampo('referencia', this.value)">
+                    <input type="text" id="txReferencia" name="txReferencia" class="ea-input" value="<%=ValorReferencia%>" onblur="guardarCampo('referencia', this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();return false;}">
                 </div>
                 <div>
                     <label class="ea-label">GPS / Nota</label>
-                    <input type="text" id="txGps" name="txGps" class="ea-input" value="<%=ValorGps%>" placeholder="Coordenadas o nota interna..." onblur="guardarCampo('gps', this.value)">
+                    <input type="text" id="txGps" name="txGps" class="ea-input" value="<%=ValorGps%>" placeholder="Coordenadas o nota interna..." onblur="guardarCampo('gps', this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();return false;}">
                 </div>
             </div>
         </div>
@@ -219,7 +265,7 @@
         <div class="ea-grid-3" style="padding-top:10px">
             <div>
                 <label class="ea-label">Fecha de entrega *</label>
-                <input type="date" id="txFecha" name="txFecha" class="ea-input" value="<%=ValorFecha%>" min="<%=FechaMinima%>" onchange="guardarCampo('fecha_entrega', this.value)">
+                <input type="date" id="txFecha" name="txFecha" class="ea-input" value="<%=ValorFecha%>" min="<%=FechaMinima%>" onchange="guardarCampo('fecha_entrega', this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
             </div>
             <div>
                 <label class="ea-label">Horario</label>
@@ -252,11 +298,11 @@
         <div class="ea-grid-3" style="padding-top:10px;margin-bottom:10px">
             <div>
                 <label class="ea-label">Persona que recibe *</label>
-                <input type="text" id="txReceptor" name="txReceptor" class="ea-input" value="<%=ValorReceptor%>" onblur="guardarCampo('receptor_nombre', this.value)">
+                <input type="text" id="txReceptor" name="txReceptor" class="ea-input" value="<%=ValorReceptor%>" onblur="guardarCampo('receptor_nombre', this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();return false;}">
             </div>
             <div>
                 <label class="ea-label">Celular *</label>
-                <input type="text" id="txCelularReceptor" name="txCelularReceptor" class="ea-input" value="<%=ValorCelularReceptor%>" onblur="guardarCampo('receptor_celular', this.value)">
+                <input type="text" id="txCelularReceptor" name="txCelularReceptor" class="ea-input" value="<%=ValorCelularReceptor%>" onblur="guardarCampo('receptor_celular', this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();return false;}">
             </div>
             <div>
                 <label class="ea-label">Ocasion</label>
@@ -279,7 +325,7 @@
         </div>
         <div>
             <label class="ea-label">Firma <span style="color:#999;font-weight:400">(100)</span></label>
-            <input type="text" id="txFirma" name="txFirma" class="ea-input" value="<%=ValorFirma%>" maxlength="100" onblur="guardarCampo('firma_tarjeta', this.value)">
+            <input type="text" id="txFirma" name="txFirma" class="ea-input" value="<%=ValorFirma%>" maxlength="100" onblur="guardarCampo('firma_tarjeta', this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();return false;}">
         </div>
     </div>
 </div>
@@ -301,7 +347,7 @@
             <span style="color:#2E7D32"><i class="ti ti-discount-2" style="font-size:14px;vertical-align:-2px" aria-hidden="true"></i> Descuento</span>
             <div class="ea-descuento-input">
                 <span style="font-size:12px;color:#2E7D32">-</span>
-                <input type="number" id="txDescuento" name="txDescuento" value="<%=ValorDescuento%>" min="0" max="100" step="5" style="width:55px;text-align:center;padding:3px;font-size:12px;border:1px solid #d0d0d0;border-radius:4px" onblur="guardarCampo('descuento', this.value); calcularSubtotal()" onchange="calcularSubtotal()">
+                <input type="number" id="txDescuento" name="txDescuento" value="<%=ValorDescuento%>" min="0" max="100" step="5" style="width:55px;text-align:center;padding:3px;font-size:12px;border:1px solid #d0d0d0;border-radius:4px" onblur="guardarCampo('descuento', this.value); calcularSubtotal()" onchange="calcularSubtotal()" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();return false;}">
                 <select id="ddDescuentoMoneda" name="ddDescuentoMoneda" style="width:auto;padding:3px 4px;font-size:11px;border:1px solid #d0d0d0;border-radius:4px" onchange="guardarCampo('descuento_moneda', this.value)">
                     <option value="BOB" <%=If(ValorDescuentoMoneda = "BOB" Or ValorDescuentoMoneda = "", "selected", "")%>>Bs</option>
                     <option value="USD" <%=If(ValorDescuentoMoneda = "USD", "selected", "")%>>USD</option>
@@ -382,46 +428,50 @@
 <asp:Button ID="btnAccion" runat="server" Text="" Style="display:none" OnClick="btnAccion_Click"/>
 
 
+<!-- CONTENEDOR DE TOASTS (notificaciones flotantes) -->
+<div id="eaToastContainer" class="ea-toast-container" aria-live="polite"></div>
+
+
 <!-- MODAL BUSCADOR DE PRODUCTOS -->
 <div id="modalBuscador" class="ea-modal-overlay">
     <div class="ea-modal">
         <div class="ea-modal-header">
-            <span style="font-size:15px;font-weight:500"><i class="ti ti-search" style="font-size:17px;vertical-align:-2px;margin-right:6px" aria-hidden="true"></i>Buscar producto</span>
+            <span style="font-size:17px;font-weight:500"><i class="ti ti-search" style="font-size:19px;vertical-align:-2px;margin-right:7px" aria-hidden="true"></i>Buscar producto</span>
             <button type="button" onclick="cerrarBuscador()" class="ea-modal-close"><i class="ti ti-x" aria-hidden="true"></i></button>
         </div>
-        <div style="padding:10px 20px;border-bottom:1px solid #f0f0f0">
-            <div style="display:flex;gap:6px;margin-bottom:6px">
-                <input type="text" id="txBuscarProd" placeholder="Buscar por nombre, SKU..." class="ea-input" style="flex:1" onkeyup="if(event.key==='Enter')buscarProductos()">
-                <button type="button" onclick="buscarProductos()" class="ea-btn-buscar"><i class="ti ti-search" style="font-size:14px" aria-hidden="true"></i></button>
+        <div style="padding:14px 22px;border-bottom:1px solid #f0f0f0">
+            <div style="display:flex;gap:8px;margin-bottom:10px">
+                <input type="text" id="txBuscarProd" placeholder="Buscar por nombre, SKU..." class="ea-input" style="flex:1;font-size:14px;padding:9px 12px" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarProductos();return false;}">
+                <button type="button" onclick="buscarProductos()" class="ea-btn-buscar" style="font-size:14px;padding:8px 16px"><i class="ti ti-search" style="font-size:16px" aria-hidden="true"></i></button>
             </div>
-            <div style="display:flex;gap:6px;align-items:center">
-                <label style="font-size:11px;color:#999;white-space:nowrap">Categoría:</label>
-                <select id="ddCategoriaFiltro" class="ea-select" style="font-size:12px;flex:1" onchange="buscarProductos()">
+            <div style="display:flex;gap:8px;align-items:center">
+                <label style="font-size:13px;color:#666;white-space:nowrap;font-weight:500">Categoría:</label>
+                <select id="ddCategoriaFiltro" class="ea-select" style="font-size:14px;padding:8px 10px;flex:1" onchange="buscarProductos()">
                     <option value="0" selected>Todas las categorías</option>
                     <%=HtmlCategoriasBtns%>
                 </select>
             </div>
         </div>
-        <div style="padding:10px 20px;border-bottom:2px solid #FFE082;background:#FFF8E1">
-            <div style="display:flex;gap:10px;align-items:center">
-                <div style="width:40px;height:40px;min-width:40px;border-radius:50%;background:white;display:flex;align-items:center;justify-content:center">
-                    <i class="ti ti-pencil-plus" style="font-size:18px;color:#F57F17" aria-hidden="true"></i>
+        <div style="padding:14px 22px;border-bottom:2px solid #FFE082;background:#FFF8E1">
+            <div style="display:flex;gap:12px;align-items:flex-start">
+                <div style="width:46px;height:46px;min-width:46px;border-radius:50%;background:white;display:flex;align-items:center;justify-content:center;margin-top:4px">
+                    <i class="ti ti-pencil-plus" style="font-size:22px;color:#F57F17" aria-hidden="true"></i>
                 </div>
                 <div style="flex:1">
-                    <p style="margin:0;font-size:13px;font-weight:500;color:#F57F17">Producto Personalizado</p>
-                    <div style="display:grid;grid-template-columns:2fr 1fr;gap:6px;margin-top:6px">
-                        <input type="text" id="txPersNombre" placeholder="Nombre del producto..." class="ea-input" style="font-size:11px;padding:4px 6px">
-                        <div style="display:flex;gap:3px">
-                            <input type="number" id="txPersPrecio" placeholder="Precio" step="0.01" class="ea-input" style="font-size:11px;padding:4px;flex:1">
-                            <select id="ddPersMoneda" class="ea-select" style="font-size:10px;padding:2px;width:auto"><option value="BOB">Bs</option><option value="USD">USD</option></select>
+                    <p style="margin:0 0 8px;font-size:15px;font-weight:500;color:#F57F17">Producto Personalizado</p>
+                    <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px">
+                        <input type="text" id="txPersNombre" placeholder="Nombre del producto..." class="ea-input" style="font-size:14px;padding:8px 10px" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
+                        <div style="display:flex;gap:4px">
+                            <input type="number" id="txPersPrecio" placeholder="Precio" step="0.01" class="ea-input" style="font-size:14px;padding:8px 10px;flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
+                            <select id="ddPersMoneda" class="ea-select" style="font-size:13px;padding:8px 4px;width:auto"><option value="BOB">Bs</option><option value="USD">USD</option></select>
                         </div>
                     </div>
-                    <input type="text" id="txPersDetalle" placeholder="Personalizacion / descripcion..." class="ea-input" style="font-size:11px;padding:4px 6px;margin-top:4px;border-style:dashed">
-                    <button type="button" onclick="agregarPersonalizado()" style="font-size:11px;padding:4px 12px;margin-top:6px;background:white;color:#F57F17;border:1px solid #FFE082;border-radius:8px;cursor:pointer"><i class="ti ti-plus" style="font-size:12px;vertical-align:-1px" aria-hidden="true"></i> Agregar personalizado</button>
+                    <input type="text" id="txPersDetalle" placeholder="Personalización / descripción..." class="ea-input" style="font-size:14px;padding:8px 10px;margin-top:8px;border-style:dashed" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
+                    <button type="button" onclick="agregarPersonalizado()" style="font-size:13px;padding:7px 16px;margin-top:10px;background:white;color:#F57F17;border:1px solid #FFE082;border-radius:8px;cursor:pointer;font-weight:500"><i class="ti ti-plus" style="font-size:14px;vertical-align:-2px" aria-hidden="true"></i> Agregar personalizado</button>
                 </div>
             </div>
         </div>
-        <div id="divListaProductos" style="max-height:350px;overflow-y:auto">
+        <div id="divListaProductos" style="max-height:480px;overflow-y:auto">
             <p style="padding:20px;text-align:center;color:#999;font-size:13px">Escriba para buscar productos...</p>
         </div>
     </div>
@@ -470,12 +520,12 @@
                 </div>
                 <div>
                     <label class="ea-label">Tasa de cambio</label>
-                    <input type="number" id="txPagoTasa" value="<%=TasaCambio.ToString("F4")%>" step="0.0001" class="ea-input" onchange="recalcularConversion()">
+                    <input type="number" id="txPagoTasa" value="<%=TasaCambio.ToString("F4")%>" step="0.0001" class="ea-input" onchange="recalcularConversion()" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
                 </div>
             </div>
             <div style="margin-bottom:10px">
                 <label class="ea-label">Monto *</label>
-                <input type="number" id="txPagoMonto" placeholder="0.00" step="0.01" class="ea-input" oninput="recalcularConversion()">
+                <input type="number" id="txPagoMonto" placeholder="0.00" step="0.01" class="ea-input" oninput="recalcularConversion()" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
                 <div id="divConversion" style="font-size:11px;color:#999;margin-top:4px;display:none">
                     <i class="ti ti-arrow-right" style="font-size:11px;vertical-align:-1px"></i>
                     Equivale a <span id="spanConversion" style="color:#3B5BDB;font-weight:500"></span>
@@ -483,11 +533,11 @@
             </div>
             <div style="margin-bottom:10px">
                 <label class="ea-label">Referencia / Nro transaccion</label>
-                <input type="text" id="txPagoRef" placeholder="Ej: TXN-123456" class="ea-input">
+                <input type="text" id="txPagoRef" placeholder="Ej: TXN-123456" class="ea-input" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
             </div>
             <div style="margin-bottom:10px">
                 <label class="ea-label">Observaciones</label>
-                <input type="text" id="txPagoObs" placeholder="Opcional..." class="ea-input">
+                <input type="text" id="txPagoObs" placeholder="Opcional..." class="ea-input" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
             </div>
             <div style="margin-bottom:16px">
                 <label class="ea-label">Estado del pago</label>
@@ -515,6 +565,51 @@ var prepedidoEntregaId = parseInt(document.getElementById('hdPrePedidoEntregaId'
 var prepedidoId = parseInt(document.getElementById('hdPrePedidoId').value) || 0;
 var zonasData = <%=ZonasJson%>;
 var slotsData = <%=SlotsJson%>;
+var tasaCambio = <%=TasaCambio.ToString("F4", System.Globalization.CultureInfo.InvariantCulture)%>;
+
+// Devuelve siempre "Bs X.XX" (todo el sistema trabaja en Bs internamente)
+function fmtBs(montoBs) {
+    return 'Bs ' + (montoBs || 0).toFixed(2);
+}
+
+// Devuelve la conversion entre parentesis si la moneda elegida es USD
+// Ej: si monto=100 Bs y tasa=7 -> " (USD 14.29)"
+// Si la moneda es BOB, devuelve cadena vacia
+function convAside(montoBs) {
+    var dd = document.getElementById('ddMoneda');
+    var moneda = dd ? dd.value : 'BOB';
+    if (moneda !== 'USD' || tasaCambio <= 0 || !montoBs) return '';
+    return ' <span style="color:#999;font-size:0.9em">(USD ' + (montoBs / tasaCambio).toFixed(2) + ')</span>';
+}
+
+// Para uso en mensajes de texto plano (cotizacion WhatsApp)
+// Devuelve "Bs X.XX" o "USD X.XX" segun la moneda recibida
+function fmtTextoMoneda(montoBs, moneda) {
+    if (moneda === 'USD' && tasaCambio > 0) {
+        return 'USD ' + (montoBs / tasaCambio).toFixed(2);
+    }
+    return 'Bs ' + montoBs.toFixed(2);
+}
+
+// ============================================================
+// BLINDAJE GLOBAL CONTRA ENTER
+// Evita que Enter en CUALQUIER input dispare el postback del form
+// runat="server" de la MasterPage (que provoca redirect al login).
+// ============================================================
+document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Enter') return;
+    var t = e.target;
+    if (!t || !t.tagName) return;
+    var tag = t.tagName.toLowerCase();
+    var type = (t.type || '').toLowerCase();
+    // Permitir Enter en textarea y en botones (botones tienen su propio handler)
+    if (tag === 'textarea') return;
+    if (tag === 'button') return;
+    if (tag === 'input' && (type === 'button' || type === 'submit')) return;
+    // Cualquier otro input: bloquear Enter
+    e.preventDefault();
+    return false;
+}, true);
 
 // ============================================================
 // SECCIONES COLAPSABLES
@@ -627,41 +722,125 @@ function buscarProductos() {
 function renderizarProductos(productos) {
     var container = document.getElementById('divListaProductos');
     if (productos.length === 0) {
-        container.innerHTML = '<p style="padding:20px;text-align:center;color:#999;font-size:13px">No se encontraron productos</p>';
+        container.innerHTML = '<p style="padding:24px;text-align:center;color:#999;font-size:14px">No se encontraron productos</p>';
         return;
     }
     var html = '';
     productos.forEach(function(p) {
-        html += '<div style="padding:10px 20px;border-bottom:1px solid #f0f0f0" onmouseover="this.style.background=\'#fafafa\'" onmouseout="this.style.background=\'transparent\'">';
-        html += '<div style="display:flex;gap:10px">';
-        if (p.imagen_url && p.imagen_url !== '') {
-            html += '<div style="width:50px;height:50px;min-width:50px;border-radius:8px;overflow:hidden"><img src="' + p.imagen_url + '" style="width:100%;height:100%;object-fit:cover" onerror="this.parentNode.innerHTML=\'<i class=ti ti-flower style=font-size:22px;color:#E53935></i>\'"></div>';
-        } else {
-            html += '<div style="width:50px;height:50px;min-width:50px;border-radius:8px;background:#fafafa;display:flex;align-items:center;justify-content:center"><i class="ti ti-flower" style="font-size:22px;color:#E53935"></i></div>';
+        // El handler ya devuelve p.activo (true/false). Inactivos llevan barra de aviso "NO DISPONIBLE".
+        var inactivo = (p.activo === false);
+        var inactivoFlag = inactivo ? 'true' : 'false';
+        var bgRow = inactivo ? '#FFF5F5' : 'transparent';
+        var bgHover = inactivo ? '#FFEBEB' : '#fafafa';
+
+        // Contenedor del producto
+        var rowStyle = 'border-bottom:1px solid #f0f0f0;background:' + bgRow;
+        if (inactivo) rowStyle += ';border-left:4px solid #E53935';
+
+        html += '<div style="' + rowStyle + '" onmouseover="this.style.background=\'' + bgHover + '\'" onmouseout="this.style.background=\'' + bgRow + '\'">';
+
+        // === BARRA DE AVISO "NO DISPONIBLE" (solo para inactivos) ===
+        if (inactivo) {
+            html += '<div style="background:#E53935;color:white;padding:7px 22px;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;letter-spacing:0.3px">';
+            html += '<i class="ti ti-ban" style="font-size:16px" aria-hidden="true"></i>';
+            html += '<span>NO DISPONIBLE</span>';
+            html += '<span style="font-weight:400;opacity:0.92;margin-left:4px;font-size:12px">&mdash; Producto deshabilitado en el catálogo</span>';
+            html += '</div>';
         }
-        html += '<div style="flex:1">';
-        html += '<div style="display:flex;justify-content:space-between;align-items:flex-start">';
-        html += '<div><p style="margin:0;font-size:13px;font-weight:500">' + escapeHtml(p.nombre) + '</p>';
-        html += '<p style="margin:0;font-size:10px;color:#999">' + p.sku + ' &mdash; ' + p.categoria + ' &mdash; Stock: ' + p.stock_actual + '</p></div>';
-        html += '<p style="margin:0;font-size:13px;font-weight:500;color:#3B5BDB">Bs ' + p.precio_base_bs.toFixed(2) + '</p>';
+
+        // === CONTENIDO DEL PRODUCTO ===
+        html += '<div style="padding:14px 22px">';
+        html += '<div style="display:flex;gap:14px;align-items:flex-start' + (inactivo ? ';opacity:0.75' : '') + '">';
+
+        // Imagen 64x64 (más grande)
+        if (p.imagen_url && p.imagen_url !== '') {
+            var imgFilter = inactivo ? 'filter:grayscale(1);' : '';
+            html += '<div style="width:64px;height:64px;min-width:64px;border-radius:8px;overflow:hidden;' + imgFilter + '"><img src="' + p.imagen_url + '" style="width:100%;height:100%;object-fit:cover" onerror="this.parentNode.innerHTML=\'<i class=ti ti-flower style=font-size:28px;color:#E53935></i>\'"></div>';
+        } else {
+            var iconColor = inactivo ? '#BDBDBD' : '#E53935';
+            html += '<div style="width:64px;height:64px;min-width:64px;border-radius:8px;background:#fafafa;display:flex;align-items:center;justify-content:center"><i class="ti ti-flower" style="font-size:28px;color:' + iconColor + '"></i></div>';
+        }
+
+        // Bloque texto + acciones (flex:1, min-width:0 para que el wrap funcione bien)
+        html += '<div style="flex:1;min-width:0">';
+
+        // Línea: nombre (izq) + precio (der)
+        html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">';
+        var nombreStyle = 'margin:0;font-size:15px;font-weight:500;line-height:1.35;word-break:break-word';
+        if (inactivo) nombreStyle += ';text-decoration:line-through;color:#999';
+        html += '<div style="flex:1;min-width:0"><p style="' + nombreStyle + '">' + escapeHtml(p.nombre) + '</p>';
+        html += '<p style="margin:3px 0 0;font-size:12px;color:#999">' + escapeHtml(p.sku) + ' &mdash; ' + escapeHtml(p.categoria) + ' &mdash; Stock: ' + p.stock_actual + '</p></div>';
+
+        var precioColor = inactivo ? '#9E9E9E' : '#3B5BDB';
+        var precioStyle = inactivo ? 'text-decoration:line-through;' : '';
+        html += '<p style="margin:0;font-size:15px;font-weight:600;color:' + precioColor + ';' + precioStyle + ';white-space:nowrap">Bs ' + p.precio_base_bs.toFixed(2) + '</p>';
         html += '</div>';
-        html += '<input type="text" placeholder="Personalizacion..." style="width:100%;font-size:10px;padding:3px 6px;margin-top:5px;border:1px dashed #d0d0d0;border-radius:4px" id="pers_' + p.producto_id + '">';
-        html += '<div style="display:flex;align-items:center;gap:6px;margin-top:5px">';
-        html += '<button type="button" onclick="agregarProductoAlPedido(' + p.producto_id + ',\'' + escapeHtml(p.nombre).replace(/'/g, "\\'") + '\',' + p.precio_base_bs + ',' + (p.precio_base_usd || 0) + ')" ';
-        html += 'style="font-size:10px;padding:3px 10px;background:#EBF0FF;color:#3B5BDB;border:1px solid #90CAF9;border-radius:8px;cursor:pointer">';
-        html += '<i class="ti ti-plus" style="font-size:11px;vertical-align:-1px"></i> Agregar</button></div>';
-        html += '</div></div></div>';
+
+        // Input personalizacion (más grande y legible)
+        html += '<input type="text" placeholder="Personalización..." style="width:100%;font-size:13px;padding:6px 10px;margin-top:8px;border:1px dashed #d0d0d0;border-radius:6px;box-sizing:border-box" id="pers_' + p.producto_id + '" onkeydown="if(event.key===\'Enter\'){event.preventDefault();return false;}">';
+
+        // Fila de acción - usa data-attributes en vez de onclick inline
+        // (evita problemas con comillas/caracteres especiales/tildes en el nombre)
+        html += '<div style="display:flex;justify-content:flex-end;margin-top:8px">';
+        var btnBg = inactivo ? '#fff' : '#EBF0FF';
+        var btnColor = inactivo ? '#E53935' : '#3B5BDB';
+        var btnBorder = inactivo ? '#FFCDD2' : '#90CAF9';
+        var btnIcon = inactivo ? 'ti-alert-triangle' : 'ti-plus';
+        var btnLabel = inactivo ? 'Agregar de todos modos' : 'Agregar';
+        // OJO: usamos escapeAttr (solo escapa " y &) en lugar de escapeHtml (que escapa tildes/ñ).
+        // Así getAttribute('data-nombre') devuelve el texto tal cual, sin entidades HTML.
+        html += '<button type="button" class="btn-agregar-prod" ';
+        html += 'data-pid="' + p.producto_id + '" ';
+        html += 'data-nombre="' + escapeAttr(p.nombre) + '" ';
+        html += 'data-precio-bs="' + p.precio_base_bs + '" ';
+        html += 'data-precio-usd="' + (p.precio_base_usd || 0) + '" ';
+        html += 'data-inactivo="' + inactivoFlag + '" ';
+        html += 'style="font-size:13px;padding:6px 14px;background:' + btnBg + ';color:' + btnColor + ';border:1px solid ' + btnBorder + ';border-radius:8px;cursor:pointer;font-weight:500">';
+        html += '<i class="ti ' + btnIcon + '" style="font-size:14px;vertical-align:-2px"></i> ' + btnLabel + '</button>';
+        html += '</div>';
+
+        html += '</div></div></div></div>'; // cierra contenedor texto, flex-gap, padding, root
     });
     container.innerHTML = html;
+
+    // Adjuntar handlers con event delegation (un solo listener para todos los botones).
+    // Hacemos esto cada vez que se re-renderiza la lista, reemplazando handler anterior.
+    container.onclick = function(ev) {
+        var btn = ev.target.closest ? ev.target.closest('.btn-agregar-prod') : null;
+        if (!btn) return;
+        var pid = parseInt(btn.getAttribute('data-pid')) || 0;
+        var nombre = btn.getAttribute('data-nombre') || '';
+        var precioBs = parseFloat(btn.getAttribute('data-precio-bs')) || 0;
+        var precioUsd = parseFloat(btn.getAttribute('data-precio-usd')) || 0;
+        var inactivo = (btn.getAttribute('data-inactivo') === 'true');
+        agregarProductoAlPedido(pid, nombre, precioBs, precioUsd, inactivo);
+    };
 }
 
 // ============================================================
 // AGREGAR PRODUCTO AL PEDIDO
 // ============================================================
-function agregarProductoAlPedido(productoId, nombre, precioBs, precioUsd) {
+function agregarProductoAlPedido(productoId, nombre, precioBs, precioUsd, esInactivo) {
+    // Comparación permisiva (acepta true, 'true', 1, '1')
+    var inactivo = (esInactivo === true || esInactivo === 'true' || esInactivo === 1 || esInactivo === '1');
+
+    // Si el producto está inactivo, pedir confirmación explícita ANTES de hacer cualquier cosa
+    if (inactivo) {
+        var msg = '🚫 PRODUCTO NO DISPONIBLE\n\n';
+        msg += '"' + nombre + '" está deshabilitado en el catálogo.\n\n';
+        msg += 'Esto significa que:\n';
+        msg += '  • No se vende actualmente al público\n';
+        msg += '  • Puede no tener stock real\n';
+        msg += '  • El precio podría estar desactualizado\n\n';
+        msg += '¿Aún así deseas agregarlo al pedido?';
+        if (!confirm(msg)) {
+            return;  // Usuario canceló, no se hace nada
+        }
+    }
     var persEl = document.getElementById('pers_' + productoId);
     var persTexto = persEl ? persEl.value.trim() : '';
-    insertarProducto(productoId, nombre, precioBs, precioUsd, persTexto, false);
+    // Pasamos el flag inactivo a insertarProducto para que el Toast sea informativo
+    insertarProducto(productoId, nombre, precioBs, precioUsd, persTexto, false, inactivo);
 }
 function agregarPersonalizado() {
     var nombre = document.getElementById('txPersNombre').value.trim();
@@ -671,8 +850,11 @@ function agregarPersonalizado() {
     if (precio <= 0) { alert('Ingrese un precio válido'); return; }
     insertarProducto(0, nombre, precio, 0, detalle, true);
 }
-function insertarProducto(productoId, nombre, precioBs, precioUsd, personalizacion, esPersonalizado) {
-    if (prepedidoEntregaId === 0) { alert('Borrador no inicializado'); return; }
+function insertarProducto(productoId, nombre, precioBs, precioUsd, personalizacion, esPersonalizado, esInactivo) {
+    if (prepedidoEntregaId === 0) {
+        mostrarToast('Borrador no inicializado', 'err');
+        return;
+    }
     var formData = new FormData();
     formData.append('accion', 'AGREGAR_PRODUCTO');
     formData.append('prepedido_entrega_id', prepedidoEntregaId);
@@ -690,12 +872,25 @@ function insertarProducto(productoId, nombre, precioBs, precioUsd, personalizaci
         if (data.ok) {
             agregarFilaProducto(data.detalle_id, nombre, precioBs, personalizacion, esPersonalizado);
             mostrarGuardado();
+            // Toast informativo
+            if (esInactivo) {
+                mostrarToast('⚠️ Producto INACTIVO agregado: ' + nombre, 'warn', 5000);
+            } else if (esPersonalizado) {
+                mostrarToast('Producto personalizado agregado: ' + nombre, 'ok');
+            } else {
+                mostrarToast('Agregado: ' + nombre, 'ok');
+            }
             if (esPersonalizado) {
                 document.getElementById('txPersNombre').value = '';
                 document.getElementById('txPersPrecio').value = '';
                 document.getElementById('txPersDetalle').value = '';
             }
-        } else { alert('Error: ' + data.msg); }
+        } else {
+            mostrarToast('Error: ' + (data.msg || 'no se pudo agregar'), 'err', 5000);
+        }
+    })
+    .catch(function() {
+        mostrarToast('Error de red al agregar el producto', 'err', 5000);
     });
 }
 function agregarFilaProducto(detalleId, nombre, precio, personalizacion, esPersonalizado) {
@@ -900,9 +1095,21 @@ function calcularSubtotal() {
         var cantidad = parseFloat(fila.getAttribute('data-cantidad')) || 1;
         subtotal += precio * cantidad;
     });
-    document.getElementById('spanSubtotal').textContent = 'Bs ' + subtotal.toFixed(2);
+
+    // Refrescar precio de cada fila de producto (no personalizado)
+    // El precio se mantiene siempre en Bs pero agregamos la conversion al lado si la moneda es USD
+    document.querySelectorAll('.ea-prod-precio').forEach(function(sp) {
+        var precioBs = parseFloat(sp.getAttribute('data-precio-bs')) || 0;
+        sp.innerHTML = 'Bs ' + precioBs.toFixed(2) + convAside(precioBs);
+    });
+
+    // Subtotal en cabecera de productos
+    var spSub = document.getElementById('spanSubtotal');
+    if (spSub) spSub.innerHTML = fmtBs(subtotal) + convAside(subtotal);
+
+    // Resumen
     var resSubtotal = document.getElementById('resSubtotal');
-    if (resSubtotal) resSubtotal.textContent = 'Bs ' + subtotal.toFixed(2);
+    if (resSubtotal) resSubtotal.innerHTML = fmtBs(subtotal) + convAside(subtotal);
 
     // Envio de zona
     var costoEnvio = 0;
@@ -912,7 +1119,7 @@ function calcularSubtotal() {
         zonasData.forEach(function(z) { if (z.zona_id === zid) costoEnvio = z.precio_bs; });
     }
     var resEnvio = document.getElementById('resEnvio');
-    if (resEnvio) resEnvio.textContent = 'Bs ' + costoEnvio.toFixed(2);
+    if (resEnvio) resEnvio.innerHTML = fmtBs(costoEnvio) + convAside(costoEnvio);
 
     // Recargo horario
     var recargoHorario = 0;
@@ -922,37 +1129,46 @@ function calcularSubtotal() {
         slotsData.forEach(function(s) { if (s.slot_id === sid) recargoHorario = s.recargo_bs; });
     }
     var resRH = document.getElementById('resRecargoHorario');
-    if (resRH) resRH.textContent = 'Bs ' + recargoHorario.toFixed(2);
+    if (resRH) resRH.innerHTML = fmtBs(recargoHorario) + convAside(recargoHorario);
 
     // Express
     var recargoExpress = 0;
     var chkExpress = document.getElementById('chkExpress');
     if (chkExpress && chkExpress.checked) recargoExpress = 50;
     var resRE = document.getElementById('resRecargoExpress');
-    if (resRE) resRE.textContent = 'Bs ' + recargoExpress.toFixed(2);
+    if (resRE) resRE.innerHTML = fmtBs(recargoExpress) + convAside(recargoExpress);
 
-    // Descuento
-    var descuento = parseFloat(document.getElementById('txDescuento').value) || 0;
+    // Descuento: el usuario lo ingresa en la moneda que elija (BOB o USD).
+    // Lo convertimos a Bs para sumarlo a los calculos internos.
+    var descuentoInput = parseFloat(document.getElementById('txDescuento').value) || 0;
+    var ddDescMon = document.getElementById('ddDescuentoMoneda');
+    var descuentoBs = descuentoInput;
+    if (ddDescMon && ddDescMon.value === 'USD' && tasaCambio > 0) {
+        descuentoBs = descuentoInput * tasaCambio;
+    }
 
     // Total
-    var total = subtotal + costoEnvio + recargoHorario + recargoExpress - descuento;
+    var total = subtotal + costoEnvio + recargoHorario + recargoExpress - descuentoBs;
     var resTotal = document.getElementById('resTotal');
-    if (resTotal) resTotal.textContent = 'Bs ' + total.toFixed(2);
+    if (resTotal) resTotal.innerHTML = fmtBs(total) + convAside(total);
 
-    // Pago total
+    // Pago total (siempre en Bs - es el monto del pedido)
     var pagoTotal = document.getElementById('pagoTotal');
-    if (pagoTotal) pagoTotal.textContent = 'Bs ' + total.toFixed(2);
+    if (pagoTotal) pagoTotal.innerHTML = fmtBs(total) + convAside(total);
 }
 
 // ============================================================
-// WHATSAPP COTIZACIÓN
+// WHATSAPP COTIZACION
+// Envia el mensaje en la moneda seleccionada en el toggle (BOB o USD)
 // ============================================================
 function enviarCotizacionWsp() {
     var filas = document.querySelectorAll('.ea-prod-row');
-    if (filas.length === 0) { alert('Agregue al menos un producto'); return; }
+    if (filas.length === 0) { mostrarToast('Agregue al menos un producto', 'warn'); return; }
 
-    var cliente = '<%=ClienteNombre%>';
     var celular = '<%=ClienteCelular%>';
+    var ddMon = document.getElementById('ddMoneda');
+    var monedaEnvio = ddMon ? ddMon.value : 'BOB';
+
     var subtotal = 0;
     var lineas = '';
 
@@ -963,13 +1179,19 @@ function enviarCotizacionWsp() {
         var sub = precio * cantidad;
         subtotal += sub;
         if (nombre) {
-            lineas += '- ' + nombre.textContent.trim() + (cantidad > 1 ? ' x' + cantidad : '') + ' - Bs ' + sub.toFixed(2) + '\n';
+            lineas += '- ' + nombre.textContent.trim() + (cantidad > 1 ? ' x' + cantidad : '') + ' - ' + fmtTextoMoneda(sub, monedaEnvio) + '\n';
         }
     });
 
-    var descuento = parseFloat(document.getElementById('txDescuento').value) || 0;
+    // Descuento -> siempre se convierte a Bs internamente
+    var descuentoInput = parseFloat(document.getElementById('txDescuento').value) || 0;
+    var ddDescMon = document.getElementById('ddDescuentoMoneda');
+    var descuentoBs = descuentoInput;
+    if (ddDescMon && ddDescMon.value === 'USD' && tasaCambio > 0) {
+        descuentoBs = descuentoInput * tasaCambio;
+    }
 
-    // Obtener costo envio de la zona seleccionada
+    // Envio
     var costoEnvio = 0;
     var zonaTexto = '';
     var hdZonaId = document.getElementById('hdZonaId');
@@ -980,7 +1202,7 @@ function enviarCotizacionWsp() {
         });
     }
 
-    // Recargo por horario (slot)
+    // Recargo horario
     var recargoHorario = 0;
     var horarioTexto = '';
     var ddSlot = document.getElementById('ddSlot');
@@ -999,26 +1221,29 @@ function enviarCotizacionWsp() {
     var chkExpress = document.getElementById('chkExpress');
     if (chkExpress && chkExpress.checked) recargoExpress = 50;
 
-    var total = subtotal + costoEnvio + recargoHorario + recargoExpress - descuento;
+    var total = subtotal + costoEnvio + recargoHorario + recargoExpress - descuentoBs;
 
     var mensaje = '*Miss Flores - Cotizacion*\n\n';
     mensaje += lineas + '\n';
-    mensaje += 'Subtotal: Bs ' + subtotal.toFixed(2) + '\n';
+    mensaje += 'Subtotal: ' + fmtTextoMoneda(subtotal, monedaEnvio) + '\n';
     if (costoEnvio > 0) {
-        mensaje += 'Envio (' + zonaTexto + '): Bs ' + costoEnvio.toFixed(2) + '\n';
+        mensaje += 'Envio (' + zonaTexto + '): ' + fmtTextoMoneda(costoEnvio, monedaEnvio) + '\n';
     }
     if (recargoHorario > 0) {
-        mensaje += 'Recargo horario (' + horarioTexto + '): Bs ' + recargoHorario.toFixed(2) + '\n';
+        mensaje += 'Recargo horario (' + horarioTexto + '): ' + fmtTextoMoneda(recargoHorario, monedaEnvio) + '\n';
     }
     if (recargoExpress > 0) {
-        mensaje += 'Recargo express: Bs ' + recargoExpress.toFixed(2) + '\n';
+        mensaje += 'Recargo express: ' + fmtTextoMoneda(recargoExpress, monedaEnvio) + '\n';
     }
-    if (descuento > 0) {
-        mensaje += 'Descuento: -Bs ' + descuento.toFixed(2) + '\n';
+    if (descuentoBs > 0) {
+        mensaje += 'Descuento: -' + fmtTextoMoneda(descuentoBs, monedaEnvio) + '\n';
     }
-    mensaje += '*Total: Bs ' + total.toFixed(2) + '*';
+    mensaje += '*Total: ' + fmtTextoMoneda(total, monedaEnvio) + '*';
+    if (monedaEnvio === 'USD') {
+        mensaje += '\n_Tasa: ' + tasaCambio.toFixed(2) + ' Bs/USD_';
+    }
 
-    // Limpiar número de celular
+    // Limpiar numero de celular
     var numLimpio = celular.replace(/[^0-9]/g, '');
     if (numLimpio.length === 8 && (numLimpio.startsWith('6') || numLimpio.startsWith('7'))) {
         numLimpio = '591' + numLimpio;
@@ -1030,7 +1255,103 @@ function enviarCotizacionWsp() {
     var url = 'https://wa.me/' + numLimpio + '?text=' + encodeURIComponent(mensaje);
     window.open(url, '_blank');
 }
-function enviarLinkCliente() { alert('Enviar link al cliente - En desarrollo'); }
+
+// ============================================================
+// ENVIAR LINK AL CLIENTE
+// Usa PrePedido_Handler.ashx (accion GENERAR_TOKEN) que ya existe
+// Mismo comportamiento que en PrePedido_Detalle.aspx
+// ============================================================
+function enviarLinkCliente() {
+    if (prepedidoId === 0) { mostrarToast('Pre-pedido invalido', 'err'); return; }
+
+    var formData = new FormData();
+    formData.append('accion', 'GENERAR_TOKEN');
+    formData.append('prepedido_id', prepedidoId);
+
+    fetch('PrePedido_Handler.ashx', { method: 'POST', body: formData })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (!data.ok) {
+            if (data.entregas_incompletas && data.entregas_incompletas.length > 0) {
+                mostrarModalEntregasIncompletas(data.entregas_incompletas);
+                return;
+            }
+            mostrarToast('Error: ' + (data.msg || 'no se pudo generar el link'), 'err');
+            return;
+        }
+
+        var mensaje = 'Hola! Aqui esta el link para confirmar tu pedido en Miss Flores:\n' + data.url;
+        var url = data.celular_cliente
+            ? ('https://wa.me/' + data.celular_cliente + '?text=' + encodeURIComponent(mensaje))
+            : ('https://wa.me/?text=' + encodeURIComponent(mensaje));
+        window.open(url, '_blank');
+        mostrarToast('Link generado y enviado', 'ok');
+
+        setTimeout(function() { location.reload(); }, 1200);
+    })
+    .catch(function() { mostrarToast('Error de red al generar el link', 'err'); });
+}
+
+// Modal de entregas incompletas (replicado de PrePedido_Detalle.aspx)
+function mostrarModalEntregasIncompletas(lista) {
+    var overlay = document.getElementById('modalValidacionLink');
+    if (overlay) overlay.parentNode.removeChild(overlay);
+
+    overlay = document.createElement('div');
+    overlay.id = 'modalValidacionLink';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;overflow-y:auto;padding:20px;display:flex;align-items:flex-start;justify-content:center';
+
+    var html = '<div style="background:white;border-radius:12px;max-width:560px;width:100%;margin-top:40px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,0.2)">';
+    html += '<div style="background:#FFEBEE;color:#B71C1C;padding:16px 22px;display:flex;align-items:center;gap:12px;border-bottom:2px solid #FFCDD2">';
+    html += '<i class="ti ti-alert-triangle" style="font-size:28px;color:#C62828"></i>';
+    html += '<div style="flex:1">';
+    html += '<p style="margin:0;font-size:16px;font-weight:600">No se puede enviar el link</p>';
+    html += '<p style="margin:2px 0 0;font-size:13px;color:#7F1D1D">Faltan datos en ' + lista.length + ' entrega' + (lista.length === 1 ? '' : 's') + '.</p>';
+    html += '</div>';
+    html += '<button type="button" onclick="cerrarModalValidacion()" style="border:none;background:none;cursor:pointer;font-size:22px;color:#999"><i class="ti ti-x"></i></button>';
+    html += '</div>';
+
+    html += '<div style="padding:18px 22px;max-height:55vh;overflow-y:auto">';
+    lista.forEach(function(item) {
+        html += '<div style="border:1px solid #FFCDD2;background:#FFF5F5;border-radius:10px;padding:12px 14px;margin-bottom:10px">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+        if (item.entrega_id > 0) {
+            html += '<p style="margin:0;font-size:14px;font-weight:600;color:#B71C1C">Entrega ' + item.numero + ' &mdash; ' + escapeHtml(item.receptor) + '</p>';
+            if (item.entrega_id === prepedidoEntregaId) {
+                html += '<span style="font-size:11px;color:#B71C1C;font-style:italic">(esta entrega)</span>';
+            } else {
+                html += '<button type="button" onclick="window.location.href=\'Entrega_Agregar.aspx?id=' + item.entrega_id + '\'" style="font-size:12px;padding:5px 12px;background:#3B5BDB;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500"><i class="ti ti-edit" style="font-size:13px;vertical-align:-2px"></i> Completar</button>';
+            }
+        } else {
+            html += '<p style="margin:0;font-size:14px;font-weight:600;color:#B71C1C">Pre-pedido sin entregas</p>';
+        }
+        html += '</div>';
+        html += '<ul style="margin:0;padding-left:20px;font-size:13px;color:#7F1D1D;line-height:1.7">';
+        item.faltantes.forEach(function(campo) {
+            html += '<li>' + escapeHtml(campo) + '</li>';
+        });
+        html += '</ul>';
+        html += '</div>';
+    });
+    html += '</div>';
+
+    html += '<div style="padding:12px 22px;background:#FAFAFA;border-top:1px solid #f0f0f0;display:flex;justify-content:flex-end;gap:8px">';
+    html += '<button type="button" onclick="cerrarModalValidacion()" style="padding:8px 18px;font-size:13px;background:white;color:#555;border:1px solid #d0d0d0;border-radius:6px;cursor:pointer;font-weight:500">Cerrar</button>';
+    html += '</div>';
+
+    html += '</div>';
+    overlay.innerHTML = html;
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener('click', function(ev) {
+        if (ev.target === overlay) cerrarModalValidacion();
+    });
+}
+
+function cerrarModalValidacion() {
+    var overlay = document.getElementById('modalValidacionLink');
+    if (overlay) overlay.parentNode.removeChild(overlay);
+}
 function verificarLink() { location.reload(); }
 function crearPedidoWC() { alert('Crear pedido en WooCommerce - En desarrollo'); }
 function seleccionarSucursalRecojo(id) { guardarCampo('sucursal_id', id); }
@@ -1059,6 +1380,37 @@ function escapeHtml(text) {
     var div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+// escapeAttr: solo escapa los 3 caracteres peligrosos dentro de un atributo HTML
+// con comillas dobles. NO toca tildes, ñ, paréntesis ni emojis -> getAttribute()
+// devuelve el texto tal cual lo escribió el usuario.
+function escapeAttr(text) {
+    if (text === null || text === undefined) return '';
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+}
+
+// ============================================================
+// TOAST DE NOTIFICACIÓN
+// tipo: 'ok' (verde), 'warn' (naranja), 'err' (rojo)
+// ============================================================
+function mostrarToast(mensaje, tipo, duracion) {
+    var tipoClase = tipo || 'ok';
+    var ms = duracion || (tipoClase === 'warn' ? 5000 : 3000);
+    var contenedor = document.getElementById('eaToastContainer');
+    if (!contenedor) return;
+    var iconos = { ok: 'ti-circle-check', warn: 'ti-alert-triangle', err: 'ti-alert-circle' };
+    var icono = iconos[tipoClase] || 'ti-info-circle';
+    var toast = document.createElement('div');
+    toast.className = 'ea-toast ' + tipoClase;
+    toast.innerHTML = '<i class="ti ' + icono + '" aria-hidden="true"></i><span>' + escapeHtml(mensaje) + '</span>';
+    contenedor.appendChild(toast);
+    setTimeout(function() {
+        toast.classList.add('fade-out');
+        setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 320);
+    }, ms);
 }
 
 // ============================================================

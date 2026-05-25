@@ -55,7 +55,10 @@ Public Class Entrega_Handler
     End Sub
 
     ' ============================================================
-    ' BUSCAR PRODUCTOS (sin cambios)
+    ' BUSCAR PRODUCTOS
+    ' NO filtra por p.activo. Devuelve TODOS los productos.
+    ' Los inactivos se marcan visualmente en el front (badge "INACTIVO").
+    ' Activos van primero gracias al ORDER BY p.activo DESC.
     ' ============================================================
     Private Sub BuscarProductos(context As HttpContext)
         Dim texto As String = context.Request.Form("texto")
@@ -76,15 +79,16 @@ Public Class Entrega_Handler
 
             Dim sql As String = "SELECT p.producto_id, p.sku, p.nombre, p.descripcion, " &
                 "p.precio_base_bs, p.precio_base_usd, p.tiene_variaciones, " &
-                "p.stock_actual, p.imagen_url, p.wc_product_id, " &
+                "p.stock_actual, p.imagen_url, p.wc_product_id, p.activo, " &
                 "c.nombre AS categoria_nombre " &
                 "FROM FLORERIA_Producto p " &
                 "LEFT JOIN FLORERIA_Categoria c ON p.categoria_id = c.categoria_id " &
-                "WHERE p.activo = 1"
+                "WHERE 1=1"
 
             If texto <> "" Then sql &= " AND (p.nombre LIKE @texto OR p.sku LIKE @texto)"
             If catId > 0 Then sql &= " AND p.categoria_id = @catId"
-            sql &= " ORDER BY p.menu_order, p.nombre"
+            ' Activos primero, luego inactivos. Dentro de cada grupo por menu_order/nombre.
+            sql &= " ORDER BY p.activo DESC, p.menu_order, p.nombre"
 
             Using cmd As New SqlCommand(sql, conn)
                 If texto <> "" Then cmd.Parameters.AddWithValue("@texto", "%" & texto & "%")
@@ -103,6 +107,7 @@ Public Class Entrega_Handler
                             .stock_actual = CInt(dr("stock_actual")),
                             .imagen_url = If(IsDBNull(dr("imagen_url")), "", dr("imagen_url").ToString()),
                             .wc_product_id = If(IsDBNull(dr("wc_product_id")), 0, CInt(dr("wc_product_id"))),
+                            .activo = CBool(dr("activo")),
                             .categoria = If(IsDBNull(dr("categoria_nombre")), "", dr("categoria_nombre").ToString())
                         })
                     End While
