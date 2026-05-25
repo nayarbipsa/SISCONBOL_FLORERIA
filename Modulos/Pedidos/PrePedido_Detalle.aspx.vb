@@ -7,6 +7,7 @@ Imports System.Text
 ' SISCONBOL - Detalle Pre-Pedido Completo
 ' Archivo: Modulos/Pedidos/PrePedido_Detalle.aspx.vb
 ' MasterPage: Site.Master
+' SQL CORREGIDO PARA TABLA REAL
 ' ============================================================
 Partial Public Class Modulos_Pedidos_PrePedido_Detalle
     Inherits System.Web.UI.Page
@@ -149,10 +150,8 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
                 CargarPedidos(conn)
 
             End Using
-
         Catch ex As Exception
-            MensajeAlerta = "Error al cargar: " & ex.Message
-            System.Diagnostics.Debug.WriteLine("ERROR PrePedido_Detalle.CargarDatos: " & ex.Message)
+            MensajeAlerta = "Error al cargar datos: " & ex.Message
         End Try
     End Sub
 
@@ -166,13 +165,22 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
         Dim cantProds As Integer = 0
         Dim numPedido As Integer = 0
 
-        ' Query para obtener pedidos
-        Dim sql As String = "SELECT pedido_id, codigo, receptor_nombre, receptor_celular, " &
-            "fecha_entrega, horario_inicio, horario_fin, zona_nombre, direccion, " &
-            "tipo_entrega, mensaje_tarjeta, costo_envio, total " &
-            "FROM FLORERIA_Pedido " &
-            "WHERE prepedido_id = @id " &
-            "ORDER BY pedido_id"
+        ' ============================================================
+        ' SQL CORRECTO CON COLUMNAS REALES + JOINs
+        ' ============================================================
+        Dim sql As String = "SELECT " &
+            "ped.pedido_id, ped.codigo, ped.receptor_nombre, ped.receptor_celular, " &
+            "ped.fecha_entrega, ped.direccion, ped.tipo_entrega, " &
+            "ped.subtotal_productos_bs, ped.envio_bs, ped.total_bs, " &
+            "c.nombre AS ciudad_nombre, " &
+            "z.nombre AS zona_nombre, " &
+            "s.hora_inicio, s.hora_fin " &
+            "FROM FLORERIA_Pedido ped " &
+            "LEFT JOIN FLORERIA_Ciudad c ON ped.ciudad_id = c.ciudad_id " &
+            "LEFT JOIN FLORERIA_Zona z ON ped.zona_id = z.zona_id " &
+            "LEFT JOIN FLORERIA_Slot_Horario s ON ped.slot_id = s.slot_id " &
+            "WHERE ped.prepedido_id = @id " &
+            "ORDER BY ped.pedido_id"
 
         Using cmd As New SqlCommand(sql, conn)
             cmd.Parameters.AddWithValue("@id", PrePedidoId)
@@ -192,9 +200,9 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
                         fechaEnt = fecha.ToString("dd MMM yyyy")
                     End If
                     
-                    Dim horario As String = ""
-                    If Not IsDBNull(dr("horario_inicio")) AndAlso Not IsDBNull(dr("horario_fin")) Then
-                        horario = dr("horario_inicio").ToString() & " - " & dr("horario_fin").ToString()
+                    Dim horario As String = "Sin horario"
+                    If Not IsDBNull(dr("hora_inicio")) AndAlso Not IsDBNull(dr("hora_fin")) Then
+                        horario = dr("hora_inicio").ToString() & " - " & dr("hora_fin").ToString()
                     End If
                     
                     ' Zona y dirección
@@ -205,9 +213,9 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
                     Dim tipoEnt As String = If(IsDBNull(dr("tipo_entrega")), "DOMICILIO", dr("tipo_entrega").ToString())
                     
                     ' Costos
-                    Dim costoEnvio As Decimal = If(IsDBNull(dr("costo_envio")), 0, CDec(dr("costo_envio")))
-                    Dim total As Decimal = If(IsDBNull(dr("total")), 0, CDec(dr("total")))
-                    Dim subtotalProds As Decimal = total - costoEnvio
+                    Dim costoEnvio As Decimal = If(IsDBNull(dr("envio_bs")), 0, CDec(dr("envio_bs")))
+                    Dim total As Decimal = If(IsDBNull(dr("total_bs")), 0, CDec(dr("total_bs")))
+                    Dim subtotalProds As Decimal = If(IsDBNull(dr("subtotal_productos_bs")), 0, CDec(dr("subtotal_productos_bs")))
                     
                     ' Acumular totales
                     totalProd += subtotalProds
@@ -222,12 +230,9 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
                     sb.AppendLine("      <p class='pedido-desc'>Para " & receptor & If(celReceptor <> "", " • " & celReceptor, "") & "</p>")
                     sb.AppendLine("    </div>")
                     sb.AppendLine("    <div style='display:flex;gap:6px;'>")
-                    sb.AppendLine("      <button type='button' class='btn btn-sm' onclick='editarPedido(" & pedidoId & ")'>")
+                    sb.AppendLine("      <a href='Entrega_Agregar.aspx?prepedido=" & PrePedidoId & "&entrega=" & pedidoId & "' class='btn btn-sm'>")
                     sb.AppendLine("        <i class='ti ti-edit'></i> Editar")
-                    sb.AppendLine("      </button>")
-                    sb.AppendLine("      <button type='button' class='btn btn-sm' onclick='eliminarPedido(" & pedidoId & ")'>")
-                    sb.AppendLine("        <i class='ti ti-trash'></i>")
-                    sb.AppendLine("      </button>")
+                    sb.AppendLine("      </a>")
                     sb.AppendLine("    </div>")
                     sb.AppendLine("  </div>")
                     
@@ -255,15 +260,6 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
                         sb.AppendLine("  <div style='margin-bottom:1rem;'>")
                         sb.AppendLine("    <div class='pedido-field-label'>Direccion</div>")
                         sb.AppendLine("    <div style='font-size:13px;color:#424242;margin-top:4px;'>" & direccion & "</div>")
-                        sb.AppendLine("  </div>")
-                    End If
-                    
-                    ' TODO: Cargar productos de este pedido
-                    Dim htmlProds As String = CargarProductosPedido(conn, pedidoId, cantProds)
-                    If htmlProds <> "" Then
-                        sb.AppendLine("  <div class='productos-lista'>")
-                        sb.AppendLine("    <div style='font-size:12px;color:#757575;margin-bottom:8px;font-weight:500;'>PRODUCTOS:</div>")
-                        sb.AppendLine(htmlProds)
                         sb.AppendLine("  </div>")
                     End If
                     
@@ -297,124 +293,46 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
     End Sub
 
     ' ============================================================
-    ' CargarProductosPedido - Cargar productos de un pedido
-    ' ============================================================
-    Private Function CargarProductosPedido(conn As SqlConnection, pedidoId As Integer, ByRef contador As Integer) As String
-        Dim sb As New StringBuilder()
-        
-        Dim sql As String = "SELECT pr.nombre, pr.sku, pp.cantidad, pp.precio_unitario, " &
-            "(pp.cantidad * pp.precio_unitario) AS subtotal " &
-            "FROM FLORERIA_PedidoProducto pp " &
-            "INNER JOIN FLORERIA_Producto pr ON pp.producto_id = pr.producto_id " &
-            "WHERE pp.pedido_id = @pedido_id " &
-            "ORDER BY pp.pedidoproducto_id"
-
-        Using cmd As New SqlCommand(sql, conn)
-            cmd.Parameters.AddWithValue("@pedido_id", pedidoId)
-
-            Using dr As SqlDataReader = cmd.ExecuteReader()
-                While dr.Read()
-                    contador += 1
-                    
-                    Dim nombre As String = dr("nombre").ToString()
-                    Dim sku As String = If(IsDBNull(dr("sku")), "", dr("sku").ToString())
-                    Dim cantidad As Integer = CInt(dr("cantidad"))
-                    Dim precioUnit As Decimal = CDec(dr("precio_unitario"))
-                    Dim subtotal As Decimal = CDec(dr("subtotal"))
-                    
-                    sb.AppendLine("<div class='producto-item'>")
-                    sb.AppendLine("  <div class='producto-icon'>")
-                    sb.AppendLine("    <i class='ti ti-flower' style='font-size:24px;color:#999;'></i>")
-                    sb.AppendLine("  </div>")
-                    sb.AppendLine("  <div class='producto-info'>")
-                    sb.AppendLine("    <h5 class='producto-nombre'>" & nombre & "</h5>")
-                    If sku <> "" Then
-                        sb.AppendLine("    <p class='producto-sku'>SKU: " & sku & "</p>")
-                    End If
-                    sb.AppendLine("  </div>")
-                    sb.AppendLine("  <div class='producto-precio'>")
-                    sb.AppendLine("    <div class='producto-cantidad'>Cantidad: " & cantidad & " x " & precioUnit.ToString("N2") & " Bs</div>")
-                    sb.AppendLine("    <div class='producto-subtotal'>" & subtotal.ToString("N2") & " Bs</div>")
-                    sb.AppendLine("  </div>")
-                    sb.AppendLine("</div>")
-                End While
-            End Using
-        End Using
-
-        Return sb.ToString()
-    End Function
-
-    ' ============================================================
-    ' GenerarBadgeEstado - HTML del badge según estado
+    ' Funciones auxiliares
     ' ============================================================
     Private Function GenerarBadgeEstado(estado As String) As String
-        Dim clase As String = "badge "
-        Dim icono As String = ""
-        Dim texto As String = ""
-
         Select Case estado
             Case "BORRADOR"
-                clase &= "badge-borrador"
-                icono = "ti-pencil"
-                texto = "Borrador"
+                Return "<span class='badge badge-secondary'>Borrador</span>"
             Case "FORM_ENVIADO"
-                clase &= "badge-enviado"
-                icono = "ti-send"
-                texto = "Link Enviado"
+                Return "<span class='badge badge-info'>Formulario Enviado</span>"
             Case "FORM_COMPLETADO"
-                clase &= "badge-completado"
-                icono = "ti-check"
-                texto = "Completado"
+                Return "<span class='badge badge-primary'>Formulario Completado</span>"
             Case "COMPROBANTE_ENVIADO"
-                clase &= "badge-completado"
-                icono = "ti-file-upload"
-                texto = "Comprobante"
+                Return "<span class='badge badge-warning'>Comprobante Enviado</span>"
             Case "PAGADO"
-                clase &= "badge-pagado"
-                icono = "ti-coin"
-                texto = "Pagado"
-            Case "WC_CREADO"
-                clase &= "badge-wc"
-                icono = "ti-brand-shopee"
-                texto = "En WooCommerce"
+                Return "<span class='badge badge-success'>Pagado</span>"
             Case "COMPLETADO"
-                clase &= "badge-pagado"
-                icono = "ti-circle-check"
-                texto = "Completado"
+                Return "<span class='badge badge-success'>Completado</span>"
             Case "CANCELADO"
-                clase &= "badge-cancelado"
-                icono = "ti-x"
-                texto = "Cancelado"
-            Case "EXPIRADO"
-                clase &= "badge-expirado"
-                icono = "ti-clock-x"
-                texto = "Expirado"
+                Return "<span class='badge badge-danger'>Cancelado</span>"
             Case Else
-                clase &= "badge-borrador"
-                texto = estado
+                Return "<span class='badge badge-secondary'>" & estado & "</span>"
         End Select
-
-        Return "<span class='" & clase & "'>" &
-               If(icono <> "", "<i class='ti " & icono & "'></i>", "") &
-               texto & "</span>"
     End Function
 
-    ' ============================================================
-    ' FormatearFechaRelativa - "hace 2 horas", "ayer", etc
-    ' ============================================================
     Private Function FormatearFechaRelativa(fecha As DateTime) As String
         Dim ahora As DateTime = DateTime.Now
-        Dim diff As TimeSpan = ahora.Subtract(fecha)
-
-        If diff.TotalMinutes < 60 Then
-            Return "hace " & CInt(diff.TotalMinutes) & " min"
+        Dim diff As TimeSpan = ahora - fecha
+        
+        If diff.TotalMinutes < 1 Then
+            Return "Hace un momento"
+        ElseIf diff.TotalMinutes < 60 Then
+            Return "Hace " & CInt(diff.TotalMinutes) & " minutos"
         ElseIf diff.TotalHours < 24 Then
-            Return "hace " & CInt(diff.TotalHours) & " horas"
+            Return "Hace " & CInt(diff.TotalHours) & " horas"
         ElseIf diff.TotalDays < 7 Then
-            Return "hace " & CInt(diff.TotalDays) & " dias"
+            Return "Hace " & CInt(diff.TotalDays) & " días"
         Else
-            Return fecha.ToString("dd/MM/yyyy HH:mm")
+            Return fecha.ToString("dd MMM yyyy")
         End If
     End Function
-
 End Class
+
+
+

@@ -105,6 +105,7 @@
     <Content Include="Modulos\Catalogo\Productos.aspx" />
     <Content Include="Modulos\Config\Migrar.aspx" />
     <Content Include="Modulos\Config\Webhooks_Monitor.aspx" />
+    <Content Include="Modulos\Pedidos\Entrega_Agregar.aspx" />
     <Content Include="Modulos\Pedidos\Pedido_Agregar.aspx" />
     <Content Include="Modulos\Pedidos\PrePedido_Links.aspx" />
     <Content Include="pp.aspx" />
@@ -173,6 +174,10 @@
     </Compile>
     <Compile Include="Modulos\Config\Webhooks_Monitor.aspx.vb">
       <DependentUpon>Webhooks_Monitor.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Modulos\Pedidos\Entrega_Agregar.aspx.vb">
+      <DependentUpon>Entrega_Agregar.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
     </Compile>
     <Compile Include="Modulos\Pedidos\Pedido_Agregar.aspx.vb">
@@ -255,6 +260,8 @@
     <Content Include="Site.master" />
     <Content Include="SEGURIDAD_PROYECTO.md" />
     <Content Include="REGLAS_DEFINITIVAS_V3.md" />
+    <Content Include="TestWebhook.ashx" />
+    <Content Include="TestWooCommerceSync.ashx" />
     <None Include="Web.Debug.config">
       <DependentUpon>Web.config</DependentUpon>
     </None>

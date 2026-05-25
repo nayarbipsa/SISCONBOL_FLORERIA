@@ -337,7 +337,7 @@
                 <%=CantidadPedidos%> entregas
             </span>
         </div>
-        <button type="button" class="btn btn-primary btn-sm" onclick="agregarPedido()">
+        <button type="button" class="btn btn-primary btn-sm" onclick="agregarEntrega()">
             <i class="ti ti-plus"></i>
             Agregar pedido
         </button>
@@ -356,7 +356,7 @@
                 <div class="empty-text">
                     No hay pedidos agregados aun
                 </div>
-                <button type="button" class="btn btn-primary" onclick="agregarPedido()">
+                <button type="button" class="btn btn-primary" onclick="agregarEntrega()">
                     <i class="ti ti-plus"></i>
                     Agregar primer pedido
                 </button>
@@ -458,13 +458,9 @@ function verEnNavegador() {
     window.open(link, '_blank');
 }
 
-function agregarPedido() {
+function agregarEntrega() {
     var id = document.getElementById('hdPrePedidoId').value;
-    window.location.href = 'Pedido_Agregar.aspx?prepedido=' + id;
-}
-
-function editarPedido(pedidoId) {
-    window.location.href = 'Pedido_Editar.aspx?id=' + pedidoId;
+    window.location.href = 'Entrega_Agregar.aspx?prepedido=' + id;
 }
 
 function eliminarPedido(pedidoId) {

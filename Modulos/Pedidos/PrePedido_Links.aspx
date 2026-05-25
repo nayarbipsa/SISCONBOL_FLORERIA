@@ -165,10 +165,15 @@
 <div class="panel">
     <div class="panel-body">
         <div style="display: flex; gap: 10px; justify-content: center;">
-            <a href="PrePedido_Detalle.aspx?id=<%=PrePedidoId%>" class="btn btn-primary">
-                <i class="ti ti-eye"></i>
-                Ver pre-pedido
-            </a>
+            <%-- ========================================== --%>
+            <%-- BOTÓN QUE SÍ FUNCIONA (SERVER-SIDE)       --%>
+            <%-- ========================================== --%>
+            <asp:Button ID="btnVerDetalle" runat="server" 
+                Text=" Ver pre-pedido" 
+                CssClass="btn btn-primary" 
+                OnClick="btnVerDetalle_Click" 
+                UseSubmitBehavior="False" />
+            
             <a href="PrePedido_Crear.aspx" class="btn">
                 <i class="ti ti-plus"></i>
                 Crear otro
@@ -183,7 +188,7 @@
 
 <!-- Hidden fields -->
 <input type="hidden" id="hdCelular" value="<%=ClienteCelular%>" />
-<input type="hidden" id="hdMensaje" value="<%=Server.HtmlEncode(MensajeSugerido)%>" />
+<input type="hidden" id="hdMensaje" value="<%=MensajeSugerido%>" />
 <input type="hidden" id="hdPrePedidoId" value="<%=PrePedidoId%>" />
 
 </asp:Content>

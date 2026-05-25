@@ -123,7 +123,7 @@
 </div>
 
 <!-- FORMULARIO -->
-<form id="form1" runat="server">
+<!-- form ya existe en Site.Master -->
 
 <!-- DATOS DEL RECEPTOR -->
 <div class="form-section">
@@ -284,7 +284,7 @@
 <input type="hidden" id="hdProductosJson" name="hdProductosJson" value="[]" />
 <asp:Button ID="btnAccion" runat="server" OnClick="btnAccion_Click" style="display:none;" />
 
-</form>
+<!-- form cierra en Site.Master -->
 
 </asp:Content>
 

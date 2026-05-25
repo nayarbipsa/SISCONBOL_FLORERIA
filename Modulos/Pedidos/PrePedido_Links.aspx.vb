@@ -26,13 +26,15 @@ Partial Public Class Modulos_Pedidos_PrePedido_Links
             Dim idStr As String = Request.QueryString("id")
             
             If String.IsNullOrEmpty(idStr) Then
-                SesionHelper.RedirectSeguro(HttpContext.Current, "PrePedidos.aspx")
+                Response.Redirect("PrePedidos.aspx", False)
+                HttpContext.Current.ApplicationInstance.CompleteRequest()
                 Return
             End If
 
             Dim id As Integer = 0
             If Not Integer.TryParse(idStr, id) OrElse id <= 0 Then
-                SesionHelper.RedirectSeguro(HttpContext.Current, "PrePedidos.aspx")
+                Response.Redirect("PrePedidos.aspx", False)
+                HttpContext.Current.ApplicationInstance.CompleteRequest()
                 Return
             End If
 
@@ -50,8 +52,13 @@ Partial Public Class Modulos_Pedidos_PrePedido_Links
 
     Private Sub CargarDatos(prepedidoId As Integer, Optional yaExistia As Boolean = False)
         Try
-            ' Guardar el ID para usarlo en la vista
+            ' ============================================================
+            ' CRÍTICO: ASIGNAR PrePedidoId PRIMERO
+            ' ============================================================
             PrePedidoId = prepedidoId
+            
+            ' DEBUG: Escribir en la página para verificar
+            Response.Write("<!-- DEBUG: PrePedidoId asignado = " & PrePedidoId & " -->")
             
             Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
                 conn.Open()
@@ -98,107 +105,83 @@ Partial Public Class Modulos_Pedidos_PrePedido_Links
                             End If
                             
                             ' ============================================================
-                            ' GENERAR LINKS CORRECTOS PARA WHATSAPP
+                            ' GENERAR LINKS
                             ' ============================================================
+                            Dim dominio As String = "https://www.floreria.somee.com"
                             
+                            ' Link interno (pp.aspx?c=CODIGO)
+                            LinkInterno = dominio & "/pp.aspx?c=" & Codigo
+                            LinkInternoCorto = Codigo
+                            
+                            ' Link cliente (formulario con token)
                             If token <> "" Then
-                                ' Link cliente (formulario web)
-                                ' CORREGIDO: https:// + www. para que WhatsApp lo detecte
-                                LinkCliente = "https://www.floreria.somee.com/formulario.aspx?t=" & token
-                                LinkClienteCorto = "floreria.somee.com/formulario"
-                                
-                                ' Link interno (sistema) - PARA SOMEE.COM
-                                ' CORREGIDO: https:// + www. para que WhatsApp lo detecte
-                                LinkInterno = "https://www.floreria.somee.com/pp.aspx?c=" & Codigo
-                                LinkInternoCorto = "floreria.somee.com/pp?c=" & Codigo
-                                
-                                ' Fecha expiracion
-                                If Not IsDBNull(dr("token_expira")) Then
-                                    Dim expira As DateTime = CDate(dr("token_expira"))
-                                    FechaExpiracion = expira.ToString("dd/MM/yyyy HH:mm")
-                                Else
-                                    FechaExpiracion = "48 horas"
-                                End If
-                                
-                                ' ============================================================
-                                ' MENSAJE SUGERIDO PARA WHATSAPP (CONDICIONAL)
-                                ' ============================================================
-                                Dim nombreAgente As String = SesionHelper.ObtenerUsuarioNombre(HttpContext.Current)
-                                
-                                ' ============================================================
-                                ' SI ES DUPLICADO → Mensaje diferente
-                                ' ============================================================
-                                If yaExistia Then
-                                    MensajeSugerido = "Hola! Vi que ya tienes un pre-pedido activo con el codigo " & Codigo & vbCrLf &
-                                                     LinkInterno & vbCrLf & vbCrLf &
-                                                     "Si necesitas hacer cambios o agregar algo, avisame y con gusto te ayudo!" & vbCrLf & vbCrLf &
-                                                     "Si deseas ver nuestro catalogo completo puedes ingresar a:" & vbCrLf &
-                                                     "www.miss-flores.com"
-                                Else
-                                    ' ============================================================
-                                    ' SI ES NUEVO → Mensaje de bienvenida
-                                    ' ============================================================
-                                    MensajeSugerido = "Buen dia! Mi nombre es " & nombreAgente & ", con mucho gusto le atiendo." & vbCrLf & vbCrLf &
-                                                     "Ya esta pre registrado con el codigo " & Codigo & vbCrLf &
-                                                     LinkInterno & vbCrLf & vbCrLf &
-                                                     "Para poder abrir el link que le enviare, por favor guarde este numero como contacto en su celular." & vbCrLf & vbCrLf &
-                                                     "Si desea ver nuestro catalogo completo puede ingresar a:" & vbCrLf &
-                                                     "www.miss-flores.com" & vbCrLf & vbCrLf &
-                                                     "Estoy para ayudarle en lo que necesite!"
-                                End If
+                                LinkCliente = dominio & "/formulario.aspx?t=" & token
                             Else
-                                ' Si no hay token, generar uno
-                                GenerarToken(prepedidoId)
-                                ' Recargar la pagina MANTENIENDO el parámetro existia
-                                Dim urlReload As String = "PrePedido_Links.aspx?id=" & prepedidoId
-                                If yaExistia Then
-                                    urlReload &= "&existia=1"
-                                End If
-                                SesionHelper.RedirectSeguro(HttpContext.Current, urlReload)
-                                Return
+                                LinkCliente = dominio & "/pp.aspx?c=" & Codigo
                             End If
+                            LinkClienteCorto = "formulario.aspx?t=..."
+                            
+                            ' ============================================================
+                            ' MENSAJE SUGERIDO
+                            ' ============================================================
+                            Dim nombreAgente As String = SesionHelper.ObtenerUsuarioNombre(HttpContext.Current)
+                            
+                            If yaExistia Then
+                                ' Mensaje para pre-pedido existente
+                                MensajeSugerido = "Hola! Vi que ya tienes un pre-pedido activo con el codigo " & Codigo & vbCrLf &
+                                    LinkInterno & vbCrLf & vbCrLf &
+                                    "Estoy para ayudarte en lo que necesites!"
+                            Else
+                                ' Mensaje para pre-pedido nuevo
+                                MensajeSugerido = "Buen dia! Mi nombre es " & nombreAgente & ", con mucho gusto le atiendo." & vbCrLf & vbCrLf &
+                                    "Ya esta pre registrado con el codigo " & Codigo & vbCrLf &
+                                    LinkInterno & vbCrLf & vbCrLf &
+                                    "Para poder abrir el link que le enviare, por favor guarde este numero como contacto en su celular." & vbCrLf & vbCrLf &
+                                    "Si desea ver nuestro catalogo completo puede ingresar a:" & vbCrLf &
+                                    "www.miss-flores.com" & vbCrLf & vbCrLf &
+                                    "Estoy para ayudarle en lo que necesite!"
+                            End If
+                            
+                            ' Fecha de expiración del token (si existe)
+                            If Not IsDBNull(dr("token_expira")) Then
+                                Dim expira As DateTime = Convert.ToDateTime(dr("token_expira"))
+                                FechaExpiracion = expira.ToString("dd/MM/yyyy HH:mm")
+                            Else
+                                FechaExpiracion = "Sin límite"
+                            End If
+                            
                         Else
-                            SesionHelper.RedirectSeguro(HttpContext.Current, "PrePedidos.aspx")
+                            Response.Redirect("PrePedidos.aspx", False)
+                            HttpContext.Current.ApplicationInstance.CompleteRequest()
                         End If
                     End Using
                 End Using
             End Using
-
+            
         Catch ex As Exception
-            System.Diagnostics.Debug.WriteLine("ERROR PrePedido_Links.CargarDatos: " & ex.Message)
-            SesionHelper.RedirectSeguro(HttpContext.Current, "PrePedidos.aspx?error=" & Server.UrlEncode(ex.Message))
+            Response.Write("<!-- ERROR: " & ex.Message & " -->")
+            Response.Redirect("PrePedidos.aspx", False)
+            HttpContext.Current.ApplicationInstance.CompleteRequest()
         End Try
     End Sub
 
-    Private Sub GenerarToken(prepedidoId As Integer)
-        Try
-            Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
-                conn.Open()
-
-                Using cmd As New SqlCommand("FLORERIA_sp_PrePedido_GenerarLink", conn)
-                    cmd.CommandType = CommandType.StoredProcedure
-                    cmd.Parameters.AddWithValue("@prepedido_id", prepedidoId)
-                    cmd.Parameters.AddWithValue("@moneda_formulario", "BOB")
-                    cmd.Parameters.AddWithValue("@descuento_bs", 0)
-                    cmd.Parameters.AddWithValue("@descuento_motivo", DBNull.Value)
-                    cmd.Parameters.AddWithValue("@modificado_por", SesionHelper.ObtenerUsuarioId(HttpContext.Current))
-                    cmd.Parameters.AddWithValue("@ip", Request.UserHostAddress)
-
-                    Dim pToken As New SqlParameter("@token", SqlDbType.VarChar, 100)
-                    pToken.Direction = ParameterDirection.Output
-                    cmd.Parameters.Add(pToken)
-
-                    Dim pUrl As New SqlParameter("@url_completa", SqlDbType.VarChar, 500)
-                    pUrl.Direction = ParameterDirection.Output
-                    cmd.Parameters.Add(pUrl)
-
-                    cmd.ExecuteNonQuery()
-                End Using
-            End Using
-
-        Catch ex As Exception
-            System.Diagnostics.Debug.WriteLine("ERROR PrePedido_Links.GenerarToken: " & ex.Message)
-        End Try
+    ' ============================================================
+    ' EVENTO DEL BOTÓN "VER PRE-PEDIDO"
+    ' ============================================================
+    Protected Sub btnVerDetalle_Click(sender As Object, e As EventArgs)
+        If PrePedidoId > 0 Then
+            Response.Redirect("PrePedido_Detalle.aspx?id=" & PrePedidoId, False)
+            HttpContext.Current.ApplicationInstance.CompleteRequest()
+        Else
+            ' Si por alguna razón PrePedidoId está en 0, usar el QueryString
+            Dim idStr As String = Request.QueryString("id")
+            If Not String.IsNullOrEmpty(idStr) Then
+                Response.Redirect("PrePedido_Detalle.aspx?id=" & idStr, False)
+                HttpContext.Current.ApplicationInstance.CompleteRequest()
+            Else
+                Response.Redirect("PrePedidos.aspx", False)
+                HttpContext.Current.ApplicationInstance.CompleteRequest()
+            End If
+        End If
     End Sub
-
 End Class

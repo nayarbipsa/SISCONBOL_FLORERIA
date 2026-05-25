@@ -14,47 +14,88 @@ Partial Public Class Modulos_Pedidos_Pedido_Agregar
     ' Propiedades públicas para la vista
     Public Property MensajeAlerta As String = ""
     Public Property PrePedidoId As Integer = 0
+    Public Property PedidoId As Integer = 0
+    Public Property ModoEdicion As Boolean = False
     Public Property PrePedidoCodigo As String = ""
+    Public Property PedidoCodigo As String = ""
     Public Property ClienteNombre As String = ""
     Public Property ValorReceptor As String = ""
     Public Property ValorCelularReceptor As String = ""
     Public Property ValorFecha As String = ""
     Public Property ValorDireccion As String = ""
+    Public Property ValorReferencia As String = ""
+    Public Property ValorDedicatoria As String = ""
+    Public Property ValorFirma As String = ""
     Public Property ValorMensaje As String = ""
     Public Property FechaMinima As String = ""
     Public Property HtmlZonas As String = ""
     Public Property HtmlSucursales As String = ""
     Public Property ProductosJson As String = "[]"
     Public Property ZonasJson As String = "[]"
+    Public Property CiudadSeleccionada As Integer = 0
+    Public Property ZonaSeleccionada As Integer = 0
+    Public Property SucursalSeleccionada As Integer = 0
+    Public Property SlotSeleccionado As Integer = 0
+    Public Property TipoEntrega As String = "DOMICILIO"
+    Public Property EsExpress As Boolean = False
 
     ' ============================================================
     ' Page_Load
     ' ============================================================
     Protected Sub Page_Load(ByVal sender As Object, ByVal e As EventArgs) Handles Me.Load
         If Not IsPostBack Then
-            ' Obtener ID del pre-pedido
-            Dim idStr As String = Request.QueryString("prepedido")
+            ' ============================================================
+            ' DETECTAR MODO: AGREGAR vs EDITAR
+            ' ============================================================
+            Dim prepedidoStr As String = Request.QueryString("prepedido")
+            Dim pedidoStr As String = Request.QueryString("pedido")
             
-            If String.IsNullOrEmpty(idStr) Then
-                Response.Redirect("PrePedidos.aspx")
+            ' Validar pre-pedido (OBLIGATORIO)
+            If String.IsNullOrEmpty(prepedidoStr) Then
+                SesionHelper.RedirectSeguro(HttpContext.Current, "PrePedidos.aspx")
                 Return
             End If
 
-            Dim id As Integer = 0
-            If Not Integer.TryParse(idStr, id) OrElse id <= 0 Then
-                Response.Redirect("PrePedidos.aspx")
+            Dim prepedidoId As Integer = 0
+            If Not Integer.TryParse(prepedidoStr, prepedidoId) OrElse prepedidoId <= 0 Then
+                SesionHelper.RedirectSeguro(HttpContext.Current, "PrePedidos.aspx")
                 Return
             End If
 
-            PrePedidoId = id
+            PrePedidoId = prepedidoId
+            
+            ' DEBUG
+            System.Diagnostics.Debug.WriteLine("=== DEBUG Page_Load ===")
+            System.Diagnostics.Debug.WriteLine("prepedidoStr: " & prepedidoStr)
+            System.Diagnostics.Debug.WriteLine("PrePedidoId asignado: " & PrePedidoId)
+            System.Diagnostics.Debug.WriteLine("pedidoStr: " & If(String.IsNullOrEmpty(pedidoStr), "VACIO", pedidoStr))
+            
+            ' ============================================================
+            ' MODO EDICIÓN: Si viene "pedido=" → cargar datos existentes
+            ' ============================================================
+            If Not String.IsNullOrEmpty(pedidoStr) Then
+                Dim pedidoId As Integer = 0
+                If Integer.TryParse(pedidoStr, pedidoId) AndAlso pedidoId > 0 Then
+                    PedidoId = pedidoId
+                    ModoEdicion = True
+                End If
+            End If
             
             ' Calcular fecha mínima (HOY + 2 días)
             Dim fechaMin As DateTime = DateTime.Now.AddDays(2)
             FechaMinima = fechaMin.ToString("yyyy-MM-dd")
-            ValorFecha = fechaMin.ToString("yyyy-MM-dd")
             
             ' Cargar datos
             CargarDatosPrePedido()
+            
+            If ModoEdicion Then
+                ' MODO EDICIÓN: Cargar datos del pedido existente
+                CargarDatosPedido()
+            Else
+                ' MODO AGREGAR: Valores por defecto
+                ValorFecha = fechaMin.ToString("yyyy-MM-dd")
+            End If
+            
             CargarZonas()
             CargarSucursales()
             CargarProductos()
@@ -66,16 +107,22 @@ Partial Public Class Modulos_Pedidos_Pedido_Agregar
     ' ============================================================
     Private Sub CargarDatosPrePedido()
         Try
+            System.Diagnostics.Debug.WriteLine("=== DEBUG CargarDatosPrePedido ===")
+            System.Diagnostics.Debug.WriteLine("PrePedidoId ANTES de SQL: " & PrePedidoId)
+            
             Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
                 conn.Open()
 
                 Dim sql As String = "SELECT codigo, cliente_nombre, cliente_apellidos FROM FLORERIA_PrePedido WHERE prepedido_id = @id"
+                System.Diagnostics.Debug.WriteLine("SQL: " & sql)
 
                 Using cmd As New SqlCommand(sql, conn)
                     cmd.Parameters.AddWithValue("@id", PrePedidoId)
+                    System.Diagnostics.Debug.WriteLine("Parámetro @id: " & PrePedidoId)
 
                     Using dr As SqlDataReader = cmd.ExecuteReader()
                         If dr.Read() Then
+                            System.Diagnostics.Debug.WriteLine("PrePedido ENCONTRADO")
                             PrePedidoCodigo = dr("codigo").ToString()
                             
                             Dim nombre As String = If(IsDBNull(dr("cliente_nombre")), "", dr("cliente_nombre").ToString())
@@ -90,7 +137,8 @@ Partial Public Class Modulos_Pedidos_Pedido_Agregar
                                 ClienteNombre = "Cliente"
                             End If
                         Else
-                            Response.Redirect("PrePedidos.aspx")
+                            System.Diagnostics.Debug.WriteLine("ERROR: PrePedido NO ENCONTRADO con ID: " & PrePedidoId)
+                            SesionHelper.RedirectSeguro(HttpContext.Current, "PrePedidos.aspx")
                         End If
                     End Using
                 End Using
@@ -99,6 +147,96 @@ Partial Public Class Modulos_Pedidos_Pedido_Agregar
         Catch ex As Exception
             MensajeAlerta = "Error al cargar: " & ex.Message
             System.Diagnostics.Debug.WriteLine("ERROR Pedido_Agregar.CargarDatosPrePedido: " & ex.Message)
+        End Try
+    End Sub
+
+    ' ============================================================
+    ' CargarDatosPedido - Cargar datos del pedido existente (MODO EDICIÓN)
+    ' ============================================================
+    Private Sub CargarDatosPedido()
+        Try
+            ' DEBUG: Verificar parámetros
+            System.Diagnostics.Debug.WriteLine("=== DEBUG CargarDatosPedido ===")
+            System.Diagnostics.Debug.WriteLine("PedidoId: " & PedidoId)
+            System.Diagnostics.Debug.WriteLine("PrePedidoId: " & PrePedidoId)
+            
+            Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
+                conn.Open()
+
+                ' SQL con todos los campos necesarios
+                Dim sql As String = "SELECT " &
+                    "ped.codigo, ped.receptor_nombre, ped.receptor_celular, " &
+                    "ped.ciudad_id, ped.zona_id, ped.sucursal_id, " &
+                    "ped.tipo_entrega, ped.direccion, ped.referencia, " &
+                    "ped.fecha_entrega, ped.slot_id, ped.es_express, " &
+                    "ped.dedicatoria, ped.firma_tarjeta " &
+                    "FROM FLORERIA_Pedido ped " &
+                    "WHERE ped.pedido_id = @pedidoId AND ped.prepedido_id = @prepedidoId"
+
+                Using cmd As New SqlCommand(sql, conn)
+                    cmd.Parameters.AddWithValue("@pedidoId", PedidoId)
+                    cmd.Parameters.AddWithValue("@prepedidoId", PrePedidoId)
+
+                    Using dr As SqlDataReader = cmd.ExecuteReader()
+                        System.Diagnostics.Debug.WriteLine("ExecuteReader ejecutado")
+                        
+                        If dr.Read() Then
+                            System.Diagnostics.Debug.WriteLine("Pedido encontrado - Código: " & dr("codigo").ToString())
+                            
+                            ' Datos básicos
+                            PedidoCodigo = dr("codigo").ToString()
+                            ValorReceptor = If(IsDBNull(dr("receptor_nombre")), "", dr("receptor_nombre").ToString())
+                            ValorCelularReceptor = If(IsDBNull(dr("receptor_celular")), "", dr("receptor_celular").ToString())
+                            
+                            ' Ubicación
+                            If Not IsDBNull(dr("ciudad_id")) Then
+                                CiudadSeleccionada = CInt(dr("ciudad_id"))
+                            End If
+                            
+                            If Not IsDBNull(dr("zona_id")) Then
+                                ZonaSeleccionada = CInt(dr("zona_id"))
+                            End If
+                            
+                            If Not IsDBNull(dr("sucursal_id")) Then
+                                SucursalSeleccionada = CInt(dr("sucursal_id"))
+                            End If
+                            
+                            ' Tipo entrega
+                            TipoEntrega = If(IsDBNull(dr("tipo_entrega")), "DOMICILIO", dr("tipo_entrega").ToString())
+                            ValorDireccion = If(IsDBNull(dr("direccion")), "", dr("direccion").ToString())
+                            ValorReferencia = If(IsDBNull(dr("referencia")), "", dr("referencia").ToString())
+                            
+                            ' Fecha y horario
+                            If Not IsDBNull(dr("fecha_entrega")) Then
+                                Dim fecha As DateTime = CDate(dr("fecha_entrega"))
+                                ValorFecha = fecha.ToString("yyyy-MM-dd")
+                            End If
+                            
+                            If Not IsDBNull(dr("slot_id")) Then
+                                SlotSeleccionado = CInt(dr("slot_id"))
+                            End If
+                            
+                            If Not IsDBNull(dr("es_express")) Then
+                                EsExpress = CBool(dr("es_express"))
+                            End If
+                            
+                            ' Mensaje
+                            ValorDedicatoria = If(IsDBNull(dr("dedicatoria")), "", dr("dedicatoria").ToString())
+                            ValorFirma = If(IsDBNull(dr("firma_tarjeta")), "", dr("firma_tarjeta").ToString())
+                        Else
+                            ' No existe o no pertenece a este pre-pedido
+                            System.Diagnostics.Debug.WriteLine("ERROR: Pedido NO encontrado")
+                            System.Diagnostics.Debug.WriteLine("SQL: " & sql)
+                            SesionHelper.RedirectSeguro(HttpContext.Current, "PrePedido_Detalle.aspx?id=" & PrePedidoId)
+                            Return
+                        End If
+                    End Using
+                End Using
+            End Using
+
+        Catch ex As Exception
+            MensajeAlerta = "Error al cargar entrega: " & ex.Message
+            System.Diagnostics.Debug.WriteLine("ERROR Pedido_Agregar.CargarDatosPedido: " & ex.Message)
         End Try
     End Sub
 
@@ -254,7 +392,7 @@ Partial Public Class Modulos_Pedidos_Pedido_Agregar
             ' FLORERIA_sp_Pedido_Crear(@prepedido_id, @receptor, @celular, @fecha, ...)
             
             ' Por ahora, redirigir al detalle
-            Response.Redirect("PrePedido_Detalle.aspx?id=" & PrePedidoId)
+            SesionHelper.RedirectSeguro(HttpContext.Current, "PrePedido_Detalle.aspx?id=" & PrePedidoId)
             
         Catch ex As Exception
             MensajeAlerta = "Error al guardar: " & ex.Message
