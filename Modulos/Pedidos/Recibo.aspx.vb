@@ -16,6 +16,7 @@ Partial Public Class Modulos_Pedidos_Recibo
     Public Property PedidoId As Integer = 0
     Public Property PedidoCodigo As String = ""
     Public Property WcNumero As String = "---"
+    Public Property WcOrderIdVal As Integer = 0
     Public Property LineaPreFecha As String = ""
     Public Property LineaAgente As String = ""
     Public Property BloqueSucursalBadge As String = ""
@@ -184,7 +185,8 @@ Partial Public Class Modulos_Pedidos_Recibo
             End If
 
             ' Numero WC
-            WcNumero = If(wcOrderId > 0, "#" & If(wcOrderNumber <> "", wcOrderNumber, wcOrderId.ToString()), "Sin WC")
+            WcNumero     = If(wcOrderId > 0, "#" & If(wcOrderNumber <> "", wcOrderNumber, wcOrderId.ToString()), "Sin WC")
+            WcOrderIdVal = wcOrderId
 
             ' Badge sucursal (3 letras en mayuscula)
             If sucursalNombre <> "" Then

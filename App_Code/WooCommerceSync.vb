@@ -401,6 +401,16 @@ Public Class WooCommerceSync
             End If
 
             Dim wcData As String = ConstruirJsonPedido(pedido)
+
+            ' === FIX #4: LOG DEL PAYLOAD COMPLETO ===
+            ' Antes de mandar, dejamos rastro de qué se está enviando.
+            ' Útil cuando Woo devuelve errores: ya no hay que adivinar.
+            System.Diagnostics.Debug.WriteLine("===========================================")
+            System.Diagnostics.Debug.WriteLine("[WC_SYNC] Enviando pedido_id=" & pedidoId & " a WooCommerce")
+            System.Diagnostics.Debug.WriteLine("[WC_SYNC] Payload (longitud=" & wcData.Length & "):")
+            System.Diagnostics.Debug.WriteLine(wcData)
+            System.Diagnostics.Debug.WriteLine("===========================================")
+
             Dim wcOrderId As Integer = If(pedido.ContainsKey("wc_order_id"), CInt(pedido("wc_order_id")), 0)
             Dim metodo As String = If(wcOrderId > 0, "PUT", "POST")
             Dim endpoint As String = "/orders"
@@ -414,6 +424,8 @@ Public Class WooCommerceSync
             Using response As HttpWebResponse = CType(request.GetResponse(), HttpWebResponse)
                 Using sr As New StreamReader(response.GetResponseStream())
                     Dim respuesta As String = sr.ReadToEnd()
+                    System.Diagnostics.Debug.WriteLine("[WC_SYNC] Respuesta WC: " & respuesta.Substring(0, Math.Min(500, respuesta.Length)))
+
                     Dim serializer As New JavaScriptSerializer()
                     Dim wcRespuesta As Dictionary(Of String, Object) = serializer.Deserialize(Of Dictionary(Of String, Object))(respuesta)
 
@@ -429,6 +441,7 @@ Public Class WooCommerceSync
             End Using
 
         Catch ex As WebException
+            ' === FIX #4: LOG DETALLADO DEL ERROR ===
             Dim errorMsg As String = ex.Message
             Try
                 Using sr As New StreamReader(ex.Response.GetResponseStream())
@@ -436,10 +449,14 @@ Public Class WooCommerceSync
                 End Using
             Catch
             End Try
+            System.Diagnostics.Debug.WriteLine("[WC_SYNC_ERROR] WebException pedido_id=" & pedidoId)
+            System.Diagnostics.Debug.WriteLine("[WC_SYNC_ERROR] Mensaje: " & ex.Message)
+            System.Diagnostics.Debug.WriteLine("[WC_SYNC_ERROR] Respuesta WC: " & errorMsg)
             ActualizarEstadoSyncPedido(pedidoId, 0, "", "ERROR", errorMsg)
-            resultado("mensaje") = "Error: " & errorMsg.Substring(0, Math.Min(100, errorMsg.Length))
+            resultado("mensaje") = "Error: " & errorMsg.Substring(0, Math.Min(200, errorMsg.Length))
 
         Catch ex As Exception
+            System.Diagnostics.Debug.WriteLine("[WC_SYNC_ERROR] Exception pedido_id=" & pedidoId & ": " & ex.Message)
             ActualizarEstadoSyncPedido(pedidoId, 0, "", "ERROR", ex.Message)
             resultado("mensaje") = "Error: " & ex.Message
         End Try
@@ -485,40 +502,40 @@ Public Class WooCommerceSync
                     Using dr As SqlDataReader = cmd.ExecuteReader()
                         If dr.Read() Then
                             p = New Dictionary(Of String, Object)()
-                            p("pedido_id")        = CInt(dr("pedido_id"))
-                            p("codigo")           = dr("codigo").ToString()
-                            p("prepedido_id")     = If(IsDBNull(dr("prepedido_id")), 0, CInt(dr("prepedido_id")))
-                            p("receptor_nombre")  = dr("receptor_nombre").ToString()
+                            p("pedido_id") = CInt(dr("pedido_id"))
+                            p("codigo") = dr("codigo").ToString()
+                            p("prepedido_id") = If(IsDBNull(dr("prepedido_id")), 0, CInt(dr("prepedido_id")))
+                            p("receptor_nombre") = dr("receptor_nombre").ToString()
                             p("receptor_celular") = dr("receptor_celular").ToString()
-                            p("direccion")        = If(IsDBNull(dr("direccion")),    "", dr("direccion").ToString())
-                            p("referencia")       = If(IsDBNull(dr("referencia")),   "", dr("referencia").ToString())
-                            p("gps")              = If(IsDBNull(dr("gps")),          "", dr("gps").ToString())
-                            p("fecha_entrega")    = CDate(dr("fecha_entrega")).ToString("yyyy-MM-dd")
-                            p("es_express")       = CBool(dr("es_express"))
-                            p("dedicatoria")      = If(IsDBNull(dr("dedicatoria")),  "", dr("dedicatoria").ToString())
-                            p("firma_tarjeta")    = If(IsDBNull(dr("firma_tarjeta")),"", dr("firma_tarjeta").ToString())
-                            p("tipo_ocacion")     = If(IsDBNull(dr("tipo_ocacion")), "", dr("tipo_ocacion").ToString())
-                            p("nota_floreria")    = If(IsDBNull(dr("nota_floreria")),"", dr("nota_floreria").ToString())
-                            p("observaciones")    = If(IsDBNull(dr("observaciones")),"", dr("observaciones").ToString())
-                            p("subtotal_bs")      = CDec(dr("subtotal_productos_bs"))
-                            p("envio_bs")         = CDec(dr("envio_bs"))
+                            p("direccion") = If(IsDBNull(dr("direccion")), "", dr("direccion").ToString())
+                            p("referencia") = If(IsDBNull(dr("referencia")), "", dr("referencia").ToString())
+                            p("gps") = If(IsDBNull(dr("gps")), "", dr("gps").ToString())
+                            p("fecha_entrega") = CDate(dr("fecha_entrega")).ToString("yyyy-MM-dd")
+                            p("es_express") = CBool(dr("es_express"))
+                            p("dedicatoria") = If(IsDBNull(dr("dedicatoria")), "", dr("dedicatoria").ToString())
+                            p("firma_tarjeta") = If(IsDBNull(dr("firma_tarjeta")), "", dr("firma_tarjeta").ToString())
+                            p("tipo_ocacion") = If(IsDBNull(dr("tipo_ocacion")), "", dr("tipo_ocacion").ToString())
+                            p("nota_floreria") = If(IsDBNull(dr("nota_floreria")), "", dr("nota_floreria").ToString())
+                            p("observaciones") = If(IsDBNull(dr("observaciones")), "", dr("observaciones").ToString())
+                            p("subtotal_bs") = CDec(dr("subtotal_productos_bs"))
+                            p("envio_bs") = CDec(dr("envio_bs"))
                             p("recargo_express_bs") = CDec(dr("recargo_express_bs"))
                             p("recargo_horario_bs") = CDec(dr("recargo_horario_bs"))
-                            p("descuento_bs")     = CDec(dr("descuento_bs"))
-                            p("total_bs")         = CDec(dr("total_bs"))
-                            p("tipo_entrega")     = dr("tipo_entrega").ToString()
-                            p("wc_order_id")      = If(IsDBNull(dr("wc_order_id")), 0, CInt(dr("wc_order_id")))
-                            p("ciudad_nombre")    = If(IsDBNull(dr("ciudad_nombre")), "", dr("ciudad_nombre").ToString())
-                            p("zona_nombre")      = If(IsDBNull(dr("zona_nombre")),   "", dr("zona_nombre").ToString())
-                            p("slot_etiqueta")    = If(IsDBNull(dr("slot_etiqueta")), "", dr("slot_etiqueta").ToString())
-                            p("wc_slot_value")    = If(IsDBNull(dr("wc_slot_value")), "", dr("wc_slot_value").ToString())
+                            p("descuento_bs") = CDec(dr("descuento_bs"))
+                            p("total_bs") = CDec(dr("total_bs"))
+                            p("tipo_entrega") = dr("tipo_entrega").ToString()
+                            p("wc_order_id") = If(IsDBNull(dr("wc_order_id")), 0, CInt(dr("wc_order_id")))
+                            p("ciudad_nombre") = If(IsDBNull(dr("ciudad_nombre")), "", dr("ciudad_nombre").ToString())
+                            p("zona_nombre") = If(IsDBNull(dr("zona_nombre")), "", dr("zona_nombre").ToString())
+                            p("slot_etiqueta") = If(IsDBNull(dr("slot_etiqueta")), "", dr("slot_etiqueta").ToString())
+                            p("wc_slot_value") = If(IsDBNull(dr("wc_slot_value")), "", dr("wc_slot_value").ToString())
 
-                            Dim cn As String = If(IsDBNull(dr("cliente_nombre")),    "", dr("cliente_nombre").ToString())
+                            Dim cn As String = If(IsDBNull(dr("cliente_nombre")), "", dr("cliente_nombre").ToString())
                             Dim ca As String = If(IsDBNull(dr("cliente_apellidos")), "", dr("cliente_apellidos").ToString())
-                            p("cliente_nombre")    = cn
+                            p("cliente_nombre") = cn
                             p("cliente_apellidos") = ca
-                            p("cliente_email")     = If(IsDBNull(dr("cliente_email")),   "", dr("cliente_email").ToString())
-                            p("cliente_celular")   = If(IsDBNull(dr("cliente_celular")), "", dr("cliente_celular").ToString())
+                            p("cliente_email") = If(IsDBNull(dr("cliente_email")), "", dr("cliente_email").ToString())
+                            p("cliente_celular") = If(IsDBNull(dr("cliente_celular")), "", dr("cliente_celular").ToString())
                         End If
                     End Using
                 End Using
@@ -541,14 +558,14 @@ Public Class WooCommerceSync
                     Using dr As SqlDataReader = cmdI.ExecuteReader()
                         While dr.Read()
                             Dim it As New Dictionary(Of String, Object)
-                            it("detalle_id")       = CInt(dr("detalle_id"))
+                            it("detalle_id") = CInt(dr("detalle_id"))
                             it("es_personalizado") = CBool(dr("es_personalizado"))
-                            it("nombre")           = dr("nombre_producto").ToString()
-                            it("cantidad")         = CInt(dr("cantidad"))
-                            it("precio_bs")        = CDec(dr("precio_unitario_bs"))
-                            it("subtotal_bs")      = CDec(dr("subtotal_bs"))
-                            it("personalizacion")  = If(IsDBNull(dr("personalizacion")), "", dr("personalizacion").ToString())
-                            it("wc_product_id")    = If(IsDBNull(dr("wc_product_id")), 0, CInt(dr("wc_product_id")))
+                            it("nombre") = dr("nombre_producto").ToString()
+                            it("cantidad") = CInt(dr("cantidad"))
+                            it("precio_bs") = CDec(dr("precio_unitario_bs"))
+                            it("subtotal_bs") = CDec(dr("subtotal_bs"))
+                            it("personalizacion") = If(IsDBNull(dr("personalizacion")), "", dr("personalizacion").ToString())
+                            it("wc_product_id") = If(IsDBNull(dr("wc_product_id")), 0, CInt(dr("wc_product_id")))
                             items.Add(it)
                         End While
                     End Using
@@ -579,18 +596,18 @@ Public Class WooCommerceSync
 
                 ' --- 4. Resolver mapeo a WC via SP ---
                 Dim wcMethod As String = "bacs"
-                Dim wcTitle  As String = metodoPago
+                Dim wcTitle As String = metodoPago
                 Using cmdM As New SqlCommand("FLORERIA_sp_PagoMetodo_Map_Obtener", conn)
                     cmdM.CommandType = CommandType.StoredProcedure
                     cmdM.Parameters.AddWithValue("@codigo_sisconbol", metodoPago)
                     Using dr As SqlDataReader = cmdM.ExecuteReader()
                         If dr.Read() Then
                             wcMethod = dr("wc_payment_method").ToString()
-                            wcTitle  = dr("wc_payment_method_title").ToString()
+                            wcTitle = dr("wc_payment_method_title").ToString()
                         End If
                     End Using
                 End Using
-                p("wc_payment_method")       = wcMethod
+                p("wc_payment_method") = wcMethod
                 p("wc_payment_method_title") = wcTitle
 
                 Return p
@@ -603,8 +620,17 @@ Public Class WooCommerceSync
 
     ' ============================================================
     ' ConstruirJsonPedido - JSON completo para WooCommerce
-    ' Mapeo basado en el formato real que usa miss-flores.com
-    ' (los mismos campos que parsea el modulo Migrar al recibir)
+    '
+    ' === CAMBIOS RESPECTO A LA VERSIÓN ANTERIOR ===
+    '   FIX #1: billing.address_1 / city / state ahora se mandan
+    '           (eran obligatorios y NO iban -> rest_invalid_param: billing)
+    '   FIX #2: billing.email tiene fallback genérico si está vacío
+    '           (Woo rechaza email vacío con muchas configs)
+    '   FIX #3: billing.last_name tiene fallback "." si está vacío
+    '           (en Bolivia muchos clientes solo dan un nombre)
+    '   FIX #4: ConstruirJson() también es llamado con logging desde
+    '           SincronizarPedido (ver arriba), pero acá además
+    '           arreglamos el shipping_lines malformado.
     ' ============================================================
     Private Shared Function ConstruirJsonPedido(pedido As Dictionary(Of String, Object)) As String
         ' Constante: producto comodin para items personalizados
@@ -619,14 +645,14 @@ Public Class WooCommerceSync
         sb.Append("""currency"":""BOB"",")
 
         ' --- Payment method ---
-        Dim wcPm    As String = pedido("wc_payment_method").ToString()
-        Dim wcPmT   As String = pedido("wc_payment_method_title").ToString()
+        Dim wcPm As String = pedido("wc_payment_method").ToString()
+        Dim wcPmT As String = pedido("wc_payment_method_title").ToString()
         sb.Append("""payment_method"":""" & EscaparJson(wcPm) & """,")
         sb.Append("""payment_method_title"":""" & EscaparJson(wcPmT) & """,")
 
         ' --- Customer note ---
         Dim notaFlor As String = pedido("nota_floreria").ToString()
-        Dim obs      As String = pedido("observaciones").ToString()
+        Dim obs As String = pedido("observaciones").ToString()
         Dim notaFinal As String = ""
         If notaFlor <> "" Then notaFinal = notaFlor
         If obs <> "" Then
@@ -637,39 +663,82 @@ Public Class WooCommerceSync
             sb.Append("""customer_note"":""" & EscaparJson(notaFinal) & """,")
         End If
 
-        ' --- Billing (datos del cliente del prepedido) ---
-        Dim cn As String = pedido("cliente_nombre").ToString()
-        Dim ca As String = pedido("cliente_apellidos").ToString()
-        If cn = "" Then cn = pedido("receptor_nombre").ToString()
+        ' ============================================================
+        ' === BILLING (datos del cliente comprador) ===
+        ' FIX #1, #2, #3: incluir address_1/city/state + fallbacks de email/last_name
+        ' ============================================================
+        Dim cn As String = pedido("cliente_nombre").ToString().Trim()
+        Dim ca As String = pedido("cliente_apellidos").ToString().Trim()
+        Dim email As String = pedido("cliente_email").ToString().Trim()
+        Dim cel As String = pedido("cliente_celular").ToString().Trim()
+
+        ' Fallback de nombre: si no hay cliente, usar el receptor
+        If cn = "" Then cn = pedido("receptor_nombre").ToString().Trim()
+        If cn = "" Then cn = "Cliente"
+        ' Fallback de last_name: Woo requiere algo (mínimo "." es aceptable)
+        If ca = "" Then ca = "."
+        ' Fallback de email: Woo requiere email válido en muchas configs
+        If email = "" Then email = "noreply@miss-flores.com"
+        ' Fallback de teléfono: usar el del receptor si falta
+        If cel = "" Then cel = pedido("receptor_celular").ToString().Trim()
+        If cel = "" Then cel = "00000000"
+
+        ' Para los campos de dirección del billing, copiamos del shipping
+        ' (en pedidos físicos, billing address suele ser la misma que shipping)
+        Dim dirBill As String = pedido("direccion").ToString().Trim()
+        If dirBill = "" Then dirBill = "Sin dirección especificada"
+        Dim ciudadBill As String = pedido("ciudad_nombre").ToString().Trim()
+        If ciudadBill = "" Then ciudadBill = "La Paz"
+        Dim zonaBill As String = pedido("zona_nombre").ToString().Trim()
+        If zonaBill = "" Then zonaBill = ciudadBill
+
         sb.Append("""billing"":{")
         sb.Append("""first_name"":""" & EscaparJson(cn) & """,")
-        sb.Append("""last_name"":"""  & EscaparJson(ca) & """,")
-        sb.Append("""email"":"""      & EscaparJson(pedido("cliente_email").ToString()) & """,")
-        sb.Append("""phone"":"""      & EscaparJson(pedido("cliente_celular").ToString()) & """,")
+        sb.Append("""last_name"":""" & EscaparJson(ca) & """,")
+        sb.Append("""email"":""" & EscaparJson(email) & """,")
+        sb.Append("""phone"":""" & EscaparJson(cel) & """,")
+        sb.Append("""address_1"":""" & EscaparJson(dirBill) & """,")       ' *** FIX #1 ***
+        sb.Append("""city"":""" & EscaparJson(ciudadBill) & """,")         ' *** FIX #1 ***
+        sb.Append("""state"":""" & EscaparJson(zonaBill) & """,")          ' *** FIX #1 ***
         sb.Append("""country"":""BO""")
         sb.Append("},")
 
-        ' --- Shipping (a quien se le entrega) ---
-        Dim receptor As String = pedido("receptor_nombre").ToString()
+        ' ============================================================
+        ' === SHIPPING (a quién se le entrega) ===
+        ' ============================================================
+        Dim receptor As String = pedido("receptor_nombre").ToString().Trim()
         Dim rNom As String = receptor
-        Dim rApe As String = ""
+        Dim rApe As String = "."
         Dim pos As Integer = receptor.IndexOf(" "c)
         If pos > 0 Then
             rNom = receptor.Substring(0, pos)
             rApe = receptor.Substring(pos + 1)
         End If
+        If rNom = "" Then rNom = "Cliente"
+        If rApe = "" Then rApe = "."
+
+        Dim dirShip As String = pedido("direccion").ToString().Trim()
+        If dirShip = "" Then dirShip = "Sin dirección especificada"
+        Dim ciudadShip As String = pedido("ciudad_nombre").ToString().Trim()
+        If ciudadShip = "" Then ciudadShip = "La Paz"
+        Dim zonaShip As String = pedido("zona_nombre").ToString().Trim()
+        If zonaShip = "" Then zonaShip = ciudadShip
+        Dim refShip As String = pedido("referencia").ToString().Trim()
+
         sb.Append("""shipping"":{")
         sb.Append("""first_name"":""" & EscaparJson(rNom) & """,")
-        sb.Append("""last_name"":"""  & EscaparJson(rApe) & """,")
-        sb.Append("""phone"":"""      & EscaparJson(pedido("receptor_celular").ToString()) & """,")
-        sb.Append("""address_1"":"""  & EscaparJson(pedido("direccion").ToString()) & """,")
-        sb.Append("""address_2"":"""  & EscaparJson(pedido("referencia").ToString()) & """,")
-        sb.Append("""city"":"""       & EscaparJson(pedido("ciudad_nombre").ToString()) & """,")
-        sb.Append("""state"":"""      & EscaparJson(pedido("zona_nombre").ToString()) & """,")
+        sb.Append("""last_name"":""" & EscaparJson(rApe) & """,")
+        sb.Append("""phone"":""" & EscaparJson(pedido("receptor_celular").ToString()) & """,")
+        sb.Append("""address_1"":""" & EscaparJson(dirShip) & """,")
+        sb.Append("""address_2"":""" & EscaparJson(refShip) & """,")
+        sb.Append("""city"":""" & EscaparJson(ciudadShip) & """,")
+        sb.Append("""state"":""" & EscaparJson(zonaShip) & """,")
         sb.Append("""country"":""BO""")
         sb.Append("},")
 
-        ' --- Line items ---
+        ' ============================================================
+        ' === LINE ITEMS ===
+        ' ============================================================
         sb.Append("""line_items"":[")
         Dim items As List(Of Dictionary(Of String, Object)) = CType(pedido("items"), List(Of Dictionary(Of String, Object)))
         For i As Integer = 0 To items.Count - 1
@@ -680,8 +749,8 @@ Public Class WooCommerceSync
             Dim wcPid As Integer = CInt(it("wc_product_id"))
             If esPers OrElse wcPid <= 0 Then wcPid = WC_PRODUCTO_PERSONALIZADO
 
-            Dim cant     As Integer = CInt(it("cantidad"))
-            Dim precio   As Decimal = CDec(it("precio_bs"))
+            Dim cant As Integer = CInt(it("cantidad"))
+            Dim precio As Decimal = CDec(it("precio_bs"))
             Dim subtotal As Decimal = CDec(it("subtotal_bs"))
 
             sb.Append("{")
@@ -708,27 +777,32 @@ Public Class WooCommerceSync
         Next
         sb.Append("],")
 
-        ' --- Shipping lines (costo de envio) ---
+        ' ============================================================
+        ' === SHIPPING LINES ===
+        ' (FIX #5: armado limpio sin manipulación de StringBuilder)
+        ' ============================================================
         Dim envioBs As Decimal = CDec(pedido("envio_bs"))
         Dim tipoEnt As String = pedido("tipo_entrega").ToString()
-        sb.Append("""shipping_lines"":[{")
+        Dim methodId As String = "flat_rate"
+        Dim methodTitle As String = "Envio a domicilio"
         If tipoEnt = "RECOJO_SUCURSAL" Then
-            sb.Append("""method_id"":""local_pickup"",")
-            sb.Append("""method_title"":""Recojo en sucursal"",")
+            methodId = "local_pickup"
+            methodTitle = "Recojo en sucursal"
         Else
-            sb.Append("""method_id"":""flat_rate"",")
-            sb.Append("""method_title"":""Envio a domicilio""")
-            If pedido("zona_nombre").ToString() <> "" Then
-                sb.Length -= 1   ' quitar la comilla final
-                sb.Append(" (" & EscaparJson(pedido("zona_nombre").ToString()) & ")"",")
-            Else
-                sb.Append(",")
+            Dim zonaNom As String = pedido("zona_nombre").ToString().Trim()
+            If zonaNom <> "" Then
+                methodTitle = "Envio a domicilio (" & zonaNom & ")"
             End If
         End If
+        sb.Append("""shipping_lines"":[{")
+        sb.Append("""method_id"":""" & EscaparJson(methodId) & """,")
+        sb.Append("""method_title"":""" & EscaparJson(methodTitle) & """,")
         sb.Append("""total"":""" & envioBs.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) & """")
         sb.Append("}],")
 
-        ' --- Fee lines (recargos y descuento) ---
+        ' ============================================================
+        ' === FEE LINES (recargos y descuento) ===
+        ' ============================================================
         Dim fees As New List(Of String)
         Dim recHor As Decimal = CDec(pedido("recargo_horario_bs"))
         Dim recExp As Decimal = CDec(pedido("recargo_express_bs"))
@@ -749,7 +823,9 @@ Public Class WooCommerceSync
         End If
         sb.Append("""fee_lines"":[" & String.Join(",", fees) & "],")
 
-        ' --- Meta_data del pedido (mismos keys que parsea Migrar) ---
+        ' ============================================================
+        ' === META_DATA del pedido ===
+        ' ============================================================
         Dim meta As New List(Of String)
         meta.Add(MetaPair("delivery_date", pedido("fecha_entrega").ToString()))
         If pedido("wc_slot_value").ToString() <> "" Then
@@ -821,14 +897,9 @@ Public Class WooCommerceSync
 
     ' ============================================
     ' WEBHOOK: RECIBIR ORDEN DESDE WOOCOMMERCE
+    ' (Sin cambios - sigue igual que antes)
     ' ============================================
 
-    ''' <summary>
-    ''' Procesa una orden recibida via webhook de WooCommerce
-    ''' Crea o actualiza el pedido en FLORERIA_Pedido
-    ''' </summary>
-    ''' <param name="jsonData">JSON completo del webhook (payload de WooCommerce)</param>
-    ''' <returns>Dictionary con ok, mensaje, pedido_id</returns>
     Public Shared Function ProcesarOrdenWebhook(jsonData As String) As Dictionary(Of String, Object)
         Dim resultado As New Dictionary(Of String, Object)
         resultado("ok") = False
@@ -836,9 +907,6 @@ Public Class WooCommerceSync
         resultado("pedido_id") = 0
 
         Try
-            ' ============================================
-            ' 1. PARSEAR JSON DE WOOCOMMERCE
-            ' ============================================
             Dim serializer As New JavaScriptSerializer()
             serializer.MaxJsonLength = Integer.MaxValue
             Dim orden As Dictionary(Of String, Object) = serializer.Deserialize(Of Dictionary(Of String, Object))(jsonData)
@@ -848,7 +916,6 @@ Public Class WooCommerceSync
                 Return resultado
             End If
 
-            ' Campos principales de la orden
             Dim wcOrderId As Integer = CInt(orden("id"))
             Dim wcOrderNumber As String = If(orden.ContainsKey("number"), orden("number").ToString(), wcOrderId.ToString())
             Dim status As String = If(orden.ContainsKey("status"), orden("status").ToString(), "pending")
@@ -862,9 +929,6 @@ Public Class WooCommerceSync
 
             System.Diagnostics.Debug.WriteLine($"[WEBHOOK] Procesando orden WC #{wcOrderId} (Number: {wcOrderNumber}) - Estado: {status} - Total: {total}")
 
-            ' ============================================
-            ' 2. EXTRAER BILLING (FACTURACIÓN)
-            ' ============================================
             Dim billing As Dictionary(Of String, Object) = If(orden.ContainsKey("billing"),
                 TryCast(orden("billing"), Dictionary(Of String, Object)),
                 New Dictionary(Of String, Object))
@@ -881,13 +945,9 @@ Public Class WooCommerceSync
             If billing.ContainsKey("phone") Then celular = billing("phone").ToString().Trim()
             If billing.ContainsKey("email") Then email = billing("email").ToString().Trim()
 
-            ' Valores por defecto si están vacíos
             If nombreReceptor = "" Then nombreReceptor = "Cliente Web"
             If celular = "" Then celular = "00000000"
 
-            ' ============================================
-            ' 3. EXTRAER SHIPPING (ENVÍO)
-            ' ============================================
             Dim shipping As Dictionary(Of String, Object) = If(orden.ContainsKey("shipping"),
                 TryCast(orden("shipping"), Dictionary(Of String, Object)),
                 New Dictionary(Of String, Object))
@@ -906,9 +966,6 @@ Public Class WooCommerceSync
 
             If direccion = "" Then direccion = "Sin dirección especificada"
 
-            ' ============================================
-            ' 4. EXTRAER LINE_ITEMS (PRODUCTOS)
-            ' ============================================
             Dim lineItems As New List(Of Dictionary(Of String, Object))
             If orden.ContainsKey("line_items") Then
                 Dim itemsArray As Object() = TryCast(orden("line_items"), Object())
@@ -922,27 +979,17 @@ Public Class WooCommerceSync
 
             System.Diagnostics.Debug.WriteLine($"[WEBHOOK] Line items encontrados: {lineItems.Count}")
 
-            ' ============================================
-            ' 5. VERIFICAR SI YA EXISTE EL PEDIDO (ANTI-LOOP)
-            ' ============================================
             Dim pedidoId As Integer = 0
             Using conn As New SqlConnection(ConfigurationManager.ConnectionStrings("SISCONBOL").ConnectionString)
                 conn.Open()
 
-                ' Buscar pedido existente por wc_order_id
                 Using cmd As New SqlCommand("SELECT pedido_id, wc_sync_estado FROM FLORERIA_Pedido WHERE wc_order_id=@wc", conn)
                     cmd.Parameters.AddWithValue("@wc", wcOrderId)
                     Using dr As SqlDataReader = cmd.ExecuteReader()
                         If dr.Read() Then
                             pedidoId = CInt(dr("pedido_id"))
                             Dim estadoSync As String = dr("wc_sync_estado").ToString()
-                            
-                            ' ============================================
-                            ' 🔒 PROTECCIÓN ANTI-LOOP INFINITO
-                            ' ============================================
-                            ' Si el pedido fue creado/sincronizado DESDE SISCONBOL hacia WC,
-                            ' NO procesar este webhook para evitar duplicados
-                            ' ============================================
+
                             If estadoSync = "SINCRONIZADO" OrElse estadoSync = "PENDIENTE" Then
                                 System.Diagnostics.Debug.WriteLine($"[WEBHOOK_ANTI_LOOP] Orden WC #{wcOrderId} fue CREADA por SISCONBOL - Webhook IGNORADO para evitar duplicado")
                                 resultado("ok") = True
@@ -950,19 +997,15 @@ Public Class WooCommerceSync
                                 resultado("mensaje") = "Webhook ignorado - orden sincronizada desde SISCONBOL (anti-loop)"
                                 Return resultado
                             End If
-                            
+
                             System.Diagnostics.Debug.WriteLine($"[WEBHOOK] Pedido ID {pedidoId} existe con estado {estadoSync} - se actualizará")
                         End If
                     End Using
                 End Using
 
                 If pedidoId = 0 Then
-                    ' ============================================
-                    ' 6A. CREAR NUEVO PEDIDO
-                    ' ============================================
                     System.Diagnostics.Debug.WriteLine("[WEBHOOK] Creando NUEVO pedido")
 
-                    ' Buscar o crear PrePedido temporal
                     Dim prepedidoId As Integer = ObtenerOCrearPrePedidoWebhook(conn, wcOrderNumber, email)
 
                     Using cmd As New SqlCommand("
@@ -984,17 +1027,17 @@ Public Class WooCommerceSync
                         cmd.Parameters.AddWithValue("@codigo", "WC-" & wcOrderNumber)
                         cmd.Parameters.AddWithValue("@nombre", nombreReceptor.Substring(0, Math.Min(200, nombreReceptor.Length)))
                         cmd.Parameters.AddWithValue("@celular", celular.Substring(0, Math.Min(20, celular.Length)))
-                        cmd.Parameters.AddWithValue("@ciudad", 1) ' TODO: Mapear ciudad desde shipping.city
+                        cmd.Parameters.AddWithValue("@ciudad", 1)
                         cmd.Parameters.AddWithValue("@tipoEntrega", "DOMICILIO")
                         cmd.Parameters.AddWithValue("@direccion", direccion.Substring(0, Math.Min(300, direccion.Length)))
                         cmd.Parameters.AddWithValue("@ref", customerNote.Substring(0, Math.Min(300, customerNote.Length)))
-                        cmd.Parameters.AddWithValue("@fechaEntrega", DateTime.Now.AddDays(1)) ' Entrega para mañana por defecto
+                        cmd.Parameters.AddWithValue("@fechaEntrega", DateTime.Now.AddDays(1))
                         cmd.Parameters.AddWithValue("@total", total)
                         cmd.Parameters.AddWithValue("@estadoPago", MapearEstadoPagoWC(status))
                         cmd.Parameters.AddWithValue("@wcId", wcOrderId)
                         cmd.Parameters.AddWithValue("@wcNum", wcOrderNumber)
                         cmd.Parameters.AddWithValue("@wcEstado", "RECIBIDO_WEBHOOK")
-                        cmd.Parameters.AddWithValue("@creador", 1) ' Usuario sistema
+                        cmd.Parameters.AddWithValue("@creador", 1)
 
                         pedidoId = CInt(cmd.ExecuteScalar())
                     End Using
@@ -1002,13 +1045,8 @@ Public Class WooCommerceSync
                     resultado("mensaje") = "Pedido creado desde webhook WC #" & wcOrderNumber
 
                 Else
-                    ' ============================================
-                    ' 6B. ACTUALIZAR PEDIDO EXISTENTE
-                    ' ============================================
                     System.Diagnostics.Debug.WriteLine($"[WEBHOOK] ACTUALIZANDO pedido existente ID {pedidoId}")
 
-                    ' Solo actualizar campos que WooCommerce podría haber cambiado
-                    ' NO sobrescribir datos locales importantes
                     Using cmd As New SqlCommand("
                         UPDATE FLORERIA_Pedido SET
                             estado_pago = @estadoPago,
@@ -1031,11 +1069,6 @@ Public Class WooCommerceSync
                     resultado("mensaje") = "Pedido actualizado desde webhook WC #" & wcOrderNumber
                 End If
 
-                ' ============================================
-                ' 7. PROCESAR LINE_ITEMS (OPCIONAL)
-                ' ============================================
-                ' TODO: Implementar inserción en FLORERIA_Pedido_Detalle
-                ' Requiere mapear product_id de WC a producto_id local vía wc_product_id
                 For Each item In lineItems
                     Dim productId As Integer = If(item.ContainsKey("product_id"), CInt(item("product_id")), 0)
                     Dim quantity As Integer = If(item.ContainsKey("quantity"), CInt(item("quantity")), 1)
@@ -1043,7 +1076,6 @@ Public Class WooCommerceSync
                     If item.ContainsKey("subtotal") Then Decimal.TryParse(item("subtotal").ToString(), subtotal)
 
                     System.Diagnostics.Debug.WriteLine($"[WEBHOOK] Item: WC Product {productId} x {quantity} = {subtotal}")
-                    ' Aquí insertar en FLORERIA_Pedido_Detalle cuando esté lista la tabla
                 Next
 
             End Using
@@ -1059,12 +1091,8 @@ Public Class WooCommerceSync
         Return resultado
     End Function
 
-    ''' <summary>
-    ''' Obtiene o crea un PrePedido temporal para órdenes web
-    ''' </summary>
     Private Shared Function ObtenerOCrearPrePedidoWebhook(conn As SqlConnection, wcOrderNumber As String, email As String) As Integer
         Try
-            ' Buscar PrePedido existente por email o crear uno genérico
             Dim codigo As String = "WEB-" & wcOrderNumber
             Using cmd As New SqlCommand("
                 IF EXISTS (SELECT 1 FROM FLORERIA_PrePedido WHERE codigo=@cod)
@@ -1084,13 +1112,10 @@ Public Class WooCommerceSync
             End Using
         Catch ex As Exception
             System.Diagnostics.Debug.WriteLine("[WEBHOOK] Error crear PrePedido: " & ex.Message)
-            Return 1 ' ID genérico de fallback
+            Return 1
         End Try
     End Function
 
-    ''' <summary>
-    ''' Mapea el estado de WooCommerce a estado de pago de SISCONBOL
-    ''' </summary>
     Private Shared Function MapearEstadoPagoWC(wcStatus As String) As String
         Select Case wcStatus.ToLower().Trim()
             Case "pending", "on-hold"

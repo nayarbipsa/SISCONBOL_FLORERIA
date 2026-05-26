@@ -48,6 +48,8 @@ Public Class Entrega_Handler
                     Confirmar(context)
                 Case "CREAR_WC"
                     CrearEnWooCommerce(context)
+                Case "SINCRONIZAR_PEDIDO_WC"
+                    SincronizarPedidoYaCreado(context)
                 Case Else
                     context.Response.Write("{""ok"":false,""msg"":""Accion no valida""}")
             End Select
@@ -801,5 +803,43 @@ Public Class Entrega_Handler
             Return False
         End Get
     End Property
+
+    ' ============================================================
+    ' SINCRONIZAR PEDIDO YA CREADO con WooCommerce
+    ' Recibe pedido_id (de FLORERIA_Pedido ya existente).
+    ' Llama WooCommerceSync.SincronizarPedido que hace POST (si wc_order_id IS NULL)
+    ' o PUT (si ya existe). Devuelve el wc_order_id resultante para construir el link.
+    ' ============================================================
+    Private Sub SincronizarPedidoYaCreado(context As HttpContext)
+        Dim pedidoId As Integer = 0
+        Integer.TryParse(context.Request.Form("pedido_id"), pedidoId)
+
+        If pedidoId <= 0 Then
+            context.Response.Write("{""ok"":false,""msg"":""pedido_id invalido""}")
+            Return
+        End If
+
+        Dim sync As Dictionary(Of String, Object) = Nothing
+        Try
+            sync = WooCommerceSync.SincronizarPedido(pedidoId)
+        Catch ex As Exception
+            context.Response.Write("{""ok"":false,""pedido_id"":" & pedidoId &
+                ",""msg"":""Error al sincronizar con WC: " & ex.Message.Replace("""", "'") & """}")
+            Return
+        End Try
+
+        Dim okSync  As Boolean = sync IsNot Nothing AndAlso sync.ContainsKey("ok") AndAlso CBool(sync("ok"))
+        Dim msgSync As String  = If(sync IsNot Nothing AndAlso sync.ContainsKey("mensaje"), sync("mensaje").ToString(), "")
+        Dim wcOrdId As Integer = If(sync IsNot Nothing AndAlso sync.ContainsKey("wc_order_id"), CInt(sync("wc_order_id")), 0)
+
+        Dim sb As New System.Text.StringBuilder()
+        sb.Append("{")
+        sb.Append("""ok"":" & If(okSync, "true", "false") & ",")
+        sb.Append("""pedido_id"":" & pedidoId & ",")
+        sb.Append("""wc_order_id"":" & wcOrdId & ",")
+        sb.Append("""msg"":""" & msgSync.Replace("""", "'") & """")
+        sb.Append("}")
+        context.Response.Write(sb.ToString())
+    End Sub
 
 End Class

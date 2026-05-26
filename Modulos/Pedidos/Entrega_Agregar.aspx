@@ -320,14 +320,18 @@
             </div>
             <div>
                 <label class="ea-label">Horario</label>
-                <select id="ddSlot" name="ddSlot" class="ea-select" onchange="guardarCampo('slot_id', this.value); calcularSubtotal()">
+                <select id="ddSlot" name="ddSlot" class="ea-select" onchange="guardarCampo('slot_id', this.value); sincronizarExpressConSlot(); calcularSubtotal()">
                     <option value="">-- Seleccionar --</option>
                     <%=HtmlSlots%>
                 </select>
             </div>
             <div>
                 <label class="ea-label">&nbsp;</label>
-                <label class="ea-radio-label" style="height:36px"><input type="checkbox" id="chkExpress" name="chkExpress" <%=If(ValorExpress, "checked", "")%> onchange="guardarCampo('es_express', this.checked ? '1' : '0'); calcularSubtotal()"> Express</label>
+                <!-- chkExpress: solo informativo, se auto-marca según el slot. NO suma al total. -->
+                <label class="ea-radio-label" style="height:36px;cursor:default;opacity:0.85" title="Se marca automáticamente si el horario elegido es Express (no afecta el total, el recargo ya está en el slot)">
+                    <input type="checkbox" id="chkExpress" name="chkExpress" disabled <%=If(ValorExpress, "checked", "")%>>
+                    <span style="font-size:12px">Express <i class="ti ti-info-circle" style="font-size:11px;color:#999;vertical-align:-1px" aria-hidden="true"></i></span>
+                </label>
             </div>
         </div>
     </div>
@@ -393,12 +397,13 @@
         <div class="ea-total-row"><span style="color:#999">Subtotal productos</span><span id="resSubtotal">Bs 0.00</span></div>
         <div class="ea-total-row"><span style="color:#999">Envío</span><span id="resEnvio">Bs 0.00</span></div>
         <div class="ea-total-row"><span style="color:#999">Recargo horario</span><span id="resRecargoHorario">Bs 0.00</span></div>
-        <div class="ea-total-row"><span style="color:#999">Recargo express</span><span id="resRecargoExpress">Bs 0.00</span></div>
+        <!-- Recargo express eliminado: el recargo ya viene incluido en "Recargo horario" según el slot elegido. Se mantiene el span oculto por compatibilidad. -->
+        <span id="resRecargoExpress" style="display:none">Bs 0.00</span>
         <div class="ea-descuento-row">
             <span style="color:#2E7D32"><i class="ti ti-discount-2" style="font-size:14px;vertical-align:-2px" aria-hidden="true"></i> Descuento</span>
             <div class="ea-descuento-input">
                 <span style="font-size:12px;color:#2E7D32">-</span>
-                <input type="number" id="txDescuento" name="txDescuento" value="<%=ValorDescuento%>" min="0" max="100" step="5" style="width:55px;text-align:center;padding:3px;font-size:12px;border:1px solid #d0d0d0;border-radius:4px" onblur="guardarCampo('descuento', this.value); calcularSubtotal()" onchange="calcularSubtotal()" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();return false;}">
+                <input type="number" id="txDescuento" name="txDescuento" value="<%=ValorDescuento%>" min="0" max="100" step="5" style="width:55px;text-align:center;padding:3px;font-size:12px;border:1px solid #d0d0d0;border-radius:4px" onblur="guardarCampo('descuento_valor', this.value); calcularSubtotal()" onchange="calcularSubtotal()" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();return false;}">
                 <select id="ddDescuentoMoneda" name="ddDescuentoMoneda" style="width:auto;padding:3px 4px;font-size:11px;border:1px solid #d0d0d0;border-radius:4px" onchange="guardarCampo('descuento_moneda', this.value)">
                     <option value="BOB" <%=If(ValorDescuentoMoneda = "BOB" Or ValorDescuentoMoneda = "", "selected", "")%>>Bs</option>
                     <option value="USD" <%=If(ValorDescuentoMoneda = "USD", "selected", "")%>>USD</option>
@@ -1464,6 +1469,28 @@ function eliminarPago(pagoId, btn) {
 }
 
 // ============================================================
+// SINCRONIZAR CHECKBOX EXPRESS CON SLOT
+// El checkbox es informativo: se marca/desmarca automáticamente
+// según el slot elegido (es_express). NO afecta cálculos de total.
+// Se llama: al cargar la página y cada vez que cambia el slot.
+// ============================================================
+function sincronizarExpressConSlot() {
+    var ddSlot = document.getElementById('ddSlot');
+    var chk = document.getElementById('chkExpress');
+    if (!ddSlot || !chk) return;
+    var sid = parseInt(ddSlot.value) || 0;
+    var esExpressSlot = false;
+    slotsData.forEach(function(s) {
+        if (s.slot_id === sid && s.es_express) esExpressSlot = true;
+    });
+    // Solo actualizar y guardar si cambia (evita writes innecesarios)
+    if (chk.checked !== esExpressSlot) {
+        chk.checked = esExpressSlot;
+        guardarCampo('es_express', esExpressSlot ? '1' : '0');
+    }
+}
+
+// ============================================================
 // CALCULAR SUBTOTAL
 // ============================================================
 function calcularSubtotal() {
@@ -1510,10 +1537,9 @@ function calcularSubtotal() {
     var resRH = document.getElementById('resRecargoHorario');
     if (resRH) resRH.innerHTML = fmtBs(recargoHorario) + convAside(recargoHorario);
 
-    // Express
+    // Express: el checkbox es solo informativo (se auto-marca según el slot).
+    // El recargo ya está incluido en `recargoHorario` arriba. NO sumar nada extra.
     var recargoExpress = 0;
-    var chkExpress = document.getElementById('chkExpress');
-    if (chkExpress && chkExpress.checked) recargoExpress = 50;
     var resRE = document.getElementById('resRecargoExpress');
     if (resRE) resRE.innerHTML = fmtBs(recargoExpress) + convAside(recargoExpress);
 
@@ -1607,10 +1633,8 @@ function enviarCotizacionWsp() {
         });
     }
 
-    // Recargo express
+    // Express: el checkbox es solo informativo (recargo ya viene en el slot)
     var recargoExpress = 0;
-    var chkExpress = document.getElementById('chkExpress');
-    if (chkExpress && chkExpress.checked) recargoExpress = 50;
 
     var total = subtotal + costoEnvio + recargoHorario + recargoExpress - descuentoBs;
 
@@ -1628,9 +1652,7 @@ function enviarCotizacionWsp() {
             mensaje += 'Horario (' + horarioTexto + '): sin recargo\n';
         }
     }
-    if (recargoExpress > 0) {
-        mensaje += 'Recargo express: ' + fmtTextoMoneda(recargoExpress, monedaEnvio) + '\n';
-    }
+    // Línea de "Recargo express" eliminada: ya viene incluido en el slot horario
     if (descuentoBs > 0) {
         mensaje += 'Descuento: -' + fmtTextoMoneda(descuentoBs, monedaEnvio) + '\n';
     }
@@ -2059,6 +2081,7 @@ function mostrarToast(mensaje, tipo, duracion) {
 document.addEventListener('DOMContentLoaded', function() {
     toggleTipoEntrega();
     filtrarZonas(true);  // preservar zona pre-cargada del servidor
+    sincronizarExpressConSlot();  // sincronizar checkbox según slot inicial
     actualizarConteoItems();
     calcularSubtotal();
     actualizarChecklist();

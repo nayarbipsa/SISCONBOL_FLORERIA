@@ -57,6 +57,8 @@ body { padding:20px 0; }
 }
 .btnPrint  { background:#1976d2; color:white; }
 .btnVolver { background:#757575; color:white; }
+.btnWC     { background:#7B5EA7; color:white; }
+.btnWC-dis { background:#bdbdbd; color:white; cursor:not-allowed; }
 
 @media print {
     @page { size:80mm auto; margin:0; }
@@ -72,6 +74,11 @@ body { padding:20px 0; }
 
 <div class="acciones">
     <button type="button" class="btnPrint"  onclick="window.print()">Imprimir</button>
+    <% If WcOrderIdVal > 0 Then %>
+    <button type="button" class="btnWC" onclick="window.open('https://miss-flores.com/wp-admin/post.php?post=<%=WcOrderIdVal%>&action=edit','_blank')">Ver en WC</button>
+    <% Else %>
+    <button type="button" class="btnWC-dis" disabled title="Sin pedido en WooCommerce">Sin WC</button>
+    <% End If %>
     <button type="button" class="btnVolver" onclick="window.close(); if(!window.closed) history.back();">Volver</button>
 </div>
 

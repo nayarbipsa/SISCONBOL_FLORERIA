@@ -198,6 +198,7 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
             "ped.pedido_id, ped.codigo, ped.receptor_nombre, ped.receptor_celular, " &
             "ped.fecha_entrega, ped.direccion, ped.tipo_entrega, " &
             "ped.subtotal_productos_bs, ped.envio_bs, ped.total_bs, " &
+            "ped.wc_order_id, ped.wc_order_number, " &
             "c.nombre AS ciudad_nombre, " &
             "z.nombre AS zona_nombre, " &
             "s.hora_inicio, s.hora_fin " &
@@ -247,6 +248,9 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
                     totalProd += subtotalProds
                     totalEnv += costoEnvio
                     
+                    ' WooCommerce
+                    Dim wcOrderId As Integer = If(IsDBNull(dr("wc_order_id")), 0, CInt(dr("wc_order_id")))
+                    
                     ' Generar HTML del pedido
                     sb.AppendLine("<div class='pedido-card'>")
                     sb.AppendLine("  <div class='pedido-header'>")
@@ -255,13 +259,26 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
                     sb.AppendLine("      <h4 class='pedido-codigo'>" & pedidoCodigo & "</h4>")
                     sb.AppendLine("      <p class='pedido-desc'>Para " & receptor & If(celReceptor <> "", " • " & celReceptor, "") & "</p>")
                     sb.AppendLine("    </div>")
-                    sb.AppendLine("    <div style='display:flex;gap:6px;'>")
+                    sb.AppendLine("    <div style='display:flex;gap:6px;flex-wrap:wrap;align-items:center'>")
                     sb.AppendLine("      <span style='background:#E8F5E9;color:#2E7D32;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:500'>")
                     sb.AppendLine("        <i class='ti ti-check' style='font-size:13px;vertical-align:-2px'></i> CONFIRMADO")
                     sb.AppendLine("      </span>")
                     sb.AppendLine("      <a href='Recibo.aspx?id=" & pedidoId & "' target='_blank' style='background:#EBF0FF;color:#3B5BDB;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:500;text-decoration:none;display:inline-flex;align-items:center;gap:3px;border:1px solid #90CAF9'>")
                     sb.AppendLine("        <i class='ti ti-printer' style='font-size:13px;vertical-align:-2px'></i> Imprimir recibo")
                     sb.AppendLine("      </a>")
+                    
+                    ' Botón WooCommerce: Ver (si ya tiene wc_order_id) o Crear (si no)
+                    If wcOrderId > 0 Then
+                        Dim wcUrl As String = "https://miss-flores.com/wp-admin/post.php?post=" & wcOrderId & "&action=edit"
+                        sb.AppendLine("      <a href='" & wcUrl & "' target='_blank' style='background:#F3E5F5;color:#6A1B9A;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:500;text-decoration:none;display:inline-flex;align-items:center;gap:3px;border:1px solid #CE93D8'>")
+                        sb.AppendLine("        <i class='ti ti-brand-woocommerce' style='font-size:13px;vertical-align:-2px'></i> Ver en WC")
+                        sb.AppendLine("      </a>")
+                    Else
+                        sb.AppendLine("      <button type='button' onclick='sincronizarConWC(" & pedidoId & ", this)' style='background:#FFF3E0;color:#E65100;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:3px;border:1px solid #FFB74D'>")
+                        sb.AppendLine("        <i class='ti ti-brand-woocommerce' style='font-size:13px;vertical-align:-2px'></i> Crear en WC")
+                        sb.AppendLine("      </button>")
+                    End If
+                    
                     sb.AppendLine("    </div>")
                     sb.AppendLine("  </div>")
                     
