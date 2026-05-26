@@ -120,7 +120,8 @@ Partial Public Class Modulos_Pedidos_Entrega_Agregar
         End If
 
         ' --- 3. Fechas minimas (mostradas en pantalla) ---
-        Dim fechaMin As DateTime = DateTime.Now.AddDays(2)
+        ' Permitir entregas desde HOY mismo (no bloquear día actual ni futuros)
+        Dim fechaMin As DateTime = DateTime.Now
         FechaMinima = fechaMin.ToString("yyyy-MM-dd")
         ValorFecha = fechaMin.ToString("yyyy-MM-dd")
 
@@ -343,25 +344,37 @@ Partial Public Class Modulos_Pedidos_Entrega_Agregar
 
                             If esPersonalizado Then
                                 sb.AppendLine("<div class='ea-prod-row personalizado' data-detalle-id='" & detalleId & "' data-precio='" & precioBs.ToString("F2") & "' data-cantidad='" & cantidad & "'>")
-                                sb.AppendLine("  <div>")
-                                sb.AppendLine("    <span class='ea-prod-name'>Producto Personalizado <span style='font-size:9px;color:#F57F17'>WC#7076</span></span>")
-                                sb.AppendLine("    <span class='ea-prod-custom'>" & Server.HtmlEncode(personalizacion) & "</span>")
-                                sb.AppendLine("    <div style='display:flex;align-items:center;gap:6px;margin-top:3px'><span style='font-size:10px;color:#999'>Cant:</span><input type='number' value='" & cantidad & "' min='1' style='width:45px;text-align:center;padding:2px;font-size:11px;border:1px solid #FFE082;border-radius:4px' onchange='actualizarDetalle(" & detalleId & ", ""cantidad"", this.value)'></div>")
+                                ' Row 1: nombre + botón eliminar
+                                sb.AppendLine("  <div class='ea-prod-card-row1'>")
+                                sb.AppendLine("    <div><span class='ea-prod-name'><i class='ti ti-pencil-plus' style='font-size:13px;color:#F57F17;vertical-align:-1px' aria-hidden='true'></i> Producto Personalizado <span style='font-size:9px;color:#F57F17'>WC#7076</span></span></div>")
+                                sb.AppendLine("    <button type='button' class='ea-prod-card-del' onclick='eliminarDetalle(" & detalleId & ", this)' aria-label='Eliminar'><i class='ti ti-trash' aria-hidden='true'></i></button>")
                                 sb.AppendLine("  </div>")
-                                sb.AppendLine("  <input type='number' value='" & precioBs.ToString("F2") & "' step='0.01' style='width:75px;text-align:center;padding:3px;font-size:12px;border:1px solid #FFE082;border-radius:4px' onchange='actualizarDetalle(" & detalleId & ", ""precio"", this.value)'>")
+                                If personalizacion <> "" Then
+                                    sb.AppendLine("  <div class='ea-prod-card-detail'><i class='ti ti-pencil' style='font-size:11px;color:#F57F17' aria-hidden='true'></i><span>" & Server.HtmlEncode(personalizacion) & "</span></div>")
+                                End If
+                                ' Row 2: cantidad editable + precio editable
+                                sb.AppendLine("  <div class='ea-prod-card-row2'>")
+                                sb.AppendLine("    <div class='ea-prod-card-cant'><span>Cant:</span><input type='number' value='" & cantidad & "' min='1' onchange='actualizarDetalle(" & detalleId & ", ""cantidad"", this.value)'></div>")
+                                sb.AppendLine("    <input type='number' class='ea-prod-card-precio-input' value='" & precioBs.ToString("F2") & "' step='0.01' onchange='actualizarDetalle(" & detalleId & ", ""precio"", this.value)'>")
+                                sb.AppendLine("  </div>")
+                                sb.AppendLine("</div>")
                             Else
                                 sb.AppendLine("<div class='ea-prod-row' data-detalle-id='" & detalleId & "' data-precio='" & precioBs.ToString("F2") & "' data-cantidad='" & cantidad & "'>")
-                                sb.AppendLine("  <div>")
-                                sb.AppendLine("    <span class='ea-prod-name'>" & Server.HtmlEncode(nombreProd) & "</span>")
-                                If personalizacion <> "" Then
-                                    sb.AppendLine("    <span class='ea-prod-detail'><span>" & Server.HtmlEncode(personalizacion) & "</span></span>")
-                                End If
+                                ' Row 1: nombre + botón eliminar
+                                sb.AppendLine("  <div class='ea-prod-card-row1'>")
+                                sb.AppendLine("    <div><span class='ea-prod-name'>" & Server.HtmlEncode(nombreProd) & "</span></div>")
+                                sb.AppendLine("    <button type='button' class='ea-prod-card-del' onclick='eliminarDetalle(" & detalleId & ", this)' aria-label='Eliminar'><i class='ti ti-trash' aria-hidden='true'></i></button>")
                                 sb.AppendLine("  </div>")
-                                sb.AppendLine("  <span class='ea-prod-precio' data-precio-bs='" & precioBs.ToString("F2") & "' style='font-weight:500'>Bs " & precioBs.ToString("N2") & "</span>")
+                                If personalizacion <> "" Then
+                                    sb.AppendLine("  <div class='ea-prod-card-detail'><i class='ti ti-pencil' style='font-size:11px;color:#F57F17' aria-hidden='true'></i><span>" & Server.HtmlEncode(personalizacion) & "</span></div>")
+                                End If
+                                ' Row 2: etiqueta + precio
+                                sb.AppendLine("  <div class='ea-prod-card-row2'>")
+                                sb.AppendLine("    <span class='ea-prod-card-precio-label'>Precio</span>")
+                                sb.AppendLine("    <span class='ea-prod-card-precio' data-precio-bs='" & precioBs.ToString("F2") & "'>Bs " & precioBs.ToString("N2") & "</span>")
+                                sb.AppendLine("  </div>")
+                                sb.AppendLine("</div>")
                             End If
-
-                            sb.AppendLine("  <button type='button' style='border:none;background:none;color:#E53935;cursor:pointer;font-size:14px;padding:0' onclick='eliminarDetalle(" & detalleId & ", this)'><i class='ti ti-trash'></i></button>")
-                            sb.AppendLine("</div>")
                         End While
                     End Using
                 End Using

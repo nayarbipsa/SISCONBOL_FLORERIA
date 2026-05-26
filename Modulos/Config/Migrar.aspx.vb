@@ -2,6 +2,10 @@ Imports System.Data
 Imports System.Data.SqlClient
 Imports System.Web
 Imports System.Text
+Imports System.Net
+Imports System.IO
+Imports System.Linq
+Imports System.Web.UI.WebControls
 
 ' ============================================================
 ' SISCONBOL - Migracion masiva desde WooCommerce
@@ -17,6 +21,20 @@ Partial Public Class Modulos_Config_Migrar
     Public Property FechaDesdeDefault As String = ""
     Public Property FechaHastaDefault As String = ""
 
+    ' Propiedades del panel "Migracion 2" (renderizado HTML, sin controles asp)
+    Public Property M2Desde As String = ""
+    Public Property M2Hasta As String = ""
+    Public Property M2Total As String = "0"
+    Public Property M2Ok As String = "0"
+    Public Property M2Pendientes As String = "0"
+    Public Property M2Err As String = "0"
+    Public Property M2ResumenDisplay As String = "display:none"
+    Public Property M2TablaDisplay As String = "display:none"
+    Public Property M2LogDisplay As String = "display:none"
+    Public Property M2TablaHtml As String = ""
+    Public Property M2LogHtml As String = ""
+    Public Property M2BtnProcesarDisabled As String = "disabled"
+
     ' ============================================================
     ' Page_Load
     ' ============================================================
@@ -25,6 +43,16 @@ Partial Public Class Modulos_Config_Migrar
             CargarConfiguracion()
             FechaDesdeDefault = DateTime.Now.AddDays(-30).ToString("yyyy-MM-dd")
             FechaHastaDefault = DateTime.Now.ToString("yyyy-MM-dd")
+            M2Desde = FechaDesdeDefault
+            M2Hasta = FechaHastaDefault
+        Else
+            ' En postback: conservar lo que el usuario tenia en los inputs de fecha
+            M2Desde = Request.Form("txM2Desde")
+            M2Hasta = Request.Form("txM2Hasta")
+            If M2Desde Is Nothing Then M2Desde = ""
+            If M2Hasta Is Nothing Then M2Hasta = ""
+            ' Y restaurar el resumen/tabla desde Session si ya hubo descarga previa
+            M2_RestaurarEstadoDesdeSession()
         End If
     End Sub
 
@@ -64,7 +92,10 @@ Partial Public Class Modulos_Config_Migrar
             Case "INSERTAR_CATEGORIAS" : ProcesarCategorias()
             Case "INSERTAR_PRODUCTOS"  : ProcesarProductos()
             Case "INSERTAR_PEDIDOS"    : ProcesarPedidos()
+            Case "M2_DESCARGAR"        : M2_Descargar()
+            Case "M2_PROCESAR_TODOS"   : M2_ProcesarTodos()
             Case "M2_PROCESAR_UNO"     : M2_ProcesarUno()
+            Case "M2_LIMPIAR"          : M2_Limpiar()
         End Select
     End Sub
 
@@ -203,71 +234,435 @@ Partial Public Class Modulos_Config_Migrar
     End Sub
 
     ' ============================================================
-    ' M2_ProcesarUno - Migracion 2
-    '   Procesa UN solo pedido (JSON viene en hdM2PedidoJson)
-    '   Todo dentro de una transaccion: si algo falla → ROLLBACK
-    '   Solo actualiza: fecha_entrega, slot_id, datos de pago, line_items
-    '   NO toca: direccion, receptor, dedicatoria, etc.
+    ' MIGRACION 2 - handlers via btnPostBack + hidden fields
+    ' Renderiza HTML en propiedades publicas, sin controles asp:*
     ' ============================================================
-    Private Sub M2_ProcesarUno()
-        Dim json As String = Request.Form("hdM2PedidoJson")
-        Dim uid  As Integer = SesionHelper.ObtenerUsuarioId(HttpContext.Current)
-        Dim ip   As String  = If(Request.UserHostAddress Is Nothing, "", Request.UserHostAddress)
 
-        If json Is Nothing OrElse json.Trim() = "" Then
-            EscribirJS("m2err", "m2RecibirResultado(_m2Idx, 'ERROR', 'No se recibieron datos del pedido');")
+    ' Restaura los contadores/tabla/log desde Session en cada postback
+    ' (porque el .aspx los renderiza con <%= ... %>)
+    Private Sub M2_RestaurarEstadoDesdeSession()
+        Dim pedidos As List(Of WcPedido) = TryCast(Session("M2_Pedidos"), List(Of WcPedido))
+        If pedidos Is Nothing OrElse pedidos.Count = 0 Then
+            M2BtnProcesarDisabled = "disabled"
             Return
         End If
+        M2BtnProcesarDisabled = ""
+        M2_PintarResumen()
+        M2_PintarTabla()
+        Dim logHtml As String = TryCast(Session("M2_LogHtml"), String)
+        If logHtml IsNot Nothing AndAlso logHtml <> "" Then
+            M2LogHtml = logHtml
+            M2LogDisplay = ""
+        End If
+    End Sub
 
-        Dim wcId As Integer = 0
-        Dim msj  As String  = ""
-        Dim accion As String = "ERROR"
+    ' --- Helper: pinta el bloque de 4 contadores leyendo Session ---
+    Private Sub M2_PintarResumen()
+        Dim pedidos As List(Of WcPedido) = TryCast(Session("M2_Pedidos"), List(Of WcPedido))
+        Dim resultados As Dictionary(Of Integer, String) = TryCast(Session("M2_Resultados"), Dictionary(Of Integer, String))
+        If pedidos Is Nothing Then Return
+        Dim ok As Integer = 0, err As Integer = 0
+        If resultados IsNot Nothing Then
+            For Each kv In resultados
+                If kv.Value.StartsWith("ERROR") Then err += 1 Else ok += 1
+            Next
+        End If
+        M2Total       = pedidos.Count.ToString()
+        M2Ok          = ok.ToString()
+        M2Err         = err.ToString()
+        M2Pendientes  = (pedidos.Count - ok - err).ToString()
+        M2ResumenDisplay = ""
+    End Sub
+
+    ' --- Helper: pinta la tabla HTML de pedidos leyendo Session ---
+    Private Sub M2_PintarTabla()
+        Dim pedidos As List(Of WcPedido) = TryCast(Session("M2_Pedidos"), List(Of WcPedido))
+        If pedidos Is Nothing OrElse pedidos.Count = 0 Then Return
+        Dim resultados As Dictionary(Of Integer, String) = TryCast(Session("M2_Resultados"), Dictionary(Of Integer, String))
+        If resultados Is Nothing Then resultados = New Dictionary(Of Integer, String)()
+
+        Dim sb As New StringBuilder()
+        sb.Append("<table class='grid-pedidos' style='width:100%;border-collapse:collapse'>")
+        sb.Append("<thead><tr>")
+        sb.Append("<th style='width:40px;text-align:center'>#</th>")
+        sb.Append("<th style='width:80px'>WC #</th>")
+        sb.Append("<th style='width:100px'>Estado</th>")
+        sb.Append("<th>Receptor</th>")
+        sb.Append("<th style='width:110px'>Fecha</th>")
+        sb.Append("<th style='width:120px'>Hora</th>")
+        sb.Append("<th>Pago</th>")
+        sb.Append("<th style='width:90px;text-align:right'>Total</th>")
+        sb.Append("<th style='width:120px'>Resultado</th>")
+        sb.Append("<th style='width:100px;text-align:center'>Accion</th>")
+        sb.Append("</tr></thead><tbody>")
+
+        For idx As Integer = 0 To pedidos.Count - 1
+            Dim p As WcPedido = pedidos(idx)
+            Dim item As M2VistaItem = M2_AVistaItem(p)
+
+            Dim rowStyle As String = ""
+            Dim resultadoTxt As String = ""
+            Dim resultadoTitle As String = ""
+            If resultados.ContainsKey(p.WcId) Then
+                Dim raw As String = resultados(p.WcId)
+                Dim parts() As String = raw.Split(New Char() {"|"c}, 2)
+                Dim accion As String = parts(0)
+                Dim mensaje As String = If(parts.Length > 1, parts(1), "")
+                resultadoTxt = accion
+                If accion = "INSERT" OrElse accion = "UPDATE" Then
+                    rowStyle = "background:#e8f5e9"
+                ElseIf accion = "ERROR" Then
+                    rowStyle = "background:#ffebee"
+                    resultadoTitle = " title='" & Server.HtmlEncode(mensaje) & "'"
+                End If
+            End If
+
+            sb.AppendFormat("<tr style='{0}'>", rowStyle)
+            sb.AppendFormat("<td style='text-align:center'>{0}</td>", idx + 1)
+            sb.AppendFormat("<td>{0}</td>", item.WcId)
+            sb.AppendFormat("<td>{0}</td>", Server.HtmlEncode(item.WcOrderStatus))
+            sb.AppendFormat("<td>{0}</td>", Server.HtmlEncode(item.ReceptorNombre))
+            sb.AppendFormat("<td>{0}</td>", Server.HtmlEncode(item.FechaEntregaTexto))
+            sb.AppendFormat("<td>{0}</td>", Server.HtmlEncode(item.HoraEntregaTexto))
+            sb.AppendFormat("<td>{0}</td>", Server.HtmlEncode(item.MetodoPagoTexto))
+            sb.AppendFormat("<td style='text-align:right'>{0:N2}</td>", item.TotalBs)
+            sb.AppendFormat("<td><span{0}>{1}</span></td>", resultadoTitle, Server.HtmlEncode(resultadoTxt))
+            sb.AppendFormat("<td style='text-align:center'><button type='button' class='btn btn-sm' style='padding:2px 8px;font-size:11px' onclick='m2ProcesarUno({0})'>Procesar</button></td>", idx)
+            sb.Append("</tr>")
+        Next
+
+        sb.Append("</tbody></table>")
+        M2TablaHtml = sb.ToString()
+        M2TablaDisplay = ""
+    End Sub
+
+    ' --- Helper: guarda log en Session y lo pinta ---
+    Private Sub M2_GuardarLog(html As String)
+        Session("M2_LogHtml") = html
+        M2LogHtml = html
+        M2LogDisplay = ""
+    End Sub
+
+    Private Sub M2_MensajeLog(msg As String, tipo As String)
+        Dim color As String = "#c9d1d9"
+        If tipo = "error" Then color = "#ff7b72"
+        If tipo = "ok"    Then color = "#7ee787"
+        If tipo = "warn"  Then color = "#ffa657"
+        If tipo = "info"  Then color = "#79c0ff"
+        Dim html As String = "<div style='font-family:monospace;font-size:11px;background:#0d1117;color:#c9d1d9;padding:8px;border-radius:6px;max-height:300px;overflow-y:auto'>" &
+                             "<div style='color:" & color & "'>[" & DateTime.Now.ToString("HH:mm:ss") & "] " & Server.HtmlEncode(msg) & "</div>" &
+                             "</div>"
+        M2_GuardarLog(html)
+    End Sub
+
+    ' ============================================================
+    ' ACCION: Descargar pedidos desde WC
+    ' ============================================================
+    Private Sub M2_Descargar()
+        Dim desde As String = Request.Form("txM2Desde")
+        Dim hasta As String = Request.Form("txM2Hasta")
+        If desde Is Nothing Then desde = ""
+        If hasta Is Nothing Then hasta = ""
+        desde = desde.Trim()
+        hasta = hasta.Trim()
+        M2Desde = desde
+        M2Hasta = hasta
+
+        Dim log As New StringBuilder()
+        log.Append("<div style='font-family:monospace;font-size:11px;background:#0d1117;color:#c9d1d9;padding:8px;border-radius:6px;max-height:300px;overflow-y:auto'>")
 
         Try
-            ' --- Parsear el JSON usando el parser existente, esperando 1 solo pedido ---
-            Dim pedidos As List(Of WcPedido) = ParsearPedidos("[" & json & "]")
-            If pedidos Is Nothing OrElse pedidos.Count = 0 Then
-                EscribirJS("m2err", "m2RecibirResultado(_m2Idx, 'ERROR', 'JSON no se pudo parsear');")
+            If desde = "" OrElse hasta = "" Then
+                M2_MensajeLog("ERROR: Selecciona el rango de fechas.", "error")
                 Return
             End If
 
-            Dim p As WcPedido = pedidos(0)
-            wcId = p.WcId
+            Dim url    As String = ValorConfig("WC_URL")
+            Dim ckey   As String = ValorConfig("WC_CONSUMER_KEY")
+            Dim csec   As String = ValorConfig("WC_CONSUMER_SECRET")
+            If url = "" OrElse ckey = "" OrElse csec = "" Then
+                M2_MensajeLog("ERROR: Faltan credenciales de WooCommerce en la configuracion.", "error")
+                Return
+            End If
 
-            ' --- TRANSACCION ABIERTA ---
-            Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
-                conn.Open()
-                Dim tx As SqlTransaction = conn.BeginTransaction("MigracionUno")
+            log.AppendFormat("<div style='color:#79c0ff'>[{0}] Descargando pedidos de {1} entre {2} y {3}...</div>",
+                             DateTime.Now.ToString("HH:mm:ss"), Server.HtmlEncode(url), desde, hasta)
+
+            Dim auth As String = Convert.ToBase64String(Encoding.UTF8.GetBytes(ckey & ":" & csec))
+
+            Dim todos As New List(Of WcPedido)()
+            Dim pagina As Integer = 1
+            Dim continuar As Boolean = True
+
+            While continuar AndAlso pagina <= 50
+                Dim urlReq As String = url & "/wp-json/wc/v3/orders" &
+                                       "?per_page=100&page=" & pagina &
+                                       "&after="  & desde & "T00:00:00" &
+                                       "&before=" & hasta & "T23:59:59" &
+                                       "&status=any"
+                Dim req As HttpWebRequest = DirectCast(WebRequest.Create(urlReq), HttpWebRequest)
+                req.Method = "GET"
+                req.Headers.Add("Authorization", "Basic " & auth)
+                req.Timeout = 60000
+
                 Try
-                    ' Llamar al worker
-                    Dim res As M2Resultado = M2_UpsertPedido(conn, tx, p, uid, ip)
-                    accion = res.Accion
-                    msj    = res.Mensaje
-
-                    If accion = "ERROR" Then
-                        tx.Rollback()
-                        Log("M2_ProcesarUno", "WC#" & wcId & " ROLLBACK: " & msj)
-                    Else
-                        tx.Commit()
-                        Log("M2_ProcesarUno", "WC#" & wcId & " COMMIT (" & accion & ") - " & msj)
-                    End If
-
-                Catch ex As Exception
-                    Try : tx.Rollback() : Catch : End Try
-                    accion = "ERROR"
-                    msj    = ex.Message
-                    Log("M2_ProcesarUno", "WC#" & wcId & " ROLLBACK por excepcion: " & ex.Message)
+                    Using resp As HttpWebResponse = DirectCast(req.GetResponse(), HttpWebResponse)
+                        If resp.StatusCode <> HttpStatusCode.OK Then
+                            log.AppendFormat("<div style='color:#ff7b72'>[{0}] HTTP {1} en pagina {2}</div>",
+                                             DateTime.Now.ToString("HH:mm:ss"), CInt(resp.StatusCode), pagina)
+                            Exit While
+                        End If
+                        Using sr As New StreamReader(resp.GetResponseStream())
+                            Dim json As String = sr.ReadToEnd()
+                            Dim parsed As List(Of WcPedido) = ParsearPedidos(json)
+                            If parsed Is Nothing OrElse parsed.Count = 0 Then
+                                continuar = False
+                            Else
+                                todos.AddRange(parsed)
+                                log.AppendFormat("<div style='color:#8b949e'>[{0}] Pagina {1}: {2} pedidos (total {3})</div>",
+                                                 DateTime.Now.ToString("HH:mm:ss"), pagina, parsed.Count, todos.Count)
+                                If parsed.Count < 100 Then continuar = False
+                            End If
+                        End Using
+                    End Using
+                Catch wex As WebException
+                    log.AppendFormat("<div style='color:#ff7b72'>[{0}] ERROR HTTP pagina {1}: {2}</div>",
+                                     DateTime.Now.ToString("HH:mm:ss"), pagina, Server.HtmlEncode(wex.Message))
+                    Exit While
                 End Try
-            End Using
+
+                pagina += 1
+            End While
+
+            ' --- Filtro: solo pedidos con fecha de entrega HOY o futura ---
+            ' Los pasados o sin fecha no se sincronizan
+            Dim hoy As DateTime = DateTime.Now.Date
+            Dim descartados As Integer = 0
+            Dim filtrados As New List(Of WcPedido)()
+            For Each ped As WcPedido In todos
+                Dim fechaRef As DateTime? = Nothing
+                If ped.DeliveryDate.HasValue Then
+                    fechaRef = ped.DeliveryDate.Value.Date
+                ElseIf ped.PickupDate.HasValue Then
+                    fechaRef = ped.PickupDate.Value.Date
+                End If
+
+                If fechaRef.HasValue AndAlso fechaRef.Value >= hoy Then
+                    filtrados.Add(ped)
+                Else
+                    descartados += 1
+                End If
+            Next
+
+            log.AppendFormat("<div style='color:#7ee787'>[{0}] Descarga completa: {1} pedidos totales, {2} con entrega hoy o futura, {3} descartados.</div>",
+                             DateTime.Now.ToString("HH:mm:ss"), todos.Count, filtrados.Count, descartados)
+            log.Append("</div>")
+
+            Session("M2_Pedidos") = filtrados
+            Session("M2_Resultados") = New Dictionary(Of Integer, String)()
+
+            M2_GuardarLog(log.ToString())
+
+            If filtrados.Count > 0 Then
+                M2BtnProcesarDisabled = ""
+                M2_PintarResumen()
+                M2_PintarTabla()
+            End If
 
         Catch ex As Exception
-            accion = "ERROR"
-            msj    = ex.Message
-            Log("M2_ProcesarUno", "WC#" & wcId & " ERROR CRITICO: " & ex.Message)
+            log.AppendFormat("<div style='color:#ff7b72'>[{0}] ERROR CRITICO: {1}</div>",
+                             DateTime.Now.ToString("HH:mm:ss"), Server.HtmlEncode(ex.Message))
+            log.Append("</div>")
+            M2_GuardarLog(log.ToString())
+        End Try
+    End Sub
+
+    ' ============================================================
+    ' ACCION: Procesar UN pedido
+    ' ============================================================
+    Private Sub M2_ProcesarUno()
+        Dim idxStr As String = Request.Form("hdM2Indice")
+        If idxStr Is Nothing Then idxStr = ""
+        Dim idx As Integer = 0
+        Integer.TryParse(idxStr.Trim(), idx)
+
+        Dim pedidos As List(Of WcPedido) = TryCast(Session("M2_Pedidos"), List(Of WcPedido))
+        If pedidos Is Nothing OrElse idx < 0 OrElse idx >= pedidos.Count Then
+            M2_MensajeLog("ERROR: No hay pedidos en sesion. Descarga de nuevo.", "error")
+            Return
+        End If
+
+        Dim p As WcPedido = pedidos(idx)
+        Dim res As M2Resultado = M2_ProcesarPedidoEnTransaccion(p)
+
+        Dim resultados As Dictionary(Of Integer, String) = TryCast(Session("M2_Resultados"), Dictionary(Of Integer, String))
+        If resultados Is Nothing Then
+            resultados = New Dictionary(Of Integer, String)()
+            Session("M2_Resultados") = resultados
+        End If
+        resultados(p.WcId) = res.Accion & "|" & res.Mensaje
+
+        M2_MensajeLog("WC#" & p.WcId & " -> " & res.Accion & " - " & res.Mensaje,
+                      If(res.Accion = "ERROR", "error", "ok"))
+        M2BtnProcesarDisabled = ""
+        M2_PintarResumen()
+        M2_PintarTabla()
+    End Sub
+
+    ' ============================================================
+    ' ACCION: Procesar TODOS los pedidos descargados
+    ' ============================================================
+    Private Sub M2_ProcesarTodos()
+        Dim pedidos As List(Of WcPedido) = TryCast(Session("M2_Pedidos"), List(Of WcPedido))
+        If pedidos Is Nothing OrElse pedidos.Count = 0 Then
+            M2_MensajeLog("ERROR: No hay pedidos descargados.", "error")
+            Return
+        End If
+
+        Dim resultados As Dictionary(Of Integer, String) = TryCast(Session("M2_Resultados"), Dictionary(Of Integer, String))
+        If resultados Is Nothing Then
+            resultados = New Dictionary(Of Integer, String)()
+            Session("M2_Resultados") = resultados
+        End If
+
+        Dim log As New StringBuilder()
+        log.Append("<div style='font-family:monospace;font-size:11px;background:#0d1117;color:#c9d1d9;padding:8px;border-radius:6px;max-height:300px;overflow-y:auto'>")
+        log.AppendFormat("<div style='color:#79c0ff'>[{0}] === INICIANDO PROCESAMIENTO DE {1} PEDIDOS ===</div>",
+                         DateTime.Now.ToString("HH:mm:ss"), pedidos.Count)
+
+        Dim cntOk As Integer = 0, cntErr As Integer = 0
+
+        For idx As Integer = 0 To pedidos.Count - 1
+            Dim p As WcPedido = pedidos(idx)
+            Try
+                Dim res As M2Resultado = M2_ProcesarPedidoEnTransaccion(p)
+                resultados(p.WcId) = res.Accion & "|" & res.Mensaje
+                Dim color As String = If(res.Accion = "ERROR", "#ff7b72", "#7ee787")
+                log.AppendFormat("<div style='color:{0}'>[{1}] WC#{2} -> {3}: {4}</div>",
+                                 color,
+                                 DateTime.Now.ToString("HH:mm:ss"),
+                                 p.WcId,
+                                 res.Accion,
+                                 Server.HtmlEncode(res.Mensaje))
+                If res.Accion = "ERROR" Then cntErr += 1 Else cntOk += 1
+            Catch ex As Exception
+                cntErr += 1
+                resultados(p.WcId) = "ERROR|" & ex.Message
+                log.AppendFormat("<div style='color:#ff7b72'>[{0}] WC#{1} -> EXCEPCION: {2}</div>",
+                                 DateTime.Now.ToString("HH:mm:ss"), p.WcId, Server.HtmlEncode(ex.Message))
+            End Try
+        Next
+
+        log.AppendFormat("<div style='color:#7ee787;margin-top:6px'>[{0}] === FIN: {1} OK, {2} con errores ===</div>",
+                         DateTime.Now.ToString("HH:mm:ss"), cntOk, cntErr)
+        log.Append("</div>")
+
+        M2_GuardarLog(log.ToString())
+        M2BtnProcesarDisabled = ""
+        M2_PintarResumen()
+        M2_PintarTabla()
+    End Sub
+
+    ' ============================================================
+    ' ACCION: Limpiar
+    ' ============================================================
+    Private Sub M2_Limpiar()
+        Session("M2_Pedidos") = Nothing
+        Session("M2_Resultados") = Nothing
+        Session("M2_LogHtml") = Nothing
+        M2Total = "0"
+        M2Ok = "0"
+        M2Pendientes = "0"
+        M2Err = "0"
+        M2ResumenDisplay = "display:none"
+        M2TablaDisplay = "display:none"
+        M2LogDisplay = "display:none"
+        M2TablaHtml = ""
+        M2LogHtml = ""
+        M2BtnProcesarDisabled = "disabled"
+    End Sub
+
+
+    ' ============================================================
+    ' Helper: convertir WcPedido a M2VistaItem (para GridView)
+    ' ============================================================
+    Private Function M2_AVistaItem(p As WcPedido) As M2VistaItem
+        Dim item As New M2VistaItem()
+        item.WcId           = p.WcId
+        item.WcOrderStatus  = p.WcOrderStatus
+        item.ReceptorNombre = If(p.ShippingNombre <> "", p.ShippingNombre, (p.BillingNombre & " " & p.BillingApellidos).Trim())
+
+        If p.DeliveryDate.HasValue Then
+            item.FechaEntregaTexto = p.DeliveryDate.Value.ToString("yyyy-MM-dd")
+        ElseIf p.PickupDate.HasValue Then
+            item.FechaEntregaTexto = p.PickupDate.Value.ToString("yyyy-MM-dd") & " (pickup)"
+        Else
+            item.FechaEntregaTexto = "(sin fecha)"
+        End If
+
+        If p.DeliveryTime <> "" Then
+            item.HoraEntregaTexto = p.DeliveryTime
+        ElseIf p.PickupTime <> "" Then
+            item.HoraEntregaTexto = p.PickupTime & " (pickup)"
+        Else
+            item.HoraEntregaTexto = "(sin hora)"
+        End If
+
+        item.MetodoPagoTexto = If(p.PaymentMethodTitle <> "", p.PaymentMethodTitle, p.PaymentMethod)
+        item.TotalBs = p.TotalBs
+        Return item
+    End Function
+
+    ' ============================================================
+    ' M2_ProcesarPedidoEnTransaccion - ejecuta UPSERT con transaccion
+    ' Aqui es donde realmente pasa la migracion del pedido.
+    ' BREAKPOINT 7 - inspecciona el pedido antes de procesarlo
+    ' ============================================================
+    Private Function M2_ProcesarPedidoEnTransaccion(p As WcPedido) As M2Resultado
+        Dim res As New M2Resultado()
+        res.Accion = "ERROR"
+        Dim uid As Integer = SesionHelper.ObtenerUsuarioId(HttpContext.Current)
+        Dim ip  As String  = If(Request.UserHostAddress Is Nothing, "", Request.UserHostAddress)
+
+        Try
+            Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
+                conn.Open()
+                Dim tx As SqlTransaction = conn.BeginTransaction("M2_Uno")
+                Try
+                    res = M2_UpsertPedido(conn, tx, p, uid, ip)
+                    If res.Accion = "ERROR" Then
+                        tx.Rollback()
+                        Log("M2_ProcesarPedidoEnTransaccion", "WC#" & p.WcId & " ROLLBACK: " & res.Mensaje)
+                    Else
+                        tx.Commit()
+                        Log("M2_ProcesarPedidoEnTransaccion", "WC#" & p.WcId & " COMMIT (" & res.Accion & ") - " & res.Mensaje)
+                    End If
+                Catch ex As Exception
+                    Try : tx.Rollback() : Catch : End Try
+                    res.Accion = "ERROR"
+                    res.Mensaje = ex.Message
+                    Log("M2_ProcesarPedidoEnTransaccion", "WC#" & p.WcId & " ROLLBACK por excepcion: " & ex.Message)
+                End Try
+            End Using
+        Catch ex As Exception
+            res.Accion = "ERROR"
+            res.Mensaje = "Conexion: " & ex.Message
+            Log("M2_ProcesarPedidoEnTransaccion", "WC#" & p.WcId & " ERROR CONEXION: " & ex.Message)
         End Try
 
-        EscribirJS("m2res", "m2RecibirResultado(_m2Idx, '" & accion & "', '" & EscJs(msj) & "');")
-    End Sub
+        Return res
+    End Function
+
+    Private Class M2VistaItem
+        Public Property WcId As Integer
+        Public Property WcOrderStatus As String
+        Public Property ReceptorNombre As String
+        Public Property FechaEntregaTexto As String
+        Public Property HoraEntregaTexto As String
+        Public Property MetodoPagoTexto As String
+        Public Property TotalBs As Decimal
+    End Class
+
 
     ' ============================================================
     ' M2_UpsertPedido - logica de UPSERT dentro de la transaccion
@@ -1377,7 +1772,13 @@ Partial Public Class Modulos_Config_Migrar
                     ped.Items = ParsearLineItems(lineItemsJson)
                 End If
 
-                If ped.WcId > 0 Then lista.Add(ped)
+                ' Filtro: orden basura si no tiene wc_order_number
+                ' (WC genera estos registros vacios; no valen para migrar)
+                If ped.WcId > 0 AndAlso ped.WcOrderNumber.Trim() <> "" Then
+                    lista.Add(ped)
+                Else
+                    Log("ParsearPedidos", "Descartado WcId=" & ped.WcId & " sin wc_order_number")
+                End If
 
                 idx = items.IndexOf("{"c, idx + obj.Length)
                 If idx < 0 Then Exit While

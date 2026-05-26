@@ -13,9 +13,32 @@
 .ea-bar-sep { width:1px; height:20px; background:#e0e0e0; }
 .ea-productos { background:white; border:1px solid #e0e0e0; border-radius:12px; padding:16px 20px; margin-bottom:8px; }
 .ea-prod-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid #f0f0f0; }
-.ea-prod-row { display:grid; grid-template-columns:1fr 110px 36px; gap:10px; align-items:center; padding:10px 12px; background:#fafafa; border-radius:8px; margin-bottom:4px; font-size:14px; }
+.ea-prod-row { display:flex; flex-direction:column; gap:6px; padding:10px 12px; background:#fafafa; border-radius:8px; margin-bottom:4px; font-size:14px; }
 .ea-prod-row.personalizado { background:#FFF8E1; border:1px solid #FFE082; }
 .ea-prod-name { font-weight:500; font-size:14px; display:block; word-break:break-word; line-height:1.35; }
+/* === ESTRUCTURA CARD VERTICAL (nombre arriba, precio abajo) === */
+.ea-prod-card-row1 { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+.ea-prod-card-row1 > div:first-child { flex:1; min-width:0; }
+.ea-prod-card-detail { font-size:11px; color:#999; display:flex; align-items:center; gap:4px; padding-left:0; }
+.ea-prod-card-detail span { color:#F57F17; font-style:italic; word-break:break-word; }
+.ea-prod-card-row2 { display:flex; justify-content:space-between; align-items:center; padding-top:5px; border-top:0.5px solid #eee; }
+.ea-prod-card-precio-label { font-size:10px; color:#999; text-transform:uppercase; letter-spacing:0.3px; }
+.ea-prod-card-precio { font-size:14px; font-weight:600; color:#3B5BDB; }
+.ea-prod-card-precio-input { width:80px; text-align:right; padding:3px 6px; font-size:13px; font-weight:600; color:#F57F17; border:1px solid #FFE082; border-radius:6px; background:#fff; }
+.ea-prod-card-cant { display:flex; align-items:center; gap:5px; font-size:11px; color:#999; }
+.ea-prod-card-cant input { width:48px; text-align:center; padding:3px; font-size:12px; border:1px solid #FFE082; border-radius:4px; }
+.ea-prod-card-del { width:30px; height:30px; min-width:30px; border-radius:6px; background:#fff; border:1px solid #FFCDD2; color:#E53935; font-size:15px; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; padding:0; }
+.ea-prod-card-del:hover { background:#FFEBEE; }
+/* === PRECIO EDITABLE EN BUSCADOR === */
+.ea-price-edit { display:inline-flex; align-items:center; gap:3px; background:#F0F4FF; border:1px solid #BBDEFB; border-radius:8px; padding:4px 6px 4px 9px; flex-shrink:0; }
+.ea-price-edit.modificado { background:#FFF8E1; border-color:#F57F17; }
+.ea-price-edit .ea-price-curr { font-size:12px; color:#3B5BDB; font-weight:500; }
+.ea-price-edit.modificado .ea-price-curr { color:#F57F17; }
+.ea-price-edit input { width:70px; border:none; background:transparent; font-size:14px; font-weight:600; color:#3B5BDB; text-align:right; outline:none; padding:0; -moz-appearance:textfield; }
+.ea-price-edit.modificado input { color:#F57F17; }
+.ea-price-edit input::-webkit-outer-spin-button, .ea-price-edit input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+.ea-price-edit .ea-price-edit-ico { font-size:11px; color:#F57F17; margin-left:2px; opacity:0; transition:opacity 0.2s; }
+.ea-price-edit.modificado .ea-price-edit-ico { opacity:1; }
 .ea-prod-detail { font-size:12px; color:#999; display:block; margin-top:2px; }
 .ea-prod-detail span { color:#667eea; }
 .ea-prod-custom { font-size:12px; color:#F57F17; display:block; margin-top:2px; word-break:break-word; }
@@ -97,8 +120,8 @@
     .ea-modal, .ea-modal-sm { max-width:100%; margin:0 auto; }
     .ea-modal-header { padding:10px 14px; }
 
-    /* Filas de productos: nombre + precio en línea, botón eliminar al lado */
-    .ea-prod-row { grid-template-columns:1fr 90px 32px; gap:6px; padding:8px 10px; }
+    /* Filas de productos: en móvil se reducen padding y separadores */
+    .ea-prod-row { padding:9px 10px; }
 
     /* Fila de pagos: cambia a 2 filas (la primera nombre + monto, segunda fecha + estado + acción) */
     .ea-pago-row { grid-template-columns:1fr 90px 30px; grid-auto-rows:auto; padding:8px 6px; gap:4px; }
@@ -113,7 +136,16 @@
     .ea-resumen, .ea-productos { padding:12px 14px; }
     .ea-section-header { padding:10px 14px; }
     .ea-section-body { padding:0 14px 12px; }
+
+    /* Monto de pago: grande en mobile para mejor legibilidad */
+    #txPagoMonto { font-size:18px !important; padding:10px 12px !important; text-align:right; font-weight:500; }
 }
+
+/* === TOGGLE PRODUCTO PERSONALIZADO === */
+.ea-toggle-pers { display:flex; align-items:center; gap:5px; padding:3px 8px; border:1px solid #FFE082; border-radius:8px; background:#FFF8E1; font-size:11px; color:#F57F17; cursor:pointer; white-space:nowrap; flex-shrink:0; user-select:none; }
+.ea-toggle-pers input[type=checkbox] { accent-color:#F57F17; width:13px; height:13px; margin:0; }
+#panelPersonalizado { overflow:hidden; transition:max-height 0.25s ease, opacity 0.2s ease, padding 0.2s ease; max-height:0; opacity:0; padding-top:0; padding-bottom:0; border-top:none; border-bottom:none; }
+#panelPersonalizado.pers-visible { max-height:300px; opacity:1; padding-top:14px; padding-bottom:14px; border-bottom:2px solid #FFE082; }
 </style>
 </asp:Content>
 
@@ -444,15 +476,20 @@
                 <input type="text" id="txBuscarProd" placeholder="Buscar por nombre, SKU..." class="ea-input" style="flex:1;font-size:14px;padding:9px 12px" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarProductos();return false;}">
                 <button type="button" onclick="buscarProductos()" class="ea-btn-buscar" style="font-size:14px;padding:8px 16px"><i class="ti ti-search" style="font-size:16px" aria-hidden="true"></i></button>
             </div>
-            <div style="display:flex;gap:8px;align-items:center">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                 <label style="font-size:13px;color:#666;white-space:nowrap;font-weight:500">Categoría:</label>
-                <select id="ddCategoriaFiltro" class="ea-select" style="font-size:14px;padding:8px 10px;flex:1" onchange="buscarProductos()">
+                <select id="ddCategoriaFiltro" class="ea-select" style="font-size:14px;padding:8px 10px;flex:1;min-width:140px" onchange="buscarProductos()">
                     <option value="0" selected>Todas las categorías</option>
                     <%=HtmlCategoriasBtns%>
                 </select>
+                <label class="ea-toggle-pers" title="Mostrar/ocultar sección de producto personalizado">
+                    <input type="checkbox" id="chkMostrarPersonalizado" onchange="togglePersonalizado(this.checked)">
+                    <i class="ti ti-pencil-plus" style="font-size:13px" aria-hidden="true"></i>
+                    Personalizado
+                </label>
             </div>
         </div>
-        <div style="padding:14px 22px;border-bottom:2px solid #FFE082;background:#FFF8E1">
+        <div id="panelPersonalizado" style="padding-left:22px;padding-right:22px;background:#FFF8E1">
             <div style="display:flex;gap:12px;align-items:flex-start">
                 <div style="width:46px;height:46px;min-width:46px;border-radius:50%;background:white;display:flex;align-items:center;justify-content:center;margin-top:4px">
                     <i class="ti ti-pencil-plus" style="font-size:22px;color:#F57F17" aria-hidden="true"></i>
@@ -709,6 +746,21 @@ function abrirBuscadorProductos() {
 }
 function cerrarBuscador() {
     document.getElementById('modalBuscador').style.display = 'none';
+    // Resetear el toggle de producto personalizado al cerrar
+    var chk = document.getElementById('chkMostrarPersonalizado');
+    if (chk) { chk.checked = false; togglePersonalizado(false); }
+}
+// Mostrar/ocultar la sección de producto personalizado
+function togglePersonalizado(mostrar) {
+    var panel = document.getElementById('panelPersonalizado');
+    if (!panel) return;
+    if (mostrar) {
+        panel.classList.add('pers-visible');
+        var tx = document.getElementById('txPersNombre');
+        if (tx) setTimeout(function(){ tx.focus(); }, 250);
+    } else {
+        panel.classList.remove('pers-visible');
+    }
 }
 function buscarProductos() {
     var texto = document.getElementById('txBuscarProd').value.trim();
@@ -778,15 +830,32 @@ function renderizarProductos(productos) {
 
         var precioColor = inactivo ? '#9E9E9E' : '#3B5BDB';
         var precioStyle = inactivo ? 'text-decoration:line-through;' : '';
-        html += '<p style="margin:0;font-size:15px;font-weight:600;color:' + precioColor + ';' + precioStyle + ';white-space:nowrap">Bs ' + p.precio_base_bs.toFixed(2) + '</p>';
+        // Solo se muestra el precio "viejo" tachado para inactivos - el editable va abajo
+        if (inactivo) {
+            html += '<p style="margin:0;font-size:13px;font-weight:500;color:' + precioColor + ';' + precioStyle + ';white-space:nowrap">Bs ' + p.precio_base_bs.toFixed(2) + '</p>';
+        }
         html += '</div>';
 
         // Input personalizacion (más grande y legible)
         html += '<input type="text" placeholder="Personalización..." style="width:100%;font-size:13px;padding:6px 10px;margin-top:8px;border:1px dashed #d0d0d0;border-radius:6px;box-sizing:border-box" id="pers_' + p.producto_id + '" onkeydown="if(event.key===\'Enter\'){event.preventDefault();return false;}">';
 
-        // Fila de acción - usa data-attributes en vez de onclick inline
-        // (evita problemas con comillas/caracteres especiales/tildes en el nombre)
-        html += '<div style="display:flex;justify-content:flex-end;margin-top:8px">';
+        // Fila de acción: precio editable (izq) + botón agregar (der)
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px">';
+
+        // Precio editable - solo para productos activos. Inactivos no se editan (usan precio_base_bs).
+        if (!inactivo) {
+            html += '<div class="ea-price-edit" id="priceWrap_' + p.producto_id + '" data-precio-original="' + p.precio_base_bs.toFixed(2) + '">';
+            html += '<span class="ea-price-curr">Bs</span>';
+            html += '<input type="number" step="0.01" min="0" value="' + p.precio_base_bs.toFixed(2) + '" ';
+            html += 'id="precio_' + p.producto_id + '" ';
+            html += 'oninput="marcarPrecioModificado(' + p.producto_id + ')" ';
+            html += 'onkeydown="if(event.key===\'Enter\'){event.preventDefault();return false;}">';
+            html += '<i class="ti ti-pencil ea-price-edit-ico" aria-hidden="true"></i>';
+            html += '</div>';
+        } else {
+            html += '<span></span>';  // spacer
+        }
+
         var btnBg = inactivo ? '#fff' : '#EBF0FF';
         var btnColor = inactivo ? '#E53935' : '#3B5BDB';
         var btnBorder = inactivo ? '#FFCDD2' : '#90CAF9';
@@ -842,10 +911,36 @@ function agregarProductoAlPedido(productoId, nombre, precioBs, precioUsd, esInac
             return;  // Usuario canceló, no se hace nada
         }
     }
+
+    // Leer precio EDITADO si existe el input. Si no, usar el original.
+    var precioInput = document.getElementById('precio_' + productoId);
+    var precioFinal = precioBs;
+    if (precioInput) {
+        var v = parseFloat(precioInput.value);
+        if (!isNaN(v) && v > 0) {
+            precioFinal = v;
+        }
+    }
+
     var persEl = document.getElementById('pers_' + productoId);
     var persTexto = persEl ? persEl.value.trim() : '';
-    // Pasamos el flag inactivo a insertarProducto para que el Toast sea informativo
-    insertarProducto(productoId, nombre, precioBs, precioUsd, persTexto, false, inactivo);
+    // Pasamos el precio editado (puede coincidir con el original o ser distinto)
+    insertarProducto(productoId, nombre, precioFinal, precioUsd, persTexto, false, inactivo);
+}
+
+// Marca visualmente el precio como modificado cuando el usuario lo cambia
+function marcarPrecioModificado(productoId) {
+    var wrap = document.getElementById('priceWrap_' + productoId);
+    var input = document.getElementById('precio_' + productoId);
+    if (!wrap || !input) return;
+    var original = parseFloat(wrap.getAttribute('data-precio-original')) || 0;
+    var actual = parseFloat(input.value) || 0;
+    // Comparación con tolerancia de 1 centavo
+    if (Math.abs(actual - original) >= 0.01) {
+        wrap.classList.add('modificado');
+    } else {
+        wrap.classList.remove('modificado');
+    }
 }
 function agregarPersonalizado() {
     var nombre = document.getElementById('txPersNombre').value.trim();
@@ -901,25 +996,45 @@ function insertarProducto(productoId, nombre, precioBs, precioUsd, personalizaci
 function agregarFilaProducto(detalleId, nombre, precio, personalizacion, esPersonalizado) {
     var container = document.getElementById('divProductos');
     var div = document.createElement('div');
+    div.setAttribute('data-detalle-id', detalleId);
+    div.setAttribute('data-precio', precio);
+    div.setAttribute('data-cantidad', 1);
+
+    var html = '';
     if (esPersonalizado) {
         div.className = 'ea-prod-row personalizado';
-        div.setAttribute('data-precio', precio);
-        div.setAttribute('data-cantidad', 1);
-        div.innerHTML = '<div><span class="ea-prod-name">Producto Personalizado <span style="font-size:9px;color:#F57F17">WC#7076</span></span>' +
-            '<span class="ea-prod-custom">' + escapeHtml(personalizacion) + '</span>' +
-            '<div style="display:flex;align-items:center;gap:6px;margin-top:3px"><span style="font-size:10px;color:#999">Cant:</span>' +
-            '<input type="number" value="1" min="1" style="width:45px;text-align:center;padding:2px;font-size:11px;border:1px solid #FFE082;border-radius:4px" onchange="actualizarDetalle(' + detalleId + ',\'cantidad\',this.value)"></div></div>' +
-            '<input type="number" value="' + precio.toFixed(2) + '" step="0.01" style="width:75px;text-align:center;padding:3px;font-size:12px;border:1px solid #FFE082;border-radius:4px" onchange="actualizarDetalle(' + detalleId + ',\'precio\',this.value)">' +
-            '<button type="button" style="border:none;background:none;color:#E53935;cursor:pointer;font-size:14px;padding:0" onclick="eliminarDetalle(' + detalleId + ',this)"><i class="ti ti-trash"></i></button>';
+        // Row 1: nombre + botón eliminar
+        html += '<div class="ea-prod-card-row1">';
+        html += '<div><span class="ea-prod-name"><i class="ti ti-pencil-plus" style="font-size:13px;color:#F57F17;vertical-align:-1px" aria-hidden="true"></i> Producto Personalizado <span style="font-size:9px;color:#F57F17">WC#7076</span></span></div>';
+        html += '<button type="button" class="ea-prod-card-del" onclick="eliminarDetalle(' + detalleId + ',this)" aria-label="Eliminar"><i class="ti ti-trash" aria-hidden="true"></i></button>';
+        html += '</div>';
+        // Detalle de personalización
+        if (personalizacion) {
+            html += '<div class="ea-prod-card-detail"><i class="ti ti-pencil" style="font-size:11px;color:#F57F17" aria-hidden="true"></i><span>' + escapeHtml(personalizacion) + '</span></div>';
+        }
+        // Row 2: precio editable + cantidad
+        html += '<div class="ea-prod-card-row2">';
+        html += '<div class="ea-prod-card-cant"><span>Cant:</span><input type="number" value="1" min="1" onchange="actualizarDetalle(' + detalleId + ',\'cantidad\',this.value)"></div>';
+        html += '<input type="number" class="ea-prod-card-precio-input" value="' + precio.toFixed(2) + '" step="0.01" onchange="actualizarDetalle(' + detalleId + ',\'precio\',this.value)">';
+        html += '</div>';
     } else {
         div.className = 'ea-prod-row';
-        div.setAttribute('data-precio', precio);
-        div.setAttribute('data-cantidad', 1);
-        div.innerHTML = '<div><span class="ea-prod-name">' + escapeHtml(nombre) + '</span>' +
-            (personalizacion ? '<span class="ea-prod-detail"><span>' + escapeHtml(personalizacion) + '</span></span>' : '') +
-            '</div><span style="font-weight:500">Bs ' + precio.toFixed(2) + '</span>' +
-            '<button type="button" style="border:none;background:none;color:#E53935;cursor:pointer;font-size:14px;padding:0" onclick="eliminarDetalle(' + detalleId + ',this)"><i class="ti ti-trash"></i></button>';
+        // Row 1: nombre + botón eliminar
+        html += '<div class="ea-prod-card-row1">';
+        html += '<div><span class="ea-prod-name">' + escapeHtml(nombre) + '</span></div>';
+        html += '<button type="button" class="ea-prod-card-del" onclick="eliminarDetalle(' + detalleId + ',this)" aria-label="Eliminar"><i class="ti ti-trash" aria-hidden="true"></i></button>';
+        html += '</div>';
+        // Detalle de personalización (si existe)
+        if (personalizacion) {
+            html += '<div class="ea-prod-card-detail"><i class="ti ti-pencil" style="font-size:11px;color:#F57F17" aria-hidden="true"></i><span>' + escapeHtml(personalizacion) + '</span></div>';
+        }
+        // Row 2: etiqueta + precio
+        html += '<div class="ea-prod-card-row2">';
+        html += '<span class="ea-prod-card-precio-label">Precio</span>';
+        html += '<span class="ea-prod-card-precio" data-precio-bs="' + precio.toFixed(2) + '">Bs ' + precio.toFixed(2) + '</span>';
+        html += '</div>';
     }
+    div.innerHTML = html;
     container.appendChild(div);
     actualizarConteoItems();
     calcularSubtotal();
@@ -1099,6 +1214,7 @@ function guardarPago() {
             var radioDefault = document.querySelector('input[name="pagoEstado"][value="VERIFICADO"]');
             if (radioDefault) radioDefault.checked = true;
             document.getElementById('divConversion').style.display = 'none';
+            recalcularTotalesPagos();  // ← refrescar Total pagado / Saldo / badge
             actualizarChecklist();
         } else {
             alert('Error al guardar pago: ' + (data.msg || 'desconocido'));
@@ -1106,6 +1222,63 @@ function guardarPago() {
     })
     .catch(function() { alert('Error de red al guardar pago'); });
 }
+
+// ============================================================
+// RECALCULAR TOTALES DE PAGOS
+// Suma los pagos VERIFICADOS (los pendientes/rechazados no cuentan),
+// actualiza "Total pagado", "Saldo pendiente" y el badge de estado.
+// ============================================================
+function recalcularTotalesPagos() {
+    var sumaVerificado = 0;
+    var sumaPendiente = 0;
+    document.querySelectorAll('.ea-pago-row').forEach(function(row) {
+        var monto = parseFloat(row.getAttribute('data-monto-bs')) || 0;
+        var estado = row.getAttribute('data-estado') || '';
+        if (estado === 'VERIFICADO') {
+            sumaVerificado += monto;
+        } else if (estado === 'PENDIENTE') {
+            sumaPendiente += monto;
+        }
+        // RECHAZADO no se suma
+    });
+
+    var totalPedido = leerTotalPedidoBs();
+    var saldo = totalPedido - sumaVerificado;
+    if (saldo < 0) saldo = 0;  // No mostrar saldo negativo (sobrepago)
+
+    // Total pagado
+    var pPagado = document.getElementById('pagoPagado');
+    if (pPagado) pPagado.innerHTML = fmtBs(sumaVerificado) + convAside(sumaVerificado);
+
+    // Saldo pendiente
+    var pSaldo = document.getElementById('pagoSaldo');
+    if (pSaldo) pSaldo.innerHTML = fmtBs(saldo) + convAside(saldo);
+
+    // Badge de estado del pago
+    var badge = document.getElementById('spanEstadoPago');
+    if (badge) {
+        if (totalPedido <= 0) {
+            badge.textContent = 'Sin total';
+            badge.className = 'ea-badge ea-badge-warning';
+        } else if (sumaVerificado + 0.01 >= totalPedido) {
+            // Pagado completo (con tolerancia de 1 centavo)
+            if (sumaVerificado > totalPedido + 0.01) {
+                badge.textContent = 'Sobrepago Bs ' + (sumaVerificado - totalPedido).toFixed(2);
+                badge.className = 'ea-badge ea-badge-warning';
+            } else {
+                badge.textContent = 'Pagado';
+                badge.className = 'ea-badge ea-badge-success';
+            }
+        } else if (sumaVerificado > 0) {
+            badge.textContent = 'Parcial Bs ' + sumaVerificado.toFixed(2) + ' / ' + totalPedido.toFixed(2);
+            badge.className = 'ea-badge ea-badge-warning';
+        } else {
+            badge.textContent = 'Pendiente';
+            badge.className = 'ea-badge ea-badge-warning';
+        }
+    }
+}
+
 function eliminarPago(pagoId, btn) {
     if (!confirm('¿Eliminar este pago?')) return;
     var formData = new FormData();
@@ -1116,6 +1289,7 @@ function eliminarPago(pagoId, btn) {
     .then(function(data) {
         if (data.ok) {
             btn.closest('.ea-pago-row').remove();
+            recalcularTotalesPagos();  // ← refrescar después de eliminar
             actualizarChecklist();
         }
     });
@@ -1135,7 +1309,7 @@ function calcularSubtotal() {
 
     // Refrescar precio de cada fila de producto (no personalizado)
     // El precio se mantiene siempre en Bs pero agregamos la conversion al lado si la moneda es USD
-    document.querySelectorAll('.ea-prod-precio').forEach(function(sp) {
+    document.querySelectorAll('.ea-prod-card-precio').forEach(function(sp) {
         var precioBs = parseFloat(sp.getAttribute('data-precio-bs')) || 0;
         sp.innerHTML = 'Bs ' + precioBs.toFixed(2) + convAside(precioBs);
     });
@@ -1193,6 +1367,9 @@ function calcularSubtotal() {
     var pagoTotal = document.getElementById('pagoTotal');
     if (pagoTotal) pagoTotal.innerHTML = fmtBs(total) + convAside(total);
 
+    // Cuando cambia el total del pedido, el saldo pendiente cambia también
+    recalcularTotalesPagos();
+
     actualizarChecklist();
 }
 
@@ -1212,13 +1389,20 @@ function enviarCotizacionWsp() {
     var lineas = '';
 
     filas.forEach(function(fila) {
-        var nombre = fila.querySelector('.ea-prod-name');
+        var nombreEl = fila.querySelector('.ea-prod-name');
+        var detalleEl = fila.querySelector('.ea-prod-card-detail span');
         var precio = parseFloat(fila.getAttribute('data-precio')) || 0;
         var cantidad = parseFloat(fila.getAttribute('data-cantidad')) || 1;
         var sub = precio * cantidad;
         subtotal += sub;
-        if (nombre) {
-            lineas += '- ' + nombre.textContent.trim() + (cantidad > 1 ? ' x' + cantidad : '') + ' - ' + fmtTextoMoneda(sub, monedaEnvio) + '\n';
+        if (nombreEl) {
+            // Línea principal: nombre + cantidad + subtotal
+            lineas += '- ' + nombreEl.textContent.trim() + (cantidad > 1 ? ' x' + cantidad : '') + ' - ' + fmtTextoMoneda(sub, monedaEnvio) + '\n';
+            // Línea secundaria: personalización (si tiene)
+            var pers = detalleEl ? detalleEl.textContent.trim() : '';
+            if (pers !== '') {
+                lineas += '  ✏️ ' + pers + '\n';
+            }
         }
     });
 

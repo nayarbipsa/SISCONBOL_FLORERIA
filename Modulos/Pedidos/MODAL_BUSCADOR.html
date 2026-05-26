@@ -1,27 +1,87 @@
 <!-- ============================================ -->
-<!-- MODAL BUSCADOR DE PRODUCTOS -->
-<!-- Insertar ANTES de "<!-- HIDDEN FIELDS -->" en Entrega_Agregar.aspx -->
+<!-- MODAL BUSCADOR DE PRODUCTOS v2             -->
+<!-- CAMBIOS:                                   -->
+<!--   1. Checkbox para mostrar/ocultar         -->
+<!--      la sección de producto personalizado  -->
+<!--   2. Campo monto más grande en móvil       -->
+<!-- Insertar ANTES de "<!-- HIDDEN FIELDS -->" -->
+<!-- en Entrega_Agregar.aspx                    -->
 <!-- ============================================ -->
+
+<!-- ===================== ESTILOS ADICIONALES ===================== -->
+<!-- Pegar dentro del bloque <style> existente en Entrega_Agregar.aspx -->
+<!--
+/* Producto personalizado: toggle suave */
+#panelPersonalizado {
+    overflow: hidden;
+    transition: max-height 0.25s ease, opacity 0.2s ease, padding 0.2s ease;
+}
+#panelPersonalizado.pers-oculto {
+    max-height: 0 !important;
+    opacity: 0;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    border-top: none !important;
+    border-bottom: none !important;
+}
+#panelPersonalizado.pers-visible {
+    max-height: 300px;
+    opacity: 1;
+}
+/* Monto de pago: grande en móvil */
+@media (max-width: 768px) {
+    #txPagoMonto {
+        font-size: 20px !important;
+        padding: 10px 12px !important;
+        text-align: right;
+    }
+}
+-->
+
+<!-- ============================================================ -->
+<!-- MODAL BUSCADOR DE PRODUCTOS                                  -->
+<!-- ============================================================ -->
 <div id="modalBuscador" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);z-index:9999;overflow-y:auto;padding:20px">
     <div style="background:white;border-radius:12px;max-width:620px;margin:0 auto;border:1px solid #e0e0e0">
+
         <!-- Header -->
         <div style="padding:12px 20px;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;background:#fafafa;border-radius:12px 12px 0 0">
-            <span style="font-size:15px;font-weight:500"><i class="ti ti-search" style="font-size:17px;vertical-align:-2px;margin-right:6px" aria-hidden="true"></i>Buscar producto</span>
-            <button type="button" onclick="cerrarBuscador()" style="border:none;background:none;cursor:pointer;font-size:18px;color:#999"><i class="ti ti-x" aria-hidden="true"></i></button>
+            <span style="font-size:15px;font-weight:500">
+                <i class="ti ti-search" style="font-size:17px;vertical-align:-2px;margin-right:6px" aria-hidden="true"></i>Buscar producto
+            </span>
+            <button type="button" onclick="cerrarBuscador()" style="border:none;background:none;cursor:pointer;font-size:18px;color:#999">
+                <i class="ti ti-x" aria-hidden="true"></i>
+            </button>
         </div>
-        <!-- Búsqueda -->
+
+        <!-- Búsqueda + categorías -->
         <div style="padding:10px 20px;border-bottom:1px solid #f0f0f0">
             <div style="display:flex;gap:6px;margin-bottom:6px">
                 <input type="text" id="txBuscarProd" placeholder="Buscar por nombre, SKU..." class="ea-input" style="flex:1" onkeyup="if(event.key==='Enter')buscarProductos()">
-                <button type="button" onclick="buscarProductos()" style="font-size:12px;padding:0 12px;background:#EBF0FF;color:#3B5BDB;border:1px solid #90CAF9;border-radius:8px;cursor:pointer"><i class="ti ti-search" style="font-size:14px" aria-hidden="true"></i></button>
+                <button type="button" onclick="buscarProductos()" style="font-size:12px;padding:0 12px;background:#EBF0FF;color:#3B5BDB;border:1px solid #90CAF9;border-radius:8px;cursor:pointer">
+                    <i class="ti ti-search" style="font-size:14px" aria-hidden="true"></i>
+                </button>
             </div>
-            <div id="divCategorias" style="display:flex;gap:4px;flex-wrap:wrap">
-                <button type="button" class="ea-btn-cat active" onclick="filtrarCategoria(0, this)">Todos</button>
-                <%=HtmlCategoriasBtns%>
+
+            <!-- Categorías + toggle personalizado en la misma fila -->
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+                <div id="divCategorias" style="display:flex;gap:4px;flex-wrap:wrap;flex:1">
+                    <button type="button" class="ea-btn-cat active" onclick="filtrarCategoria(0, this)">Todos</button>
+                    <%=HtmlCategoriasBtns%>
+                </div>
+                <!-- ▶ NUEVO: checkbox toggle producto personalizado -->
+                <label title="Mostrar sección de producto personalizado"
+                       style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;color:#F57F17;white-space:nowrap;user-select:none;flex-shrink:0;padding:3px 8px;border:1px solid #FFE082;border-radius:8px;background:#FFF8E1">
+                    <input type="checkbox" id="chkMostrarPersonalizado" onchange="togglePersonalizado(this.checked)" style="accent-color:#F57F17;width:14px;height:14px">
+                    <i class="ti ti-pencil-plus" style="font-size:13px;vertical-align:-1px" aria-hidden="true"></i>
+                    Personalizado
+                </label>
             </div>
         </div>
-        <!-- Producto Personalizado WC#7076 -->
-        <div style="padding:10px 20px;border-bottom:2px solid #FFE082;background:#FFF8E1">
+
+        <!-- ▶ PANEL Producto Personalizado (oculto por defecto) -->
+        <div id="panelPersonalizado" class="pers-oculto"
+             style="padding:10px 20px;border-bottom:2px solid #FFE082;background:#FFF8E1;max-height:0;opacity:0">
             <div style="display:flex;gap:10px;align-items:center">
                 <div style="width:40px;height:40px;min-width:40px;border-radius:50%;background:white;display:flex;align-items:center;justify-content:center">
                     <i class="ti ti-pencil-plus" style="font-size:18px;color:#F57F17" aria-hidden="true"></i>
@@ -32,43 +92,136 @@
                         <input type="text" id="txPersNombre" placeholder="Nombre del producto..." class="ea-input" style="font-size:11px;padding:4px 6px">
                         <div style="display:flex;gap:3px">
                             <input type="number" id="txPersPrecio" placeholder="Precio" step="0.01" class="ea-input" style="font-size:11px;padding:4px;flex:1">
-                            <select id="ddPersMoneda" style="font-size:10px;padding:2px;width:auto;border:1px solid #d0d0d0;border-radius:4px"><option value="BOB">Bs</option><option value="USD">USD</option></select>
+                            <select id="ddPersMoneda" style="font-size:10px;padding:2px;width:auto;border:1px solid #d0d0d0;border-radius:4px">
+                                <option value="BOB">Bs</option>
+                                <option value="USD">USD</option>
+                            </select>
                         </div>
                     </div>
                     <input type="text" id="txPersDetalle" placeholder="Personalización / descripción..." class="ea-input" style="font-size:11px;padding:4px 6px;margin-top:4px;border-style:dashed">
-                    <button type="button" onclick="agregarPersonalizado()" style="font-size:11px;padding:4px 12px;margin-top:6px;background:white;color:#F57F17;border:1px solid #FFE082;border-radius:8px;cursor:pointer"><i class="ti ti-plus" style="font-size:12px;vertical-align:-1px" aria-hidden="true"></i> Agregar personalizado</button>
+                    <button type="button" onclick="agregarPersonalizado()" style="font-size:11px;padding:4px 12px;margin-top:6px;background:white;color:#F57F17;border:1px solid #FFE082;border-radius:8px;cursor:pointer">
+                        <i class="ti ti-plus" style="font-size:12px;vertical-align:-1px" aria-hidden="true"></i> Agregar personalizado
+                    </button>
                 </div>
             </div>
         </div>
+
         <!-- Lista productos -->
         <div id="divListaProductos" style="max-height:350px;overflow-y:auto">
             <p style="padding:20px;text-align:center;color:#999;font-size:13px">Escriba para buscar productos...</p>
         </div>
+
     </div>
 </div>
 
-<!-- MODAL REGISTRAR PAGO -->
+<!-- ============================================================ -->
+<!-- MODAL REGISTRAR PAGO                                         -->
+<!-- ============================================================ -->
 <div id="modalPago" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);z-index:9999;overflow-y:auto;padding:20px">
     <div style="background:white;border-radius:12px;max-width:450px;margin:40px auto;border:1px solid #e0e0e0">
+
         <div style="padding:12px 20px;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;background:#fafafa;border-radius:12px 12px 0 0">
-            <span style="font-size:15px;font-weight:500"><i class="ti ti-cash" style="font-size:17px;vertical-align:-2px;margin-right:6px" aria-hidden="true"></i>Registrar pago</span>
-            <button type="button" onclick="cerrarModalPago()" style="border:none;background:none;cursor:pointer;font-size:18px;color:#999"><i class="ti ti-x" aria-hidden="true"></i></button>
+            <span style="font-size:15px;font-weight:500">
+                <i class="ti ti-cash" style="font-size:17px;vertical-align:-2px;margin-right:6px" aria-hidden="true"></i>Registrar pago
+            </span>
+            <button type="button" onclick="cerrarModalPago()" style="border:none;background:none;cursor:pointer;font-size:18px;color:#999">
+                <i class="ti ti-x" aria-hidden="true"></i>
+            </button>
         </div>
+
         <div style="padding:20px">
             <div class="ea-grid-2" style="margin-bottom:10px">
-                <div><label class="ea-label">Método *</label><select id="ddPagoMetodo" class="ea-select"><option value="">-- Seleccionar --</option><option value="EFECTIVO">Efectivo</option><option value="QR">QR Bolivia (BNB)</option><option value="TRANSFERENCIA">Transferencia</option><option value="PAYPAL">PayPal</option><option value="CRIPTO">Cripto USDT</option><option value="YAPE">Yape</option><option value="PIX">Pix</option><option value="TARJETA">Tarjeta</option></select></div>
-                <div><label class="ea-label">Moneda *</label><select id="ddPagoMoneda" class="ea-select"><option value="BOB" selected>BOB</option><option value="USD">USD</option></select></div>
+                <div>
+                    <label class="ea-label">Método *</label>
+                    <select id="ddPagoMetodo" class="ea-select">
+                        <option value="">-- Seleccionar --</option>
+                        <option value="EFECTIVO">Efectivo</option>
+                        <option value="QR">QR Bolivia (BNB)</option>
+                        <option value="TRANSFERENCIA">Transferencia</option>
+                        <option value="PAYPAL">PayPal</option>
+                        <option value="CRIPTO">Cripto USDT</option>
+                        <option value="YAPE">Yape</option>
+                        <option value="PIX">Pix</option>
+                        <option value="TARJETA">Tarjeta</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="ea-label">Moneda *</label>
+                    <select id="ddPagoMoneda" class="ea-select">
+                        <option value="BOB" selected>BOB</option>
+                        <option value="USD">USD</option>
+                    </select>
+                </div>
             </div>
-            <div class="ea-grid-2" style="margin-bottom:10px">
-                <div><label class="ea-label">Monto *</label><input type="number" id="txPagoMonto" placeholder="0.00" step="0.01" class="ea-input"></div>
-                <div><label class="ea-label">Tasa de cambio</label><input type="number" id="txPagoTasa" placeholder="6.90" step="0.01" class="ea-input"></div>
+
+            <!-- ▶ MONTO: fila completa en móvil, bien grande -->
+            <div style="margin-bottom:10px">
+                <label class="ea-label">Monto *</label>
+                <!--
+                    En móvil: font-size:20px + padding grande (ver CSS @media arriba).
+                    inputmode="decimal" abre teclado numérico en iOS/Android sin flechas.
+                -->
+                <input type="number" id="txPagoMonto" placeholder="0.00" step="0.01"
+                       inputmode="decimal"
+                       class="ea-input"
+                       style="font-size:16px;padding:10px 12px;text-align:right">
             </div>
-            <div style="margin-bottom:10px"><label class="ea-label">Referencia / Nro transacción</label><input type="text" id="txPagoRef" placeholder="Ej: TXN-123456" class="ea-input"></div>
-            <div style="margin-bottom:16px"><label class="ea-radio-label"><input type="checkbox" id="chkPagoVerif"> <span style="font-weight:500">Pago verificado</span></label></div>
+
+            <div style="margin-bottom:10px">
+                <label class="ea-label">Tasa de cambio</label>
+                <input type="number" id="txPagoTasa" placeholder="6.90" step="0.01" class="ea-input">
+            </div>
+
+            <div style="margin-bottom:10px">
+                <label class="ea-label">Referencia / Nro transacción</label>
+                <input type="text" id="txPagoRef" placeholder="Ej: TXN-123456" class="ea-input">
+            </div>
+
+            <div style="margin-bottom:16px">
+                <label class="ea-radio-label">
+                    <input type="checkbox" id="chkPagoVerif">
+                    <span style="font-weight:500">Pago verificado</span>
+                </label>
+            </div>
+
             <div style="display:flex;justify-content:flex-end;gap:6px;padding-top:10px;border-top:1px solid #f0f0f0">
                 <button type="button" onclick="cerrarModalPago()" class="btn" style="font-size:12px;padding:6px 14px">Cancelar</button>
-                <button type="button" onclick="guardarPago()" style="font-size:12px;padding:6px 14px;background:#EBF0FF;color:#3B5BDB;border:1px solid #90CAF9;border-radius:8px;cursor:pointer;font-weight:500"><i class="ti ti-check" style="font-size:13px;vertical-align:-1px" aria-hidden="true"></i> Guardar pago</button>
+                <button type="button" onclick="guardarPago()" style="font-size:12px;padding:6px 14px;background:#EBF0FF;color:#3B5BDB;border:1px solid #90CAF9;border-radius:8px;cursor:pointer;font-weight:500">
+                    <i class="ti ti-check" style="font-size:13px;vertical-align:-1px" aria-hidden="true"></i> Guardar pago
+                </button>
             </div>
         </div>
     </div>
 </div>
+
+<!-- ============================================================ -->
+<!-- JS ADICIONAL: togglePersonalizado                            -->
+<!-- Pegar dentro del bloque <script> existente                   -->
+<!-- (justo arriba de la función cerrarBuscador o al inicio del   -->
+<!--  bloque, donde están las otras funciones del modal)          -->
+<!-- ============================================================ -->
+<!--
+// ── Toggle sección producto personalizado ──────────────────────
+function togglePersonalizado(mostrar) {
+    var panel = document.getElementById('panelPersonalizado');
+    if (!panel) return;
+    if (mostrar) {
+        panel.classList.remove('pers-oculto');
+        panel.classList.add('pers-visible');
+        // Limpiar campos al abrir para no confundir
+        var txNombre = document.getElementById('txPersNombre');
+        var txPrecio = document.getElementById('txPersPrecio');
+        var txDetalle = document.getElementById('txPersDetalle');
+        if (txNombre) txNombre.focus();
+    } else {
+        panel.classList.remove('pers-visible');
+        panel.classList.add('pers-oculto');
+    }
+}
+
+// Al cerrar el buscador, resetear el checkbox y ocultar el panel
+// → agregar estas 2 líneas al inicio de la función cerrarBuscador() existente:
+//
+//   document.getElementById('chkMostrarPersonalizado').checked = false;
+//   togglePersonalizado(false);
+-->
