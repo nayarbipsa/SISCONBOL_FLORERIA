@@ -6,72 +6,59 @@ Imports System.Web
 ' ============================================================
 ' SISCONBOL - Recibo Termico (ticket 80mm)
 ' Archivo: Modulos/Pedidos/Recibo.aspx.vb
-'
-' Pagina STANDALONE (sin MasterPage) para imprimir.
-' Se accede via ?id={pedido_id}  (id de FLORERIA_Pedido)
-'
-' Si el usuario no esta logueado, redirige a Login.
-' Si el pedido no existe, muestra mensaje.
+' Acceso: ?id={pedido_id}
+' Sin MasterPage. Solo para empleados (verifica sesion).
 ' ============================================================
 Partial Public Class Modulos_Pedidos_Recibo
     Inherits System.Web.UI.Page
 
-    ' --- Propiedades expuestas al .aspx ---
+    ' --- Encabezado ---
     Public Property PedidoId As Integer = 0
     Public Property PedidoCodigo As String = ""
-    Public Property PrePedidoCodigo As String = ""
-    Public Property WcNumero As String = "—"
-    Public Property FechaCreado As String = ""
+    Public Property WcNumero As String = "---"
+    Public Property LineaPreFecha As String = ""
+    Public Property LineaAgente As String = ""
+    Public Property BloqueSucursalBadge As String = ""
 
+    ' --- Alertas arriba ---
+    Public Property BloqueExpress As String = ""
+    Public Property BloqueCobrar As String = ""
+
+    ' --- Cliente ---
+    Public Property ClienteNombre As String = "---"
+    Public Property ClienteCelular As String = "---"
+
+    ' --- Entrega ---
     Public Property FechaEntrega As String = ""
     Public Property Horario As String = "Sin horario"
-    Public Property TipoEntrega As String = "Domicilio"
+    Public Property ZonaNombre As String = ""
 
+    ' --- Productos ---
+    Public Property HtmlProductos As String = ""
+    Public Property BloqueNotaFloreria As String = ""
+
+    ' --- Destinatario ---
     Public Property ReceptorNombre As String = ""
     Public Property ReceptorCelular As String = ""
-
-    Public Property ClienteNombre As String = ""
-    Public Property ClienteCelular As String = ""
-
-    Public Property SubtotalBs As String = "0.00"
-    Public Property TotalBs As String = "0.00"
-
-    Public Property MetodoPago As String = "—"
-    Public Property EstadoPago As String = "—"
-    Public Property MontoPagadoBs As String = "0.00"
-
-    ' Bloques HTML condicionales
-    Public Property BloqueExpress As String = ""
     Public Property BloqueDireccion As String = ""
     Public Property BloqueOcasion As String = ""
-    Public Property HtmlProductos As String = ""
-    Public Property BloqueTarjeta As String = ""
-    Public Property BloqueNotaFloreria As String = ""
-    Public Property BloqueEnvio As String = ""
-    Public Property BloqueRecargoHor As String = ""
-    Public Property BloqueRecargoExp As String = ""
-    Public Property BloqueDescuento As String = ""
-    Public Property BloqueSaldo As String = ""
-    Public Property BloqueAgente As String = ""
 
-    ' ============================================================
-    ' Page_Load
-    ' ============================================================
+    ' --- Tarjeta ---
+    Public Property BloqueTarjeta As String = ""
+
+    ' --- Pago ---
+    Public Property MetodoPago As String = "---"
+    Public Property EstadoPago As String = "---"
+
     Protected Sub Page_Load(sender As Object, e As EventArgs) Handles Me.Load
-        ' Verificar sesion (este recibo es solo para empleados)
         If Not SesionHelper.VerificarSesion(HttpContext.Current) Then
             Response.Redirect("~/Login.aspx", False)
             Return
         End If
-
-        ' Resolver pedido_id
         Dim qId As String = Request.QueryString("id")
         If String.IsNullOrEmpty(qId) OrElse Not Integer.TryParse(qId, PedidoId) OrElse PedidoId <= 0 Then
-            Response.Write("Pedido invalido")
-            Response.End()
-            Return
+            Response.Write("Pedido invalido") : Response.End() : Return
         End If
-
         Try
             CargarRecibo()
         Catch ex As Exception
@@ -81,361 +68,263 @@ Partial Public Class Modulos_Pedidos_Recibo
         End Try
     End Sub
 
-    ' ============================================================
-    ' CargarRecibo - SELECT del pedido + prepedido + items + pagos
-    ' ============================================================
     Private Sub CargarRecibo()
         Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
             conn.Open()
 
-            ' --- 1. Pedido + joins ---
             Dim sql As String =
                 "SELECT p.pedido_id, p.codigo, p.prepedido_id, " &
                 "       p.receptor_nombre, p.receptor_celular, " &
-                "       p.direccion, p.referencia, p.gps, " &
+                "       p.direccion, p.referencia, " &
                 "       p.fecha_entrega, p.es_express, " &
                 "       p.dedicatoria, p.firma_tarjeta, p.tipo_ocacion, " &
-                "       p.nota_floreria, p.observaciones, " &
-                "       p.subtotal_productos_bs, p.envio_bs, " &
-                "       p.recargo_express_bs, p.recargo_horario_bs, " &
-                "       p.descuento_bs, p.total_bs, " &
-                "       p.tipo_entrega, " &
+                "       p.nota_floreria, p.tipo_entrega, " &
                 "       p.wc_order_id, p.wc_order_number, " &
-                "       p.wc_payment_method, p.wc_payment_method_title, " &
-                "       p.creado_en, p.creado_por, " &
-                "       c.nombre AS ciudad_nombre, " &
+                "       p.wc_payment_method_title, p.creado_en, " &
                 "       z.nombre AS zona_nombre, " &
-                "       sl.etiqueta AS slot_etiqueta, " &
-                "       sl.hora_inicio, sl.hora_fin, " &
+                "       sl.etiqueta AS slot_etiqueta, sl.hora_inicio, sl.hora_fin, " &
                 "       pp.codigo AS prepedido_codigo, " &
                 "       pp.cliente_nombre, pp.cliente_apellidos, pp.cliente_celular, " &
-                "       u.nombres AS agente_nombre, u.apellidos AS agente_apellidos " &
+                "       u.nombres AS agente_nombres, u.apellidos AS agente_apellidos, " &
+                "       sp.nombre AS sucursal_prepara_nombre " &
                 "FROM FLORERIA_Pedido p " &
-                "LEFT JOIN FLORERIA_Ciudad c     ON c.ciudad_id = p.ciudad_id " &
-                "LEFT JOIN FLORERIA_Zona   z     ON z.zona_id   = p.zona_id " &
-                "LEFT JOIN FLORERIA_Slot_Horario sl ON sl.slot_id = p.slot_id " &
-                "LEFT JOIN FLORERIA_PrePedido pp ON pp.prepedido_id = p.prepedido_id " &
-                "LEFT JOIN FLORERIA_Usuario  u  ON u.usuario_id  = p.creado_por " &
+                "LEFT JOIN FLORERIA_Zona         z   ON z.zona_id       = p.zona_id " &
+                "LEFT JOIN FLORERIA_Slot_Horario sl  ON sl.slot_id      = p.slot_id " &
+                "LEFT JOIN FLORERIA_PrePedido    pp  ON pp.prepedido_id = p.prepedido_id " &
+                "LEFT JOIN FLORERIA_Usuario      u   ON u.usuario_id    = p.creado_por " &
+                "LEFT JOIN FLORERIA_Sucursal     sp  ON sp.sucursal_id  = p.sucursal_prepara_id " &
                 "WHERE p.pedido_id = @id"
 
-            Dim pedidoEncontrado As Boolean = False
-            Dim prePedidoId As Integer = 0
-            Dim totalBsNum As Decimal = 0
-            Dim direccion As String = ""
-            Dim referencia As String = ""
-            Dim gps As String = ""
-            Dim ocasion As String = ""
-            Dim dedicatoria As String = ""
-            Dim firmaTarjeta As String = ""
-            Dim notaFloreria As String = ""
-            Dim envioBs As Decimal = 0
-            Dim recHor As Decimal = 0
-            Dim recExp As Decimal = 0
-            Dim descBs As Decimal = 0
-            Dim esExpress As Boolean = False
-            Dim slotEtiqueta As String = ""
-            Dim slotHoraIni As Object = Nothing
-            Dim slotHoraFin As Object = Nothing
+            Dim encontrado As Boolean = False
             Dim wcOrderId As Integer = 0
             Dim wcOrderNumber As String = ""
-            Dim wcPaymentMethodTitle As String = ""
-            Dim agenteNombre As String = ""
-            Dim agenteApellidos As String = ""
+            Dim wcMethodTitle As String = ""
+            Dim dedicatoria As String = ""
+            Dim firmaTarjeta As String = ""
+            Dim ocasion As String = ""
+            Dim notaFloreria As String = ""
+            Dim esExpress As Boolean = False
+            Dim tipoEntrega As String = "DOMICILIO"
+            Dim direccion As String = ""
+            Dim referencia As String = ""
+            Dim sucursalNombre As String = ""
 
             Using cmd As New SqlCommand(sql, conn)
                 cmd.Parameters.AddWithValue("@id", PedidoId)
                 Using dr As SqlDataReader = cmd.ExecuteReader()
                     If dr.Read() Then
-                        pedidoEncontrado = True
+                        encontrado = True
 
-                        PedidoCodigo    = dr("codigo").ToString()
-                        prePedidoId     = If(IsDBNull(dr("prepedido_id")), 0, CInt(dr("prepedido_id")))
+                        PedidoCodigo    = QuitarCeros(dr("codigo").ToString())
                         ReceptorNombre  = dr("receptor_nombre").ToString()
                         ReceptorCelular = dr("receptor_celular").ToString()
+                        direccion       = If(IsDBNull(dr("direccion")),    "", dr("direccion").ToString())
+                        referencia      = If(IsDBNull(dr("referencia")),   "", dr("referencia").ToString())
+                        esExpress       = If(IsDBNull(dr("es_express")),   False, CBool(dr("es_express")))
+                        dedicatoria     = If(IsDBNull(dr("dedicatoria")),  "", dr("dedicatoria").ToString())
+                        firmaTarjeta    = If(IsDBNull(dr("firma_tarjeta")),"", dr("firma_tarjeta").ToString())
+                        ocasion         = If(IsDBNull(dr("tipo_ocacion")), "", dr("tipo_ocacion").ToString())
+                        notaFloreria    = If(IsDBNull(dr("nota_floreria")),"", dr("nota_floreria").ToString())
+                        tipoEntrega     = If(IsDBNull(dr("tipo_entrega")), "DOMICILIO", dr("tipo_entrega").ToString())
+                        ZonaNombre      = If(IsDBNull(dr("zona_nombre")),  "", dr("zona_nombre").ToString())
+                        sucursalNombre  = If(IsDBNull(dr("sucursal_prepara_nombre")), "", dr("sucursal_prepara_nombre").ToString())
+                        wcOrderId       = If(IsDBNull(dr("wc_order_id")),     0,  CInt(dr("wc_order_id")))
+                        wcOrderNumber   = If(IsDBNull(dr("wc_order_number")), "", dr("wc_order_number").ToString())
+                        wcMethodTitle   = If(IsDBNull(dr("wc_payment_method_title")), "", dr("wc_payment_method_title").ToString())
 
-                        direccion       = If(IsDBNull(dr("direccion")),     "", dr("direccion").ToString())
-                        referencia      = If(IsDBNull(dr("referencia")),    "", dr("referencia").ToString())
-                        gps             = If(IsDBNull(dr("gps")),           "", dr("gps").ToString())
-                        ocasion         = If(IsDBNull(dr("tipo_ocacion")),  "", dr("tipo_ocacion").ToString())
-                        dedicatoria     = If(IsDBNull(dr("dedicatoria")),   "", dr("dedicatoria").ToString())
-                        firmaTarjeta    = If(IsDBNull(dr("firma_tarjeta")), "", dr("firma_tarjeta").ToString())
-                        notaFloreria    = If(IsDBNull(dr("nota_floreria")), "", dr("nota_floreria").ToString())
-                        esExpress       = If(IsDBNull(dr("es_express")),    False, CBool(dr("es_express")))
-
+                        ' Fecha entrega
                         If Not IsDBNull(dr("fecha_entrega")) Then
-                            Dim fe As DateTime = CDate(dr("fecha_entrega"))
-                            FechaEntrega = fe.ToString("dddd dd MMM yyyy", New System.Globalization.CultureInfo("es-ES"))
+                            FechaEntrega = CDate(dr("fecha_entrega")).ToString("ddd dd MMM yyyy", New System.Globalization.CultureInfo("es-ES"))
                         End If
 
-                        slotEtiqueta = If(IsDBNull(dr("slot_etiqueta")), "", dr("slot_etiqueta").ToString())
-                        slotHoraIni  = If(IsDBNull(dr("hora_inicio")), Nothing, dr("hora_inicio"))
-                        slotHoraFin  = If(IsDBNull(dr("hora_fin")),    Nothing, dr("hora_fin"))
+                        ' Horario: la etiqueta ya incluye el intervalo (ej: "Manana (09:00 - 12:00)")
+                        ' Si la etiqueta tiene ":" significa que ya trae horas -> usar solo etiqueta
+                        ' Si no tiene horas, concatenar etiqueta + intervalo de hora_inicio/hora_fin
+                        Dim slotEt As String = If(IsDBNull(dr("slot_etiqueta")), "", dr("slot_etiqueta").ToString())
+                        Dim etiquetaTieneHoras As Boolean = slotEt.Contains(":")
+                        If etiquetaTieneHoras Then
+                            Horario = slotEt
+                        ElseIf Not IsDBNull(dr("hora_inicio")) AndAlso Not IsDBNull(dr("hora_fin")) Then
+                            Dim hi As TimeSpan = CType(dr("hora_inicio"), TimeSpan)
+                            Dim hf As TimeSpan = CType(dr("hora_fin"),    TimeSpan)
+                            Dim intv As String = hi.ToString("hh\:mm") & " - " & hf.ToString("hh\:mm")
+                            Horario = If(slotEt <> "", slotEt & " " & intv, intv)
+                        ElseIf slotEt <> "" Then
+                            Horario = slotEt
+                        End If
 
-                        Dim tipoEntDb As String = If(IsDBNull(dr("tipo_entrega")), "DOMICILIO", dr("tipo_entrega").ToString())
-                        TipoEntrega = If(tipoEntDb = "RECOJO_SUCURSAL", "RECOJO EN SUCURSAL", "Domicilio")
-
-                        envioBs = If(IsDBNull(dr("envio_bs")),             0D, CDec(dr("envio_bs")))
-                        recHor  = If(IsDBNull(dr("recargo_horario_bs")),   0D, CDec(dr("recargo_horario_bs")))
-                        recExp  = If(IsDBNull(dr("recargo_express_bs")),   0D, CDec(dr("recargo_express_bs")))
-                        descBs  = If(IsDBNull(dr("descuento_bs")),         0D, CDec(dr("descuento_bs")))
-
-                        Dim subtotalNum As Decimal = If(IsDBNull(dr("subtotal_productos_bs")), 0D, CDec(dr("subtotal_productos_bs")))
-                        totalBsNum                 = If(IsDBNull(dr("total_bs")),              0D, CDec(dr("total_bs")))
-                        SubtotalBs = subtotalNum.ToString("N2")
-                        TotalBs    = totalBsNum.ToString("N2")
-
-                        wcOrderId            = If(IsDBNull(dr("wc_order_id")),     0,  CInt(dr("wc_order_id")))
-                        wcOrderNumber        = If(IsDBNull(dr("wc_order_number")), "", dr("wc_order_number").ToString())
-                        wcPaymentMethodTitle = If(IsDBNull(dr("wc_payment_method_title")), "", dr("wc_payment_method_title").ToString())
-
+                        ' Linea PRE | fecha
+                        Dim preStr As String = ""
+                        If Not IsDBNull(dr("prepedido_codigo")) Then
+                            preStr = QuitarCeros(dr("prepedido_codigo").ToString()) & " | "
+                        End If
                         If Not IsDBNull(dr("creado_en")) Then
-                            FechaCreado = CDate(dr("creado_en")).ToString("dd/MM/yyyy HH:mm")
+                            preStr &= CDate(dr("creado_en")).ToString("dd/MM/yyyy HH:mm")
                         End If
+                        LineaPreFecha = preStr
 
-                        PrePedidoCodigo = If(IsDBNull(dr("prepedido_codigo")), "—", dr("prepedido_codigo").ToString())
+                        ' Agente
+                        Dim an As String = If(IsDBNull(dr("agente_nombres")),    "", dr("agente_nombres").ToString().Trim())
+                        Dim aa As String = If(IsDBNull(dr("agente_apellidos")), "", dr("agente_apellidos").ToString().Trim())
+                        Dim ag As String = (an & " " & aa).Trim()
+                        If ag <> "" Then LineaAgente = "Atendido por: " & ag
 
-                        Dim cn As String = If(IsDBNull(dr("cliente_nombre")),    "", dr("cliente_nombre").ToString())
-                        Dim ca As String = If(IsDBNull(dr("cliente_apellidos")), "", dr("cliente_apellidos").ToString())
-                        ClienteNombre   = (cn.Trim() & " " & ca.Trim()).Trim()
-                        If ClienteNombre = "" Then ClienteNombre = "—"
-                        ClienteCelular  = If(IsDBNull(dr("cliente_celular")), "—", dr("cliente_celular").ToString())
-
-                        agenteNombre    = If(IsDBNull(dr("agente_nombre")),    "", dr("agente_nombre").ToString())
-                        agenteApellidos = If(IsDBNull(dr("agente_apellidos")), "", dr("agente_apellidos").ToString())
+                        ' Cliente
+                        Dim cn As String = If(IsDBNull(dr("cliente_nombre")),    "", dr("cliente_nombre").ToString().Trim())
+                        Dim ca As String = If(IsDBNull(dr("cliente_apellidos")), "", dr("cliente_apellidos").ToString().Trim())
+                        ClienteNombre  = (cn & " " & ca).Trim()
+                        If ClienteNombre = "" Then ClienteNombre = "---"
+                        ClienteCelular = If(IsDBNull(dr("cliente_celular")), "---", dr("cliente_celular").ToString())
                     End If
                 End Using
             End Using
 
-            If Not pedidoEncontrado Then
-                Response.Write("Pedido no encontrado")
-                Response.End()
-                Return
+            If Not encontrado Then
+                Response.Write("Pedido no encontrado") : Response.End() : Return
             End If
 
-            ' --- 2. Numero WooCommerce visible ---
-            If wcOrderId > 0 Then
-                If wcOrderNumber <> "" AndAlso wcOrderNumber <> wcOrderId.ToString() Then
-                    WcNumero = "#" & wcOrderNumber
-                Else
-                    WcNumero = "#" & wcOrderId.ToString()
-                End If
-            Else
-                WcNumero = "Sin WC"
+            ' Numero WC
+            WcNumero = If(wcOrderId > 0, "#" & If(wcOrderNumber <> "", wcOrderNumber, wcOrderId.ToString()), "Sin WC")
+
+            ' Badge sucursal (3 letras en mayuscula)
+            If sucursalNombre <> "" Then
+                Dim letras As String = sucursalNombre.ToUpper()
+                If letras.Length > 3 Then letras = letras.Substring(0, 3)
+                BloqueSucursalBadge = "<span style='border:2px solid #000;padding:1mm 2mm;font-weight:bold;font-size:12pt;letter-spacing:1px'>" & Server.HtmlEncode(letras) & "</span>"
             End If
 
-            ' --- 3. Horario formateado ---
-            If slotEtiqueta <> "" Then
-                Horario = slotEtiqueta
-                If slotHoraIni IsNot Nothing AndAlso slotHoraFin IsNot Nothing Then
-                    Dim hi As TimeSpan = CType(slotHoraIni, TimeSpan)
-                    Dim hf As TimeSpan = CType(slotHoraFin, TimeSpan)
-                    Horario &= " (" & hi.ToString("hh\:mm") & " - " & hf.ToString("hh\:mm") & ")"
-                End If
-            ElseIf slotHoraIni IsNot Nothing AndAlso slotHoraFin IsNot Nothing Then
-                Dim hi As TimeSpan = CType(slotHoraIni, TimeSpan)
-                Dim hf As TimeSpan = CType(slotHoraFin, TimeSpan)
-                Horario = hi.ToString("hh\:mm") & " - " & hf.ToString("hh\:mm")
-            End If
-
-            ' --- 4. Bloque EXPRESS ---
+            ' EXPRESS
             If esExpress Then
-                BloqueExpress = "<div class='express'>* * *  EXPRESS  * * *</div>"
+                BloqueExpress = "<div class='alerta-box'>* * * EXPRESS * * *</div>"
             End If
 
-            ' --- 5. Bloque DIRECCION ---
-            If direccion <> "" OrElse referencia <> "" OrElse gps <> "" Then
-                Dim sb As New StringBuilder()
-                If direccion <> "" Then
-                    sb.Append("<div class='fila'><span class='lbl'>Direccion:</span><span class='val'>").Append(Server.HtmlEncode(direccion)).Append("</span></div>")
-                End If
-                If referencia <> "" Then
-                    sb.Append("<div class='fila'><span class='lbl'>Referencia:</span><span class='val'>").Append(Server.HtmlEncode(referencia)).Append("</span></div>")
-                End If
-                If gps <> "" Then
-                    sb.Append("<div class='fila'><span class='lbl'>GPS:</span><span class='val'>").Append(Server.HtmlEncode(gps)).Append("</span></div>")
-                End If
-                BloqueDireccion = sb.ToString()
+            ' Pago (calcula saldo y bloque COBRAR)
+            CargarPago(conn, wcMethodTitle)
+
+            ' Productos
+            HtmlProductos = CargarProductos(conn)
+
+            ' Nota floreria
+            If notaFloreria <> "" Then
+                BloqueNotaFloreria = "<div class='sep'></div><div class='titBloque'>Nota para Floreria</div><div class='nota'>" & Server.HtmlEncode(notaFloreria) & "</div>"
             End If
 
-            ' --- 6. Bloque OCASION ---
-            If ocasion <> "" Then
+            ' Direccion con zona y tipo entre parentesis
+            Dim sbD As New StringBuilder()
+            If direccion <> "" Then
+                Dim d As String = direccion.Trim()
+                If ZonaNombre <> "" Then d &= ", " & ZonaNombre
+                d &= " (" & If(tipoEntrega = "RECOJO_SUCURSAL", "Recojo", "Domicilio") & ")"
+                sbD.Append("<div class='fila'><span class='lbl'>Direccion:</span><span class='val'>").Append(Server.HtmlEncode(d)).Append("</span></div>")
+            End If
+            If referencia <> "" Then
+                sbD.Append("<div class='fila'><span class='lbl'>Referencia:</span><span class='val'>").Append(Server.HtmlEncode(referencia)).Append("</span></div>")
+            End If
+            BloqueDireccion = sbD.ToString()
+
+            ' Ocasion (no mostrar si es OTRO o vacio)
+            If ocasion <> "" AndAlso ocasion.ToUpper() <> "OTRO" Then
                 BloqueOcasion = "<div class='fila'><span class='lbl'>Ocasion:</span><span class='val'>" & Server.HtmlEncode(MapearOcasion(ocasion)) & "</span></div>"
             End If
 
-            ' --- 7. Productos del pedido ---
-            HtmlProductos = CargarProductos(conn)
-
-            ' --- 8. Bloque TARJETA (dedicatoria + firma) ---
+            ' Tarjeta
             If dedicatoria <> "" OrElse firmaTarjeta <> "" Then
                 Dim sbT As New StringBuilder()
-                sbT.Append("<div class='sep'></div>")
-                sbT.Append("<div class='titBloque'>Tarjeta</div>")
-                sbT.Append("<div class='tarjeta'>")
-                If dedicatoria <> "" Then
-                    sbT.Append("<div class='ded'>""").Append(Server.HtmlEncode(dedicatoria)).Append("""</div>")
-                End If
-                If firmaTarjeta <> "" Then
-                    sbT.Append("<div class='fir'>— ").Append(Server.HtmlEncode(firmaTarjeta)).Append("</div>")
-                End If
+                sbT.Append("<div class='sep'></div><div class='titBloque'>Tarjeta</div><div class='tarjeta'>")
+                If dedicatoria <> "" Then sbT.Append("<div class='ded'>&ldquo;").Append(Server.HtmlEncode(dedicatoria)).Append("&rdquo;</div>")
+                If firmaTarjeta <> "" Then sbT.Append("<div class='fir'>&mdash; ").Append(Server.HtmlEncode(firmaTarjeta)).Append("</div>")
                 sbT.Append("</div>")
                 BloqueTarjeta = sbT.ToString()
             End If
 
-            ' --- 9. Bloque NOTA FLORERIA ---
-            If notaFloreria <> "" Then
-                Dim sbN As New StringBuilder()
-                sbN.Append("<div class='sep'></div>")
-                sbN.Append("<div class='titBloque'>Nota para Floreria</div>")
-                sbN.Append("<div class='nota'>").Append(Server.HtmlEncode(notaFloreria)).Append("</div>")
-                BloqueNotaFloreria = sbN.ToString()
-            End If
-
-            ' --- 10. Bloques de totales condicionales ---
-            If envioBs > 0 Then
-                BloqueEnvio = "<div class='fila'><span>Envio:</span><span>Bs " & envioBs.ToString("N2") & "</span></div>"
-            End If
-            If recHor > 0 Then
-                BloqueRecargoHor = "<div class='fila'><span>Recargo horario:</span><span>Bs " & recHor.ToString("N2") & "</span></div>"
-            End If
-            If recExp > 0 Then
-                BloqueRecargoExp = "<div class='fila'><span>Recargo express:</span><span>Bs " & recExp.ToString("N2") & "</span></div>"
-            End If
-            If descBs > 0 Then
-                BloqueDescuento = "<div class='fila'><span>Descuento:</span><span>- Bs " & descBs.ToString("N2") & "</span></div>"
-            End If
-
-            ' --- 11. Pago: leer del prepedido (suma de verificados) ---
-            If prePedidoId > 0 Then
-                CargarPagos(conn, prePedidoId, totalBsNum, wcPaymentMethodTitle)
-            Else
-                MetodoPago    = If(wcPaymentMethodTitle <> "", wcPaymentMethodTitle, "—")
-                EstadoPago    = "VERIFICADO"
-                MontoPagadoBs = totalBsNum.ToString("N2")
-            End If
-
-            ' --- 12. Agente ---
-            Dim agenteFull As String = (agenteNombre.Trim() & " " & agenteApellidos.Trim()).Trim()
-            If agenteFull <> "" Then
-                BloqueAgente = "<div>Atendido por: " & Server.HtmlEncode(agenteFull) & "</div>"
-            End If
-
         End Using
     End Sub
 
-    ' ============================================================
-    ' CargarProductos - lista de items del pedido
-    ' ============================================================
+    Private Sub CargarPago(conn As SqlConnection, wcMethodTitle As String)
+        Dim sumaVer As Decimal = 0
+        Dim totalBs As Decimal = 0
+        Dim metodo As String = ""
+
+        Using cmd As New SqlCommand("SELECT ISNULL(total_bs,0) FROM FLORERIA_Pedido WHERE pedido_id=@id", conn)
+            cmd.Parameters.AddWithValue("@id", PedidoId)
+            Dim r As Object = cmd.ExecuteScalar()
+            If r IsNot Nothing AndAlso Not IsDBNull(r) Then totalBs = CDec(r)
+        End Using
+
+        Using cmd As New SqlCommand(
+            "SELECT pa.metodo_pago, pa.monto_bs " &
+            "FROM FLORERIA_PrePedido_Entrega_Pago pa " &
+            "INNER JOIN FLORERIA_PrePedido_Entrega e ON e.prepedido_entrega_id = pa.prepedido_entrega_id " &
+            "WHERE e.pedido_id = @pid AND pa.estado = 'VERIFICADO' ORDER BY pa.creado_en", conn)
+            cmd.Parameters.AddWithValue("@pid", PedidoId)
+            Using dr As SqlDataReader = cmd.ExecuteReader()
+                While dr.Read()
+                    sumaVer += CDec(dr("monto_bs"))
+                    metodo = dr("metodo_pago").ToString()
+                End While
+            End Using
+        End Using
+
+        MetodoPago = If(metodo <> "", MapearMetodo(metodo), If(wcMethodTitle <> "", wcMethodTitle, "---"))
+
+        Dim saldo As Decimal = totalBs - sumaVer
+        If totalBs <= 0 OrElse saldo <= 0.01D Then
+            EstadoPago = "PAGADO"
+        ElseIf sumaVer > 0 Then
+            EstadoPago = "ANTICIPO"
+            BloqueCobrar = "<div class='alerta-box'>*** COBRAR Bs " & saldo.ToString("N2") & " ***</div>"
+        Else
+            EstadoPago = "PENDIENTE"
+            BloqueCobrar = "<div class='alerta-box'>*** COBRAR Bs " & totalBs.ToString("N2") & " ***</div>"
+        End If
+    End Sub
+
     Private Function CargarProductos(conn As SqlConnection) As String
         Dim sb As New StringBuilder()
-        Dim sql As String =
-            "SELECT nombre_producto, cantidad, precio_unitario_bs, subtotal_bs, personalizacion, es_personalizado " &
-            "FROM FLORERIA_Pedido_Detalle " &
-            "WHERE pedido_id = @id"
-
-        Using cmd As New SqlCommand(sql, conn)
+        Using cmd As New SqlCommand(
+            "SELECT nombre_producto, cantidad, personalizacion " &
+            "FROM FLORERIA_Pedido_Detalle WHERE pedido_id=@id", conn)
             cmd.Parameters.AddWithValue("@id", PedidoId)
             Using dr As SqlDataReader = cmd.ExecuteReader()
                 While dr.Read()
-                    Dim nom As String = dr("nombre_producto").ToString()
+                    Dim nom  As String  = dr("nombre_producto").ToString()
                     Dim cant As Integer = CInt(dr("cantidad"))
-                    Dim precio As Decimal = CDec(dr("precio_unitario_bs"))
-                    Dim subtotal As Decimal = CDec(dr("subtotal_bs"))
-                    Dim pers As String = If(IsDBNull(dr("personalizacion")), "", dr("personalizacion").ToString())
-
-                    sb.Append("<div class='prod'>")
-                    sb.Append("  <div class='nom'>").Append(cant).Append(" x ").Append(Server.HtmlEncode(nom)).Append("</div>")
-                    sb.Append("  <div class='pre det'>")
-                    sb.Append("    <span>Bs ").Append(precio.ToString("N2")).Append(" c/u</span>")
-                    sb.Append("    <span>Bs ").Append(subtotal.ToString("N2")).Append("</span>")
-                    sb.Append("  </div>")
-                    If pers <> "" Then
-                        sb.Append("  <div class='pers'>&gt; ").Append(Server.HtmlEncode(pers)).Append("</div>")
-                    End If
+                    Dim pers As String  = If(IsDBNull(dr("personalizacion")), "", dr("personalizacion").ToString())
+                    sb.Append("<div class='prod'><div class='nom'>").Append(cant).Append(" x ").Append(Server.HtmlEncode(nom)).Append("</div>")
+                    If pers <> "" Then sb.Append("<div class='pers'>&gt; ").Append(Server.HtmlEncode(pers)).Append("</div>")
                     sb.Append("</div>")
                 End While
             End Using
         End Using
-
-        If sb.Length = 0 Then sb.Append("<div class='prod'><div class='det'>(Sin productos)</div></div>")
+        If sb.Length = 0 Then sb.Append("<div class='prod'><div class='nom'>(Sin productos)</div></div>")
         Return sb.ToString()
     End Function
 
-    ' ============================================================
-    ' CargarPagos - resumen del pago para el prepedido completo
-    ' Muestra: metodo principal (ultimo verificado), suma de verificados,
-    '          estado del pago, y saldo pendiente si lo hay.
-    ' ============================================================
-    Private Sub CargarPagos(conn As SqlConnection, prePedidoId As Integer, totalPedido As Decimal, wcMethodTitle As String)
-        Dim sumaVerificado As Decimal = 0
-        Dim metodoUltimo As String = ""
+    ' "PED-000014" -> "PED-14"
+    Private Function QuitarCeros(codigo As String) As String
+        If String.IsNullOrEmpty(codigo) Then Return codigo
+        Dim pos As Integer = codigo.IndexOf("-"c)
+        If pos < 0 Then Return codigo
+        Dim num As String = codigo.Substring(pos + 1).TrimStart("0"c)
+        If num = "" Then num = "0"
+        Return codigo.Substring(0, pos + 1) & num
+    End Function
 
-        ' Sumar pagos verificados de TODAS las entregas del prepedido
-        ' (esto es importante si hay varias entregas pero un solo pago global)
-        ' Pero para este recibo, el monto pagado se considera SOLO el del pedido (que es 1 entrega)
-        ' Lectura: pagos del prepedido_entrega correspondiente a este pedido
-        Dim sql As String =
-            "SELECT pa.metodo_pago, pa.monto_bs, pa.estado " &
-            "FROM FLORERIA_PrePedido_Entrega_Pago pa " &
-            "INNER JOIN FLORERIA_PrePedido_Entrega e " &
-            "    ON e.prepedido_entrega_id = pa.prepedido_entrega_id " &
-            "WHERE e.pedido_id = @pid " &
-            "  AND pa.estado <> 'RECHAZADO' " &
-            "ORDER BY pa.creado_en"
-
-        Using cmd As New SqlCommand(sql, conn)
-            cmd.Parameters.AddWithValue("@pid", PedidoId)
-            Using dr As SqlDataReader = cmd.ExecuteReader()
-                While dr.Read()
-                    Dim met As String = dr("metodo_pago").ToString()
-                    Dim mon As Decimal = CDec(dr("monto_bs"))
-                    Dim est As String = dr("estado").ToString()
-                    If est = "VERIFICADO" Then
-                        sumaVerificado += mon
-                        metodoUltimo = met
-                    End If
-                End While
-            End Using
-        End Using
-
-        If metodoUltimo = "" Then
-            MetodoPago = If(wcMethodTitle <> "", wcMethodTitle, "—")
-        Else
-            MetodoPago = MapearMetodo(metodoUltimo)
-        End If
-
-        MontoPagadoBs = sumaVerificado.ToString("N2")
-
-        Dim saldo As Decimal = totalPedido - sumaVerificado
-        If saldo <= 0.01D Then
-            EstadoPago = "PAGADO"
-        ElseIf sumaVerificado > 0 Then
-            EstadoPago = "ANTICIPO"
-            BloqueSaldo = "<div class='fila'><span class='lbl'>Saldo a cobrar:</span><span class='val'><b>Bs " & saldo.ToString("N2") & "</b></span></div>"
-        Else
-            EstadoPago = "PENDIENTE"
-            BloqueSaldo = "<div class='fila'><span class='lbl'>Saldo a cobrar:</span><span class='val'><b>Bs " & totalPedido.ToString("N2") & "</b></span></div>"
-        End If
-    End Sub
-
-    ' ============================================================
-    ' Helpers de formato
-    ' ============================================================
-    Private Function MapearOcasion(codigo As String) As String
-        Select Case codigo.ToUpper()
-            Case "CUMPLEANOS"  : Return "Cumpleaños"
-            Case "ANIVERSARIO" : Return "Aniversario"
-            Case "AMOR"        : Return "Amor"
-            Case "AMISTAD"     : Return "Amistad"
-            Case "CONDOLENCIAS" : Return "Condolencias"
-            Case "GRADUACION"  : Return "Graduación"
+    Private Function MapearOcasion(c As String) As String
+        Select Case c.ToUpper()
+            Case "CUMPLEANOS"     : Return "Cumpleanos"
+            Case "ANIVERSARIO"    : Return "Aniversario"
+            Case "AMOR"           : Return "Amor"
             Case "AGRADECIMIENTO" : Return "Agradecimiento"
-            Case "DISCULPAS"   : Return "Disculpas"
-            Case Else          : Return codigo
+            Case "CONDOLENCIAS"   : Return "Condolencias"
+            Case "GRADUACION"     : Return "Graduacion"
+            Case "NACIMIENTO"     : Return "Nacimiento"
+            Case Else             : Return c
         End Select
     End Function
 
-    Private Function MapearMetodo(codigo As String) As String
-        Select Case codigo.ToUpper()
+    Private Function MapearMetodo(c As String) As String
+        Select Case c.ToUpper()
             Case "EFECTIVO"      : Return "Efectivo"
             Case "QR"            : Return "QR Bolivia (BNB)"
             Case "TRANSFERENCIA" : Return "Transferencia"
@@ -445,7 +334,7 @@ Partial Public Class Modulos_Pedidos_Recibo
             Case "PIX"           : Return "Pix"
             Case "TARJETA"       : Return "Tarjeta"
             Case "PAGOMOVIL"     : Return "Pago Movil"
-            Case Else            : Return codigo
+            Case Else            : Return c
         End Select
     End Function
 

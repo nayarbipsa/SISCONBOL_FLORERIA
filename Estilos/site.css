@@ -1773,3 +1773,349 @@ select.form-control {
 /* ============================================
    FIN
    ============================================ */
+
+
+
+
+/* ============================================================
+   GESTION DE PEDIDOS V2 - CSS adicional
+   PEGAR AL FINAL DE Estilos/site.css
+   Solo lo que NO esta ya en site.css
+   ============================================================ */
+
+/* Pills filtro fechas */
+.pill-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 11px;
+    font-size: 11px;
+    border: 1px solid #e0e0e0;
+    border-radius: 14px;
+    background: white;
+    cursor: pointer;
+    color: #424242;
+    user-select: none;
+}
+
+    .pill-filter:hover {
+        background: var(--gris-cl);
+    }
+
+    .pill-filter.active {
+        background: var(--rosa-cl);
+        border-color: var(--rosa);
+        color: var(--rosa);
+        font-weight: 500;
+    }
+
+/* Bloques de filtros de fecha */
+.filter-fecha-bloque {
+    padding: 8px 10px;
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    margin-bottom: 8px;
+}
+
+.filter-fecha-titulo {
+    font-size: 11px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+    .filter-fecha-titulo.entrega {
+        color: var(--rosa);
+    }
+
+    .filter-fecha-titulo.creacion {
+        color: var(--azul);
+    }
+
+.filter-fecha-rango {
+    display: none;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+    .filter-fecha-rango.show {
+        display: grid;
+    }
+
+    .filter-fecha-rango input {
+        padding: 5px 8px;
+        font-size: 11px;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        height: 28px;
+        box-sizing: border-box;
+        font-family: inherit;
+    }
+
+/* Codigo WC grande */
+.wc-big {
+    font-family: 'Courier New', monospace;
+    font-size: 17px;
+    color: #7B1FA2;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.wc-empty {
+    font-size: 11px;
+    color: #bbb;
+    font-style: italic;
+}
+
+.ped-small {
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    color: #999;
+    font-weight: 500;
+}
+
+.ped-main {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: var(--azul);
+    font-weight: 600;
+}
+
+/* Indicador contactado */
+.contacto-icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+    .contacto-icon.ok {
+        background: #E8F5E9;
+        color: var(--verde);
+    }
+
+    .contacto-icon.no {
+        background: #FFEBEE;
+        color: var(--rojo);
+    }
+
+/* Columna Zona/Delivery */
+.zona-deli {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+    .zona-deli .z {
+        font-size: 12px;
+        font-weight: 500;
+        color: #424242;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .zona-deli .d {
+        font-size: 11px;
+        color: var(--azul);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+        .zona-deli .d.empty {
+            color: #bbb;
+            font-style: italic;
+        }
+
+/* Banner urgente arriba de fila */
+.urgente-wrap {
+    position: relative;
+}
+
+.urgente-banner {
+    background: #FFEBEE;
+    color: #B71C1C;
+    border-left: 3px solid var(--rojo);
+    padding: 5px 14px;
+    font-size: 10px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Resaltado fila express */
+tr.row-express,
+tr.row-express > td {
+    background: #FFF8E1 !important;
+}
+
+    tr.row-express:hover,
+    tr.row-express:hover > td {
+        background: #FFF3D1 !important;
+    }
+
+/* Banner urgente dentro de fila */
+tr.row-urgente > td {
+    border-top: 3px solid var(--rojo) !important;
+}
+
+/* Vista compacta */
+.tabla-compacta .table tbody td {
+    padding: 6px 10px !important;
+    font-size: 11px;
+}
+
+.tabla-compacta .hora-stack,
+.tabla-compacta .codigos-stack,
+.tabla-compacta .zona-deli {
+    gap: 1px;
+}
+
+.tabla-compacta .wc-big {
+    font-size: 13px;
+}
+
+.tabla-compacta .receptor-info .dir,
+.tabla-compacta .receptor-info-extra,
+.tabla-compacta .ped-creado {
+    display: none;
+}
+
+.tabla-compacta .badge {
+    padding: 1px 6px;
+    font-size: 9px;
+}
+
+/* Toggle vista */
+.btn-toggle-vista {
+    padding: 5px 10px;
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 11px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #424242;
+    font-family: inherit;
+}
+
+    .btn-toggle-vista:hover {
+        background: var(--gris-cl);
+    }
+
+    .btn-toggle-vista.active {
+        background: var(--rosa-cl);
+        color: var(--rosa);
+        border-color: var(--rosa);
+    }
+
+/* Fila creado-en (pequeño debajo) */
+.ped-creado {
+    font-size: 9px;
+    color: #bbb;
+}
+
+.receptor-info-extra {
+    font-size: 10px;
+    color: var(--gris);
+}
+
+/* Spinner cuando carga AJAX */
+.tabla-loading {
+    text-align: center;
+    padding: 40px 20px;
+    color: #999;
+}
+
+    .tabla-loading i {
+        font-size: 32px;
+        animation: spin 1s linear infinite;
+    }
+
+/* Footer del panel filtros */
+.filtros-footer {
+    padding: 7px 14px;
+    background: #fafafa;
+    border-top: 1px solid #e0e0e0;
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: #999;
+}
+
+    .filtros-footer .auto-msg i {
+        color: var(--verde);
+    }
+
+    .filtros-footer a {
+        color: var(--rosa);
+        cursor: pointer;
+    }
+
+/* Menu acciones - header con estado actual */
+.dropdown-header-estado {
+    padding: 8px 14px;
+    background: var(--gris-cl);
+    border-bottom: 1px solid #e0e0e0;
+    font-size: 10px;
+    color: #757575;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    font-weight: 600;
+}
+
+.dropdown-section-label {
+    padding: 6px 14px 2px;
+    font-size: 9px;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+/* Items de cambio de estado */
+.dropdown-item.next-step {
+    color: var(--verde);
+    font-weight: 500;
+}
+
+    .dropdown-item.next-step i {
+        color: var(--verde);
+    }
+
+.dropdown-item.back-step {
+    color: var(--naranja);
+}
+
+    .dropdown-item.back-step i {
+        color: var(--naranja);
+    }
+
+.dropdown-item.danger-action {
+    color: var(--rojo);
+}
+
+    .dropdown-item.danger-action i {
+        color: var(--rojo);
+    }
+
+/* Monto anticipo en estado */
+.anticipo-monto {
+    font-size: 10px;
+    color: var(--naranja);
+    font-weight: 500;
+    margin-top: 1px;
+}
