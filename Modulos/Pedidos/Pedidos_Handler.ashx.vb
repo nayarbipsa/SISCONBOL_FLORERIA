@@ -195,14 +195,14 @@ Public Class Pedidos_Handler
         ' ---- COL 4: ESTADO ----
         sb.Append("<td>")
         sb.Append("<div style=""display:flex;flex-direction:column;gap:3px;align-items:flex-start"">")
-        sb.Append(RenderBadgePago(estadoPago, montoPagado, totalBs))
+        sb.Append(RenderBadgePago(estadoPago, montoPagado, totalBs, wcNumber))
         sb.Append(RenderBadgeOperativo(estadoOp))
         sb.Append("</div>")
         sb.Append("</td>")
 
         ' ---- COL 5: ACCIONES ----
         sb.Append("<td style=""text-align:right"">")
-        sb.Append(RenderDropdownAcciones(pedidoId, estadoOp, contactado, deliveryId, celular, direccion, gps, receptor, codigo, wcNumber, wcOrderId, totalBs, esAdmin))
+        sb.Append(RenderDropdownAcciones(pedidoId, estadoOp, estadoPago, contactado, deliveryId, celular, direccion, gps, receptor, codigo, wcNumber, wcOrderId, totalBs, esAdmin))
         sb.Append("</td>")
 
         sb.Append("</tr>")
@@ -210,7 +210,12 @@ Public Class Pedidos_Handler
         Return sb.ToString()
     End Function
 
-    Private Function RenderBadgePago(estado As String, pagado As Decimal, total As Decimal) As String
+    Private Function RenderBadgePago(estado As String, pagado As Decimal, total As Decimal, wcNumber As String) As String
+        ' WC pendiente de pago = "Pago x verificar" en naranja
+        If estado = "PENDIENTE" AndAlso wcNumber <> "" Then
+            Return "<span class=""badge badge-pago-verificar"" title=""Pago WC pendiente de verificacion""><i class=""ti ti-alert-circle""></i> Pago x verificar &middot; Bs " & total.ToString("N0") & "</span>"
+        End If
+
         Select Case estado
             Case "PAGADO"
                 Return "<span class=""badge badge-pagado"">Pagado &middot; Bs " & total.ToString("N0") & "</span>"
@@ -242,7 +247,7 @@ Public Class Pedidos_Handler
     ' ============================================================
     ' DROPDOWN DE ACCIONES - Estilo B (inteligente)
     ' ============================================================
-    Private Function RenderDropdownAcciones(pid As Integer, estadoOp As String, contactado As Boolean, deliveryId As Integer,
+    Private Function RenderDropdownAcciones(pid As Integer, estadoOp As String, estadoPago As String, contactado As Boolean, deliveryId As Integer,
                                             celular As String, direccion As String, gps As String,
                                             receptor As String, codigo As String, wcNumber As String,
                                             wcOrderId As Integer,
@@ -256,6 +261,14 @@ Public Class Pedidos_Handler
 
         ' Header con estado actual
         sb.Append("<div class=""dropdown-header-estado"">Estado: " & FormatearEstado(estadoOp) & "</div>")
+
+        ' ACCION URGENTE: Aceptar pago (si es WC pendiente)
+        If wcNumber <> "" AndAlso estadoPago = "PENDIENTE" Then
+            Dim clienteJs As String = receptor.Replace("'", "").Replace(Chr(34), "")
+            sb.Append("<button type=""button"" class=""dropdown-item next-step"" onclick=""abrirModalAceptar(" & pid & ",'" & clienteJs & "','" & total.ToString("N2") & "')"" style=""background:#FFF8E1;color:#F57F17;font-weight:600"">")
+            sb.Append("<i class=""ti ti-cash"" style=""color:#F57F17""></i> Aceptar pago manual</button>")
+            sb.Append("<div class=""dropdown-divider""></div>")
+        End If
 
         ' Acciones de siguiente paso segun estado
         Dim accionPrincipal As String = ObtenerAccionPrincipal(pid, estadoOp)

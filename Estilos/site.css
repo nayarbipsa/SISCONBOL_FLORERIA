@@ -2119,3 +2119,401 @@ tr.row-urgente > td {
     font-weight: 500;
     margin-top: 1px;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ============================================================
+   CSS ADICIONAL V3 - Vista mobile + badge "Pago x verificar"
+   PEGAR AL FINAL DE Estilos/site.css (despues del bloque V2)
+   ============================================================ */
+
+/* ====================================
+   Badge "Pago por verificar" 
+   ==================================== */
+.badge-pago-verificar {
+    background: #FFF3E0;
+    color: #E65100;
+    padding: 3px 9px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid #FFB74D;
+}
+
+    .badge-pago-verificar i {
+        font-size: 12px;
+    }
+
+/* ====================================
+   VISTA MOBILE - TARJETAS
+   Solo se activa en pantallas <= 768px
+   ==================================== */
+@media (max-width: 768px) {
+
+    /* Contenedor principal mas estrecho */
+    .contenido, .content {
+        padding: 10px;
+    }
+
+    /* Header del panel mas compacto */
+    .panel-head {
+        padding: 10px 12px;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .panel-actions {
+        flex-wrap: wrap;
+        width: 100%;
+        justify-content: flex-end;
+    }
+
+    .gp-header-info {
+        gap: 8px;
+    }
+
+    .gp-header-icon {
+        width: 32px;
+        height: 32px;
+        font-size: 16px;
+    }
+
+    .gp-header-title {
+        font-size: 14px;
+    }
+
+    .gp-header-subtitle {
+        font-size: 11px;
+    }
+
+    /* Botones header mas pequeños */
+    .btn-toggle-vista {
+        font-size: 10px;
+        padding: 4px 8px;
+    }
+
+    /* ==== FILTROS COLAPSABLES ==== */
+    .panel:has(#tablaPedidos) > div:nth-child(2) {
+        padding: 10px;
+    }
+
+    /* Selects en columna unica */
+    .panel > div[style*="grid-template-columns"] {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* Pills mas pequeños */
+    .pill-filter {
+        font-size: 10px;
+        padding: 4px 9px;
+    }
+
+    .filter-fecha-bloque {
+        padding: 7px 8px;
+        margin-bottom: 6px;
+    }
+
+    .filter-fecha-titulo {
+        font-size: 10px;
+    }
+
+    /* Footer filtros mas compacto */
+    .filtros-footer {
+        flex-direction: column;
+        gap: 4px;
+        align-items: flex-start;
+        font-size: 9px;
+    }
+
+    /* ==== TRANSFORMAR TABLA EN TARJETAS ==== */
+    .table-container {
+        background: transparent;
+        padding: 8px;
+    }
+
+    /* Ocultar thead en mobile */
+    #tablaPedidos > thead {
+        display: none;
+    }
+
+    #tablaPedidos {
+        display: block;
+    }
+
+        #tablaPedidos > tbody {
+            display: block;
+        }
+
+            /* Cada TR ahora es una tarjeta */
+            #tablaPedidos > tbody > tr {
+                display: block;
+                background: white;
+                border: 1px solid #e0e0e0;
+                border-radius: 8px;
+                margin-bottom: 10px;
+                padding: 10px;
+                position: relative;
+            }
+
+                /* Express tarjeta amarilla */
+                #tablaPedidos > tbody > tr.row-express {
+                    background: #FFF8E1 !important;
+                    border-color: #FFE082;
+                }
+
+                    #tablaPedidos > tbody > tr.row-express > td {
+                        background: transparent !important;
+                    }
+
+                /* Urgente: borde rojo izquierdo */
+                #tablaPedidos > tbody > tr.row-urgente {
+                    border-left: 4px solid #D32F2F;
+                }
+
+                    #tablaPedidos > tbody > tr.row-urgente > td {
+                        border-top: none !important;
+                    }
+
+                /* Banner urgente arriba de fila se convierte en mini-badge */
+                #tablaPedidos > tbody > tr.urgente-banner-row {
+                    display: none;
+                }
+
+                /* Cada TD se convierte en un bloque dentro de la tarjeta */
+                #tablaPedidos > tbody > tr > td {
+                    display: block;
+                    padding: 4px 0;
+                    border: 0;
+                    text-align: left !important;
+                    width: 100% !important;
+                    max-width: 100% !important;
+                }
+
+                    /* Col 1 - Hora: arriba a la derecha (absoluto) */
+                    #tablaPedidos > tbody > tr > td:nth-child(1) {
+                        position: absolute;
+                        top: 10px;
+                        right: 10px;
+                        width: auto !important;
+                        text-align: right !important;
+                    }
+
+                        #tablaPedidos > tbody > tr > td:nth-child(1) .hora-stack {
+                            align-items: flex-end;
+                        }
+
+                    /* Col 2 - Codigos + Receptor - lo mas importante */
+                    #tablaPedidos > tbody > tr > td:nth-child(2) {
+                        padding-top: 0;
+                        padding-right: 80px; /* espacio para la hora arriba derecha */
+                    }
+
+    .wc-big {
+        font-size: 18px;
+    }
+
+    /* Col 3 - Zona/Delivery: lado a lado */
+    #tablaPedidos > tbody > tr > td:nth-child(3) {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        padding: 8px 0 6px;
+        border-top: 1px solid #f0f0f0;
+        margin-top: 6px;
+    }
+
+    .zona-deli {
+        flex-direction: column;
+        gap: 3px;
+    }
+
+        .zona-deli .z::before {
+            content: 'Zona';
+            display: block;
+            font-size: 9px;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .zona-deli .d::before,
+        .zona-deli .d.empty::before {
+            content: 'Delivery';
+            display: block;
+            font-size: 9px;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+    /* Col 4 - Estado: badges en linea */
+    #tablaPedidos > tbody > tr > td:nth-child(4) {
+        padding: 4px 0 8px;
+    }
+
+        #tablaPedidos > tbody > tr > td:nth-child(4) > div {
+            flex-direction: row !important;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+
+    /* Col 5 - Acciones: boton ancho completo */
+    #tablaPedidos > tbody > tr > td:nth-child(5) {
+        text-align: left !important;
+        padding-top: 8px;
+        border-top: 1px solid #f0f0f0;
+    }
+
+        #tablaPedidos > tbody > tr > td:nth-child(5) .dropdown {
+            width: 100%;
+        }
+
+            #tablaPedidos > tbody > tr > td:nth-child(5) .dropdown > button {
+                width: 100%;
+                justify-content: center;
+                padding: 9px;
+                font-size: 13px;
+            }
+
+    /* Dropdown menu en mobile: se ajusta al ancho de la tarjeta */
+    .dropdown-menu {
+        right: 0 !important;
+        left: 0 !important;
+        min-width: auto !important;
+        width: 100%;
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+
+    .dropdown-item {
+        padding: 11px 14px;
+        font-size: 13px;
+    }
+
+    /* Ocultar columnas/info menos critica en mobile */
+    .ped-creado {
+        display: none; /* fecha creacion no critica */
+    }
+
+    /* ==== BANNER WC en mobile ==== */
+    .banner-warn {
+        margin-bottom: 10px;
+    }
+
+    .banner-warn-head {
+        padding: 10px 12px;
+        flex-wrap: wrap;
+    }
+
+    .banner-warn-title .t1 {
+        font-size: 13px;
+    }
+
+    .banner-warn-title .t2 {
+        font-size: 10px;
+    }
+
+    .banner-warn-body {
+        padding: 0 12px;
+    }
+
+    /* Filas WC en banner: layout vertical */
+    .wc-row {
+        grid-template-columns: 1fr;
+        gap: 4px;
+        padding: 10px 0;
+    }
+
+    .wc-row-head {
+        display: none;
+    }
+
+    .wc-row > span:not(.code-mono),
+    .wc-row > div {
+        font-size: 12px;
+    }
+
+    .wc-row .actions-cell {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        margin-top: 4px;
+    }
+
+    /* ==== MODALES en mobile ==== */
+    .modal-confirm {
+        max-width: 95%;
+        margin: 10px;
+    }
+
+    .modal-confirm-body {
+        padding: 18px 14px;
+    }
+
+    .modal-title-big {
+        font-size: 15px;
+    }
+
+    .modal-msg {
+        font-size: 12px;
+    }
+
+    /* Tabla loading se mantiene */
+    .tabla-loading {
+        padding: 30px 15px;
+        font-size: 12px;
+    }
+
+    /* Boton refrescar mas chiquito */
+    .panel-actions .btn-sm {
+        font-size: 11px;
+        padding: 5px 9px;
+    }
+}
+
+/* ====================================
+   Mobile MUY chico (< 380px)
+   ==================================== */
+@media (max-width: 380px) {
+
+    .wc-big {
+        font-size: 16px;
+    }
+
+    #tablaPedidos > tbody > tr > td:nth-child(2) {
+        padding-right: 70px;
+    }
+
+    .hora-stack span[style*="font-size:14px"] {
+        font-size: 13px !important;
+    }
+
+    .pill-filter {
+        font-size: 9px;
+        padding: 3px 7px;
+    }
+}

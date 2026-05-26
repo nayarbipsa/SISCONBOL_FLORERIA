@@ -142,10 +142,29 @@
 }
 
 /* === TOGGLE PRODUCTO PERSONALIZADO === */
-.ea-toggle-pers { display:flex; align-items:center; gap:5px; padding:3px 8px; border:1px solid #FFE082; border-radius:8px; background:#FFF8E1; font-size:11px; color:#F57F17; cursor:pointer; white-space:nowrap; flex-shrink:0; user-select:none; }
+.ea-toggle-pers { display:flex; align-items:center; gap:5px; padding:5px 11px; border:1px solid #e0e0e0; border-radius:8px; background:#fff; font-size:11px; color:#666; cursor:pointer; white-space:nowrap; flex-shrink:0; user-select:none; font-weight:500; transition:all 0.15s ease; }
+.ea-toggle-pers:hover { border-color:#FFE082; background:#FFFEF7; color:#F57F17; }
+.ea-toggle-pers.active { border-color:#FFE082; background:#FFF8E1; color:#F57F17; }
 .ea-toggle-pers input[type=checkbox] { accent-color:#F57F17; width:13px; height:13px; margin:0; }
-#panelPersonalizado { overflow:hidden; transition:max-height 0.25s ease, opacity 0.2s ease, padding 0.2s ease; max-height:0; opacity:0; padding-top:0; padding-bottom:0; border-top:none; border-bottom:none; }
-#panelPersonalizado.pers-visible { max-height:300px; opacity:1; padding-top:14px; padding-bottom:14px; border-bottom:2px solid #FFE082; }
+
+/* === PANEL PERSONALIZADO === */
+.ea-pers-label { font-size:11px; color:#7A5A0F; font-weight:500; margin-bottom:5px; display:flex; align-items:center; gap:4px; }
+.ea-pers-textarea { width:100%; border:1px dashed #d0d0d0; border-radius:7px; padding:9px 11px; font-size:13px; color:#333; outline:none; background:#FFFEF7; resize:vertical; min-height:90px; font-family:inherit; line-height:1.45; box-sizing:border-box; }
+.ea-pers-textarea::placeholder { color:#bbb; font-style:italic; }
+.ea-pers-textarea:focus { border-color:#F57F17; border-style:solid; background:#fff; }
+
+/* Monto: ancho completo, gigante */
+.ea-pers-monto-input { width:100%; border:2px solid #F57F17; border-radius:10px; padding:18px 18px; font-size:32px; font-weight:700; color:#F57F17; text-align:right; outline:none; background:#fff; letter-spacing:0.5px; box-sizing:border-box; -moz-appearance:textfield; }
+.ea-pers-monto-input::-webkit-outer-spin-button, .ea-pers-monto-input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+.ea-pers-monto-input::placeholder { color:#FFD699; font-weight:400; }
+.ea-pers-monto-input:focus { box-shadow:0 0 0 3px rgba(245,127,23,0.15); background:#FFFEF7; }
+
+/* Moneda pills */
+.ea-pers-moneda-btn { border:1.5px solid #e0e0e0; background:#fff; color:#999; border-radius:8px; padding:11px 14px; font-size:14px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:5px; transition:all 0.15s ease; }
+.ea-pers-moneda-btn:hover { border-color:#FFE082; color:#F57F17; }
+.ea-pers-moneda-btn.active { border-color:#F57F17; background:#FFF8E1; color:#F57F17; }
+.ea-pers-moneda-btn .check-ico { font-size:14px; opacity:0; transition:opacity 0.15s ease; }
+.ea-pers-moneda-btn.active .check-ico { opacity:1; }
 </style>
 </asp:Content>
 
@@ -464,57 +483,113 @@
 <div id="eaToastContainer" class="ea-toast-container" aria-live="polite"></div>
 
 
-<!-- MODAL BUSCADOR DE PRODUCTOS -->
+<!-- MODAL BUSCADOR DE PRODUCTOS (modo dual: buscar / personalizado) -->
 <div id="modalBuscador" class="ea-modal-overlay">
     <div class="ea-modal">
+        <!-- HEADER: cambia título según modo -->
         <div class="ea-modal-header">
-            <span style="font-size:17px;font-weight:500"><i class="ti ti-search" style="font-size:19px;vertical-align:-2px;margin-right:7px" aria-hidden="true"></i>Buscar producto</span>
+            <span id="spanTituloModal" style="font-size:17px;font-weight:500"><i class="ti ti-search" style="font-size:19px;vertical-align:-2px;margin-right:7px" aria-hidden="true"></i>Buscar producto</span>
             <button type="button" onclick="cerrarBuscador()" class="ea-modal-close"><i class="ti ti-x" aria-hidden="true"></i></button>
         </div>
-        <div style="padding:14px 22px;border-bottom:1px solid #f0f0f0">
-            <div style="display:flex;gap:8px;margin-bottom:10px">
-                <input type="text" id="txBuscarProd" placeholder="Buscar por nombre, SKU..." class="ea-input" style="flex:1;font-size:14px;padding:9px 12px" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarProductos();return false;}">
-                <button type="button" onclick="buscarProductos()" class="ea-btn-buscar" style="font-size:14px;padding:8px 16px"><i class="ti ti-search" style="font-size:16px" aria-hidden="true"></i></button>
+
+        <!-- TOGGLE BAR: siempre visible -->
+        <div id="toggleBarBuscador" style="padding:9px 18px;border-bottom:0.5px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;gap:8px;background:#fafafa;transition:background 0.2s, border-color 0.2s">
+            <span id="spanToggleModo" style="font-size:11px;color:#666;font-weight:500;display:flex;align-items:center;gap:5px">
+                <i class="ti ti-list-search" style="font-size:13px" aria-hidden="true"></i>
+                Buscar del catálogo
+            </span>
+            <label class="ea-toggle-pers" id="lblTogglePers" title="Cambiar a producto personalizado" style="cursor:pointer">
+                <input type="checkbox" id="chkMostrarPersonalizado" onchange="togglePersonalizado(this.checked)">
+                <i class="ti ti-pencil-plus" style="font-size:13px" aria-hidden="true"></i>
+                Personalizado
+            </label>
+        </div>
+
+        <!-- ========================================================== -->
+        <!-- MODO BUSCADOR (default): buscador + categorías + lista     -->
+        <!-- ========================================================== -->
+        <div id="modoBuscador">
+            <div style="padding:14px 22px;border-bottom:1px solid #f0f0f0">
+                <div style="display:flex;gap:8px;margin-bottom:10px">
+                    <input type="text" id="txBuscarProd" placeholder="Buscar por nombre, SKU..." class="ea-input" style="flex:1;font-size:14px;padding:9px 12px" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarProductos();return false;}">
+                    <button type="button" onclick="buscarProductos()" class="ea-btn-buscar" style="font-size:14px;padding:8px 16px"><i class="ti ti-search" style="font-size:16px" aria-hidden="true"></i></button>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <label style="font-size:13px;color:#666;white-space:nowrap;font-weight:500">Categoría:</label>
+                    <select id="ddCategoriaFiltro" class="ea-select" style="font-size:14px;padding:8px 10px;flex:1;min-width:140px" onchange="buscarProductos()">
+                        <option value="0" selected>Todas las categorías</option>
+                        <%=HtmlCategoriasBtns%>
+                    </select>
+                </div>
             </div>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                <label style="font-size:13px;color:#666;white-space:nowrap;font-weight:500">Categoría:</label>
-                <select id="ddCategoriaFiltro" class="ea-select" style="font-size:14px;padding:8px 10px;flex:1;min-width:140px" onchange="buscarProductos()">
-                    <option value="0" selected>Todas las categorías</option>
-                    <%=HtmlCategoriasBtns%>
-                </select>
-                <label class="ea-toggle-pers" title="Mostrar/ocultar sección de producto personalizado">
-                    <input type="checkbox" id="chkMostrarPersonalizado" onchange="togglePersonalizado(this.checked)">
-                    <i class="ti ti-pencil-plus" style="font-size:13px" aria-hidden="true"></i>
-                    Personalizado
-                </label>
+            <div id="divListaProductos" style="max-height:480px;overflow-y:auto">
+                <p style="padding:20px;text-align:center;color:#999;font-size:13px">Escriba para buscar productos...</p>
             </div>
         </div>
-        <div id="panelPersonalizado" style="padding-left:22px;padding-right:22px;background:#FFF8E1">
-            <div style="display:flex;gap:12px;align-items:flex-start">
-                <div style="width:46px;height:46px;min-width:46px;border-radius:50%;background:white;display:flex;align-items:center;justify-content:center;margin-top:4px">
-                    <i class="ti ti-pencil-plus" style="font-size:22px;color:#F57F17" aria-hidden="true"></i>
-                </div>
-                <div style="flex:1">
-                    <p style="margin:0 0 8px;font-size:15px;font-weight:500;color:#F57F17">Producto Personalizado</p>
-                    <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px">
-                        <input type="text" id="txPersNombre" placeholder="Nombre del producto..." class="ea-input" style="font-size:14px;padding:8px 10px" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
-                        <div style="display:flex;gap:4px">
-                            <input type="number" id="txPersPrecio" placeholder="Precio" step="0.01" class="ea-input" style="font-size:14px;padding:8px 10px;flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
-                            <select id="ddPersMoneda" class="ea-select" style="font-size:13px;padding:8px 4px;width:auto"><option value="BOB">Bs</option><option value="USD">USD</option></select>
-                        </div>
+
+        <!-- ========================================================== -->
+        <!-- MODO PERSONALIZADO: panel grande con descripción y monto   -->
+        <!-- ========================================================== -->
+        <div id="panelPersonalizado" style="display:none;background:#FFF8E1;padding:16px 14px">
+            <div style="background:#fff;border-radius:10px;border:1px solid #FFE082;padding:14px">
+
+                <!-- Header del card personalizado -->
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:10px;border-bottom:0.5px solid #FFE082">
+                    <div style="width:42px;height:42px;min-width:42px;border-radius:50%;background:#FFF8E1;display:flex;align-items:center;justify-content:center;color:#F57F17;font-size:20px">
+                        <i class="ti ti-pencil-plus" aria-hidden="true"></i>
                     </div>
-                    <input type="text" id="txPersDetalle" placeholder="Personalización / descripción..." class="ea-input" style="font-size:14px;padding:8px 10px;margin-top:8px;border-style:dashed" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
-                    <button type="button" onclick="agregarPersonalizado()" style="font-size:13px;padding:7px 16px;margin-top:10px;background:white;color:#F57F17;border:1px solid #FFE082;border-radius:8px;cursor:pointer;font-weight:500"><i class="ti ti-plus" style="font-size:14px;vertical-align:-2px" aria-hidden="true"></i> Agregar personalizado</button>
+                    <div>
+                        <div style="font-size:14px;font-weight:500;color:#F57F17;display:flex;align-items:center;gap:5px">
+                            <i class="ti ti-sparkles" style="font-size:13px" aria-hidden="true"></i>
+                            Crear producto único
+                        </div>
+                        <div style="font-size:11px;color:#999;margin-top:1px">Describí qué quiere el cliente</div>
+                    </div>
+                </div>
+
+                <!-- Descripción: textarea grande -->
+                <label class="ea-pers-label">
+                    <i class="ti ti-file-description" style="font-size:11px" aria-hidden="true"></i>
+                    Descripción / personalización *
+                </label>
+                <textarea id="txPersDetalle" class="ea-pers-textarea" placeholder="Ej: Arreglo de 6 rosas rojas + 3 girasoles en florero de cristal, con tarjeta de cumpleaños y globo metálico..." rows="4"></textarea>
+
+                <!-- Monto: ancho completo, grande -->
+                <div style="margin-top:14px">
+                    <label class="ea-pers-label">
+                        <i class="ti ti-cash" style="font-size:11px" aria-hidden="true"></i>
+                        Precio acordado *
+                    </label>
+                    <input type="number" id="txPersPrecio" class="ea-pers-monto-input" placeholder="0.00" step="0.01" inputmode="decimal" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
+                    <!-- Moneda: dos pills abajo -->
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+                        <button type="button" id="btnMonedaBOB" class="ea-pers-moneda-btn active" onclick="seleccionarMonedaPers('BOB')">
+                            <i class="ti ti-check check-ico" aria-hidden="true"></i>
+                            Bolivianos (Bs)
+                        </button>
+                        <button type="button" id="btnMonedaUSD" class="ea-pers-moneda-btn" onclick="seleccionarMonedaPers('USD')">
+                            <i class="ti ti-check check-ico" aria-hidden="true"></i>
+                            Dólares (USD)
+                        </button>
+                    </div>
+                    <!-- Campo oculto que guarda la moneda elegida (compatible con el JS de agregarPersonalizado) -->
+                    <input type="hidden" id="ddPersMoneda" value="BOB">
+                </div>
+
+                <!-- Acciones -->
+                <div style="margin-top:16px;display:flex;gap:6px">
+                    <button type="button" onclick="togglePersonalizado(false); document.getElementById('chkMostrarPersonalizado').checked=false;" style="flex:1;background:#fff;color:#999;border:1px solid #e0e0e0;border-radius:8px;padding:11px 14px;font-size:13px;cursor:pointer;font-weight:500">Cancelar</button>
+                    <button type="button" onclick="agregarPersonalizado()" style="flex:2;background:#F57F17;color:#fff;border:none;border-radius:8px;padding:11px 14px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;font-weight:600">
+                        <i class="ti ti-plus" style="font-size:14px" aria-hidden="true"></i>
+                        Agregar al pedido
+                    </button>
                 </div>
             </div>
-        </div>
-        <div id="divListaProductos" style="max-height:480px;overflow-y:auto">
-            <p style="padding:20px;text-align:center;color:#999;font-size:13px">Escriba para buscar productos...</p>
         </div>
     </div>
 </div>
 
-<!-- MODAL REGISTRAR PAGO -->
+<!-- MODAL REGISTRAR PAGO (simplificado: Tipo, Moneda, Tasa se autodeducen en JS) -->
 <div id="modalPago" class="ea-modal-overlay">
     <div class="ea-modal ea-modal-sm">
         <div class="ea-modal-header">
@@ -522,63 +597,51 @@
             <button type="button" onclick="cerrarModalPago()" class="ea-modal-close"><i class="ti ti-x" aria-hidden="true"></i></button>
         </div>
         <div style="padding:20px">
-            <div class="ea-grid-2" style="margin-bottom:10px">
-                <div>
-                    <label class="ea-label">Método *</label>
-                    <select id="ddPagoMetodo" class="ea-select">
-                        <option value="">-- Seleccionar --</option>
-                        <option value="EFECTIVO">Efectivo</option>
-                        <option value="QR">QR Bolivia (BNB)</option>
-                        <option value="TRANSFERENCIA">Transferencia</option>
-                        <option value="PAYPAL">PayPal</option>
-                        <option value="CRIPTO">Cripto USDT</option>
-                        <option value="YAPE">Yape</option>
-                        <option value="PIX">Pix</option>
-                        <option value="TARJETA">Tarjeta</option>
-                        <option value="PAGOMOVIL">Pago Movil</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="ea-label">Tipo *</label>
-                    <select id="ddPagoTipo" class="ea-select">
-                        <option value="TOTAL">Total</option>
-                        <option value="ANTICIPO">Anticipo</option>
-                        <option value="SALDO">Saldo</option>
-                    </select>
-                </div>
+            <!-- Info: saldo pendiente del pedido -->
+            <div id="divSaldoInfo" style="background:#EBF0FF;border:1px solid #BBDEFB;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#3B5BDB;display:none">
+                <i class="ti ti-info-circle" style="font-size:13px;vertical-align:-2px" aria-hidden="true"></i>
+                Saldo pendiente: <strong id="spanSaldoModal">Bs 0.00</strong>
             </div>
-            <div class="ea-grid-2" style="margin-bottom:10px">
-                <div>
-                    <label class="ea-label">Moneda *</label>
-                    <select id="ddPagoMoneda" class="ea-select" onchange="recalcularConversion()">
-                        <option value="BOB" selected>Bs (Bolivianos)</option>
-                        <option value="USD">USD (Dólares)</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="ea-label">Tasa de cambio</label>
-                    <input type="number" id="txPagoTasa" value="<%=TasaCambio.ToString("F4")%>" step="0.0001" class="ea-input" onchange="recalcularConversion()" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
-                </div>
-            </div>
+
             <div style="margin-bottom:10px">
-                <label class="ea-label">Monto *</label>
+                <label class="ea-label">Método *</label>
+                <select id="ddPagoMetodo" class="ea-select">
+                    <option value="">-- Seleccionar --</option>
+                    <option value="EFECTIVO">Efectivo</option>
+                    <option value="QR">QR Bolivia (BNB)</option>
+                    <option value="TRANSFERENCIA">Transferencia</option>
+                    <option value="PAYPAL">PayPal</option>
+                    <option value="CRIPTO">Cripto USDT</option>
+                    <option value="YAPE">Yape</option>
+                    <option value="PIX">Pix</option>
+                    <option value="TARJETA">Tarjeta</option>
+                    <option value="PAGOMOVIL">Pago Movil</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom:10px">
+                <label class="ea-label">Monto en Bs *</label>
                 <div style="display:flex;gap:6px;align-items:stretch">
-                    <input type="number" id="txPagoMonto" placeholder="0.00" step="0.01" class="ea-input" style="flex:1" oninput="recalcularConversion()" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
-                    <button type="button" onclick="llenarMontoTotal()" title="Llenar con el total del pedido" style="font-size:12px;padding:0 12px;background:#E8F5E9;color:#2E7D32;border:1px solid #A5D6A7;border-radius:6px;cursor:pointer;font-weight:500;white-space:nowrap"><i class="ti ti-cash" style="font-size:13px;vertical-align:-1px" aria-hidden="true"></i> Pagó el total</button>
+                    <input type="number" id="txPagoMonto" placeholder="0.00" step="0.01" inputmode="decimal" class="ea-input" style="flex:1" oninput="actualizarTipoPagoLabel()" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
+                    <button type="button" onclick="llenarMontoTotal()" title="Llenar con el saldo pendiente del pedido" style="font-size:12px;padding:0 12px;background:#E8F5E9;color:#2E7D32;border:1px solid #A5D6A7;border-radius:6px;cursor:pointer;font-weight:500;white-space:nowrap"><i class="ti ti-cash" style="font-size:13px;vertical-align:-1px" aria-hidden="true"></i> Pagó todo</button>
                 </div>
-                <div id="divConversion" style="font-size:11px;color:#999;margin-top:4px;display:none">
-                    <i class="ti ti-arrow-right" style="font-size:11px;vertical-align:-1px"></i>
-                    Equivale a <span id="spanConversion" style="color:#3B5BDB;font-weight:500"></span>
+                <!-- Tipo de pago autodeducido (solo lectura, informativo) -->
+                <div id="divTipoAuto" style="font-size:11px;color:#999;margin-top:4px;display:none">
+                    <i class="ti ti-tag" style="font-size:11px;vertical-align:-1px" aria-hidden="true"></i>
+                    Se registrará como <span id="spanTipoAuto" style="color:#3B5BDB;font-weight:500">Total</span>
                 </div>
             </div>
+
             <div style="margin-bottom:10px">
-                <label class="ea-label">Referencia / Nro transaccion</label>
+                <label class="ea-label">Referencia / Nro transacción</label>
                 <input type="text" id="txPagoRef" placeholder="Ej: TXN-123456" class="ea-input" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
             </div>
+
             <div style="margin-bottom:10px">
                 <label class="ea-label">Observaciones</label>
                 <input type="text" id="txPagoObs" placeholder="Opcional..." class="ea-input" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
             </div>
+
             <div style="margin-bottom:16px">
                 <label class="ea-label">Estado del pago</label>
                 <div style="display:flex;gap:1rem;align-items:center">
@@ -587,6 +650,7 @@
                     <label class="ea-radio-label"><input type="radio" name="pagoEstado" value="RECHAZADO"> Rechazado</label>
                 </div>
             </div>
+
             <div style="display:flex;justify-content:flex-end;gap:6px;padding-top:10px;border-top:1px solid #f0f0f0">
                 <button type="button" onclick="cerrarModalPago()" class="btn" style="font-size:12px;padding:6px 14px">Cancelar</button>
                 <button type="button" onclick="guardarPago()" style="font-size:12px;padding:6px 14px;background:#EBF0FF;color:#3B5BDB;border:1px solid #90CAF9;border-radius:8px;cursor:pointer;font-weight:500"><i class="ti ti-check" style="font-size:13px;vertical-align:-1px" aria-hidden="true"></i> Guardar pago</button>
@@ -750,17 +814,60 @@ function cerrarBuscador() {
     var chk = document.getElementById('chkMostrarPersonalizado');
     if (chk) { chk.checked = false; togglePersonalizado(false); }
 }
-// Mostrar/ocultar la sección de producto personalizado
+// Alterna entre MODO BUSCADOR (catálogo) y MODO PERSONALIZADO
+// - mostrar=true: oculta buscador/categorías/lista, muestra panel grande personalizado
+// - mostrar=false: vuelve al buscador del catálogo
 function togglePersonalizado(mostrar) {
-    var panel = document.getElementById('panelPersonalizado');
-    if (!panel) return;
+    var modoBusc = document.getElementById('modoBuscador');
+    var panelPers = document.getElementById('panelPersonalizado');
+    var titulo = document.getElementById('spanTituloModal');
+    var spanModo = document.getElementById('spanToggleModo');
+    var toggleBar = document.getElementById('toggleBarBuscador');
+    var lblToggle = document.getElementById('lblTogglePers');
+    if (!modoBusc || !panelPers) return;
+
     if (mostrar) {
-        panel.classList.add('pers-visible');
-        var tx = document.getElementById('txPersNombre');
-        if (tx) setTimeout(function(){ tx.focus(); }, 250);
+        // Cambiar a modo personalizado
+        modoBusc.style.display = 'none';
+        panelPers.style.display = 'block';
+        if (titulo) titulo.innerHTML = '<i class="ti ti-pencil-plus" style="font-size:19px;vertical-align:-2px;margin-right:7px;color:#F57F17" aria-hidden="true"></i><span style="color:#F57F17">Producto personalizado</span>';
+        if (spanModo) {
+            spanModo.innerHTML = '<i class="ti ti-sparkles" style="font-size:13px" aria-hidden="true"></i> Modo personalizado activo';
+            spanModo.style.color = '#F57F17';
+        }
+        if (toggleBar) {
+            toggleBar.style.background = '#FFF8E1';
+            toggleBar.style.borderBottomColor = '#FFE082';
+        }
+        if (lblToggle) lblToggle.classList.add('active');
+        // Foco en la descripción al abrir
+        var tx = document.getElementById('txPersDetalle');
+        if (tx) setTimeout(function(){ tx.focus(); }, 200);
     } else {
-        panel.classList.remove('pers-visible');
+        // Volver a modo buscador
+        modoBusc.style.display = 'block';
+        panelPers.style.display = 'none';
+        if (titulo) titulo.innerHTML = '<i class="ti ti-search" style="font-size:19px;vertical-align:-2px;margin-right:7px" aria-hidden="true"></i>Buscar producto';
+        if (spanModo) {
+            spanModo.innerHTML = '<i class="ti ti-list-search" style="font-size:13px" aria-hidden="true"></i> Buscar del catálogo';
+            spanModo.style.color = '#666';
+        }
+        if (toggleBar) {
+            toggleBar.style.background = '#fafafa';
+            toggleBar.style.borderBottomColor = '#f0f0f0';
+        }
+        if (lblToggle) lblToggle.classList.remove('active');
     }
+}
+
+// Seleccionar moneda del producto personalizado (Bs o USD)
+function seleccionarMonedaPers(moneda) {
+    var hdMoneda = document.getElementById('ddPersMoneda');
+    var btnBOB = document.getElementById('btnMonedaBOB');
+    var btnUSD = document.getElementById('btnMonedaUSD');
+    if (hdMoneda) hdMoneda.value = moneda;
+    if (btnBOB) btnBOB.classList.toggle('active', moneda === 'BOB');
+    if (btnUSD) btnUSD.classList.toggle('active', moneda === 'USD');
 }
 function buscarProductos() {
     var texto = document.getElementById('txBuscarProd').value.trim();
@@ -943,12 +1050,42 @@ function marcarPrecioModificado(productoId) {
     }
 }
 function agregarPersonalizado() {
-    var nombre = document.getElementById('txPersNombre').value.trim();
-    var precio = parseFloat(document.getElementById('txPersPrecio').value) || 0;
-    var detalle = document.getElementById('txPersDetalle').value.trim();
-    if (nombre === '') { alert('Ingrese nombre del producto'); return; }
-    if (precio <= 0) { alert('Ingrese un precio válido'); return; }
-    insertarProducto(0, nombre, precio, 0, detalle, true);
+    // El nombre ahora es FIJO: "Producto Personalizado" (no se pide al usuario)
+    var nombre = 'Producto Personalizado';
+    var descripcion = document.getElementById('txPersDetalle').value.trim();
+    var precioInput = parseFloat(document.getElementById('txPersPrecio').value) || 0;
+    var monedaPers = document.getElementById('ddPersMoneda').value || 'BOB';
+
+    if (descripcion === '') {
+        mostrarToast('Ingrese la descripción del producto personalizado', 'warn');
+        document.getElementById('txPersDetalle').focus();
+        return;
+    }
+    if (precioInput <= 0) {
+        mostrarToast('Ingrese un precio válido', 'warn');
+        document.getElementById('txPersPrecio').focus();
+        return;
+    }
+
+    // Convertir precio a Bs (siempre se guarda en Bs internamente)
+    var precioBs = precioInput;
+    var precioUsd = 0;
+    if (monedaPers === 'USD') {
+        precioUsd = precioInput;
+        precioBs = (tasaCambio > 0) ? (precioInput * tasaCambio) : precioInput;
+    } else {
+        precioBs = precioInput;
+        precioUsd = (tasaCambio > 0) ? (precioInput / tasaCambio) : 0;
+    }
+
+    insertarProducto(0, nombre, precioBs, precioUsd, descripcion, true);
+
+    // Limpiar campos del panel personalizado y volver al modo buscador
+    document.getElementById('txPersDetalle').value = '';
+    document.getElementById('txPersPrecio').value = '';
+    seleccionarMonedaPers('BOB');  // reset moneda a BOB
+    var chk = document.getElementById('chkMostrarPersonalizado');
+    if (chk) { chk.checked = false; togglePersonalizado(false); }
 }
 function insertarProducto(productoId, nombre, precioBs, precioUsd, personalizacion, esPersonalizado, esInactivo) {
     if (prepedidoEntregaId === 0) {
@@ -981,9 +1118,12 @@ function insertarProducto(productoId, nombre, precioBs, precioUsd, personalizaci
                 mostrarToast('Agregado: ' + nombre, 'ok');
             }
             if (esPersonalizado) {
-                document.getElementById('txPersNombre').value = '';
-                document.getElementById('txPersPrecio').value = '';
-                document.getElementById('txPersDetalle').value = '';
+                // La limpieza de campos y cambio de modo se hace en agregarPersonalizado()
+                // (ya no se limpia txPersNombre porque ese campo fue eliminado)
+                var txPrecio = document.getElementById('txPersPrecio');
+                var txDetalle = document.getElementById('txPersDetalle');
+                if (txPrecio) txPrecio.value = '';
+                if (txDetalle) txDetalle.value = '';
             }
         } else {
             mostrarToast('Error: ' + (data.msg || 'no se pudo agregar'), 'err', 5000);
@@ -1073,65 +1213,98 @@ function actualizarDetalle(detalleId, campo, valor) {
 
 // ============================================================
 // PAGOS
+// El modal solo pide: Método, Monto en Bs, Referencia, Observaciones, Estado
+// El JS calcula automáticamente:
+//   - tipo_pago: TOTAL / ANTICIPO / SALDO (según monto y pagos existentes)
+//   - monto_usd: convertido con tasaCambio global de la página
 // ============================================================
 function abrirModalPago() {
+    // Mostrar saldo pendiente como referencia
+    var totalPedido = leerTotalPedidoBs();
+    var yaPagado = sumarPagosNoRechazados();
+    var saldo = totalPedido - yaPagado;
+    if (saldo < 0) saldo = 0;
+
+    var divInfo = document.getElementById('divSaldoInfo');
+    var spanSaldo = document.getElementById('spanSaldoModal');
+    if (divInfo && spanSaldo && totalPedido > 0) {
+        spanSaldo.textContent = 'Bs ' + saldo.toFixed(2);
+        divInfo.style.display = 'block';
+    } else if (divInfo) {
+        divInfo.style.display = 'none';
+    }
+
     document.getElementById('modalPago').style.display = 'block';
-    recalcularConversion();
+    actualizarTipoPagoLabel();
 }
 function cerrarModalPago() { document.getElementById('modalPago').style.display = 'none'; }
 
-// Llena el monto con el total del pedido, convertido a la moneda seleccionada en el modal.
-// El usuario sigue eligiendo metodo, tipo y guarda manualmente.
+// Llena el monto con el saldo pendiente (en Bs). Si no hay saldo, usa el total.
 function llenarMontoTotal() {
     var totalBs = leerTotalPedidoBs();
     if (totalBs <= 0) {
         mostrarToast('No hay un total calculado todavia', 'warn');
         return;
     }
-    var ddMon = document.getElementById('ddPagoMoneda');
-    var monedaPago = ddMon ? ddMon.value : 'BOB';
-    var tasa = parseFloat((document.getElementById('txPagoTasa') || {}).value) || 0;
-
-    var monto = totalBs;
-    if (monedaPago === 'USD' && tasa > 0) {
-        monto = totalBs / tasa;
-    }
+    var yaPagado = sumarPagosNoRechazados();
+    var saldo = totalBs - yaPagado;
+    if (saldo <= 0) saldo = totalBs;  // si ya se pagó todo, ofrecer el total completo
 
     var txMonto = document.getElementById('txPagoMonto');
     if (txMonto) {
-        txMonto.value = monto.toFixed(2);
+        txMonto.value = saldo.toFixed(2);
     }
-    recalcularConversion();
+    actualizarTipoPagoLabel();
 }
 
-// Muestra "equivale a X" cuando el usuario tipea el monto
-function recalcularConversion() {
-    var moneda = document.getElementById('ddPagoMoneda').value;
-    var monto = parseFloat(document.getElementById('txPagoMonto').value) || 0;
-    var tasa = parseFloat(document.getElementById('txPagoTasa').value) || 0;
-    var div = document.getElementById('divConversion');
-    var span = document.getElementById('spanConversion');
+// Suma todos los pagos NO RECHAZADOS (Verificados + Pendientes) - para calcular saldo
+function sumarPagosNoRechazados() {
+    var suma = 0;
+    document.querySelectorAll('.ea-pago-row').forEach(function(row) {
+        var monto = parseFloat(row.getAttribute('data-monto-bs')) || 0;
+        var estado = row.getAttribute('data-estado') || '';
+        if (estado !== 'RECHAZADO') suma += monto;
+    });
+    return suma;
+}
 
-    if (monto <= 0 || tasa <= 0) {
+// Deduce el tipo de pago automáticamente según monto y pagos existentes
+// - TOTAL: el pago cubre el total completo del pedido (sin pagos previos)
+// - ANTICIPO: primer pago parcial (no hay otros pagos no-rechazados)
+// - SALDO: ya hay pagos previos, este completa o aporta más
+function deducirTipoPago(montoBs) {
+    var totalPedido = leerTotalPedidoBs();
+    var yaPagado = sumarPagosNoRechazados();
+    if (totalPedido <= 0) return 'TOTAL';
+    // Tolerancia 1 centavo
+    if (yaPagado < 0.01) {
+        // Primer pago del pedido
+        if (Math.abs(montoBs - totalPedido) < 0.01) return 'TOTAL';
+        return 'ANTICIPO';
+    }
+    // Ya hay pagos previos -> esto es saldo (parcial o final)
+    return 'SALDO';
+}
+
+// Refresca la etiqueta "Se registrará como X" debajo del monto
+function actualizarTipoPagoLabel() {
+    var monto = parseFloat(document.getElementById('txPagoMonto').value) || 0;
+    var div = document.getElementById('divTipoAuto');
+    var span = document.getElementById('spanTipoAuto');
+    if (!div || !span) return;
+    if (monto <= 0) {
         div.style.display = 'none';
         return;
     }
-    if (moneda === 'BOB') {
-        var equivUsd = monto / tasa;
-        span.textContent = '$ ' + equivUsd.toFixed(2) + ' USD';
-    } else {
-        var equivBs = monto * tasa;
-        span.textContent = 'Bs ' + equivBs.toFixed(2);
-    }
+    var tipo = deducirTipoPago(monto);
+    var etiqueta = tipo === 'TOTAL' ? 'Total' : (tipo === 'ANTICIPO' ? 'Anticipo' : 'Saldo');
+    span.textContent = etiqueta;
     div.style.display = 'block';
 }
 
 function guardarPago() {
     var metodo = document.getElementById('ddPagoMetodo').value;
-    var tipoPago = document.getElementById('ddPagoTipo').value || 'TOTAL';
-    var moneda = document.getElementById('ddPagoMoneda').value;
     var monto = parseFloat(document.getElementById('txPagoMonto').value) || 0;
-    var tasa = parseFloat(document.getElementById('txPagoTasa').value) || 0;
     var ref = document.getElementById('txPagoRef').value;
     var obs = document.getElementById('txPagoObs').value;
     var estadoEl = document.querySelector('input[name="pagoEstado"]:checked');
@@ -1139,18 +1312,18 @@ function guardarPago() {
 
     if (metodo === '') { alert('Seleccione metodo de pago'); return; }
     if (monto <= 0) { alert('Ingrese monto valido'); return; }
-    if (tasa <= 0) { alert('Tasa de cambio invalida'); return; }
     if (prepedidoEntregaId === 0) { alert('Borrador no inicializado'); return; }
 
-    // Calcular monto_bs y monto_usd con conversion automatica
-    var montoBs, montoUsd;
-    if (moneda === 'BOB') {
-        montoBs = monto;
-        montoUsd = monto / tasa;
-    } else {
-        montoUsd = monto;
-        montoBs = monto * tasa;
+    // El monto se ingresa SIEMPRE en Bs (más simple para el usuario boliviano)
+    var montoBs = monto;
+    // Calcular USD automáticamente con la tasa global de la página
+    var montoUsd = 0;
+    if (tasaCambio > 0) {
+        montoUsd = monto / tasaCambio;
     }
+
+    // Deducir tipo de pago automáticamente
+    var tipoPago = deducirTipoPago(montoBs);
 
     var formData = new FormData();
     formData.append('accion', 'AGREGAR_PAGO');
@@ -1170,17 +1343,11 @@ function guardarPago() {
             var hoy = new Date();
             var fecha = (hoy.getDate()<10?'0':'') + hoy.getDate() + '/' + ((hoy.getMonth()+1)<10?'0':'') + (hoy.getMonth()+1);
 
-            // Texto principal del monto (priorizar moneda original elegida)
-            var textoMonto;
-            if (moneda === 'BOB') {
-                textoMonto = 'Bs ' + montoBs.toFixed(2);
-                if (montoUsd > 0) textoMonto += ' / $ ' + montoUsd.toFixed(2);
-            } else {
-                textoMonto = '$ ' + montoUsd.toFixed(2);
-                if (montoBs > 0) textoMonto += ' / Bs ' + montoBs.toFixed(2);
-            }
+            // Texto del monto: siempre Bs, con USD entre paréntesis si existe
+            var textoMonto = 'Bs ' + montoBs.toFixed(2);
+            if (montoUsd > 0) textoMonto += ' / $ ' + montoUsd.toFixed(2);
 
-            // Icono segun estado
+            // Icono según estado
             var iconoHtml;
             if (estado === 'VERIFICADO') {
                 iconoHtml = '<i class="ti ti-check" style="font-size:14px;color:#2E7D32"></i>';
@@ -1207,15 +1374,16 @@ function guardarPago() {
             cerrarModalPago();
             // Limpiar campos
             document.getElementById('ddPagoMetodo').value = '';
-            document.getElementById('ddPagoTipo').value = 'TOTAL';
             document.getElementById('txPagoMonto').value = '';
             document.getElementById('txPagoRef').value = '';
             document.getElementById('txPagoObs').value = '';
             var radioDefault = document.querySelector('input[name="pagoEstado"][value="VERIFICADO"]');
             if (radioDefault) radioDefault.checked = true;
-            document.getElementById('divConversion').style.display = 'none';
+            var divTipo = document.getElementById('divTipoAuto');
+            if (divTipo) divTipo.style.display = 'none';
             recalcularTotalesPagos();  // ← refrescar Total pagado / Saldo / badge
             actualizarChecklist();
+            mostrarToast('Pago registrado: Bs ' + montoBs.toFixed(2), 'ok');
         } else {
             alert('Error al guardar pago: ' + (data.msg || 'desconocido'));
         }
