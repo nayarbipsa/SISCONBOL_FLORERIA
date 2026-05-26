@@ -111,7 +111,7 @@
                 Pedidos recientes
             </div>
             <div class="panel-actions">
-                <a href="Modulos/Pedidos/Pedidos.aspx" class="btn btn-sm">
+                <a href="Modulos/Pedidos/GestionPedidos.aspx" class="btn btn-sm">
                     Ver todos
                     <i class="ti ti-arrow-right"></i>
                 </a>

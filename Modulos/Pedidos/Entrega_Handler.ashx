@@ -152,11 +152,9 @@ Public Class Entrega_Handler
         Dim personalizacion As String = context.Request.Form("personalizacion")
         If personalizacion Is Nothing Then personalizacion = ""
 
-        Dim precioBs As Decimal = 0
-        Decimal.TryParse(context.Request.Form("precio_bs"), precioBs)
+        Dim precioBs As Decimal = ParseDecimalSeguro(context.Request.Form("precio_bs"))
 
-        Dim precioUsd As Decimal = 0
-        Decimal.TryParse(context.Request.Form("precio_usd"), precioUsd)
+        Dim precioUsd As Decimal = ParseDecimalSeguro(context.Request.Form("precio_usd"))
 
         Dim cantidad As Integer = 1
         Integer.TryParse(context.Request.Form("cantidad"), cantidad)
@@ -244,8 +242,7 @@ Public Class Entrega_Handler
                         cmd.ExecuteNonQuery()
                     End Using
                 Case "precio"
-                    Dim precio As Decimal = 0
-                    Decimal.TryParse(valor, precio)
+                    Dim precio As Decimal = ParseDecimalSeguro(valor)
                     sql = "UPDATE FLORERIA_PrePedido_Entrega_Detalle " &
                           "SET precio_unitario_bs = @val, " &
                           "subtotal_bs = @val * cantidad " &
@@ -328,8 +325,7 @@ Public Class Entrega_Handler
                             cmd.Parameters.AddWithValue("@val", DBNull.Value)
                         End If
                     Case "descuento_valor"
-                        Dim decVal As Decimal = 0
-                        Decimal.TryParse(valor, decVal)
+                        Dim decVal As Decimal = ParseDecimalSeguro(valor)
                         If decVal < 0 Then decVal = 0
                         cmd.Parameters.AddWithValue("@val", decVal)
                     Case Else
@@ -374,12 +370,10 @@ Public Class Entrega_Handler
         Dim metodoPago As String = context.Request.Form("metodo_pago")
         If metodoPago Is Nothing Then metodoPago = ""
 
-        Dim montoBs As Decimal = 0
-        Decimal.TryParse(context.Request.Form("monto_bs"), montoBs)
+        Dim montoBs As Decimal = ParseDecimalSeguro(context.Request.Form("monto_bs"))
         If montoBs < 0 Then montoBs = 0
 
-        Dim montoUsd As Decimal = 0
-        Decimal.TryParse(context.Request.Form("monto_usd"), montoUsd)
+        Dim montoUsd As Decimal = ParseDecimalSeguro(context.Request.Form("monto_usd"))
         If montoUsd < 0 Then montoUsd = 0
 
         Dim referencia As String = context.Request.Form("referencia")
@@ -560,6 +554,24 @@ Public Class Entrega_Handler
 
                 ' --- PASO 2: si era borrador, ejecutar SP Confirmar ---
                 If Not yaEstabaConfirmado Then
+                    ' Sanear tipo_ocacion: el CHECK constraint en FLORERIA_Pedido solo
+                    ' acepta: CUMPLEANOS, ANIVERSARIO, AMOR, AGRADECIMIENTO,
+                    '         CONDOLENCIAS, GRADUACION, NACIMIENTO, OTRO
+                    ' Si el borrador trae NULL o un valor invalido (incluso ""),
+                    ' lo dejamos en 'OTRO' para que el SP_Confirmar no falle.
+                    Using cmdFix As New SqlCommand(
+                        "UPDATE FLORERIA_PrePedido_Entrega " &
+                        "SET tipo_ocacion = 'OTRO' " &
+                        "WHERE prepedido_entrega_id = @id " &
+                        "  AND (tipo_ocacion IS NULL " &
+                        "    OR LTRIM(RTRIM(tipo_ocacion)) = '' " &
+                        "    OR tipo_ocacion NOT IN " &
+                        "       ('CUMPLEANOS','ANIVERSARIO','AMOR','AGRADECIMIENTO'," &
+                        "        'CONDOLENCIAS','GRADUACION','NACIMIENTO','OTRO'))", conn)
+                        cmdFix.Parameters.AddWithValue("@id", entregaId)
+                        cmdFix.ExecuteNonQuery()
+                    End Using
+
                     Using cmd As New SqlCommand("FLORERIA_sp_PrePedidoEntrega_Confirmar", conn)
                         cmd.CommandType = CommandType.StoredProcedure
                         cmd.Parameters.AddWithValue("@prepedido_entrega_id", entregaId)
@@ -748,6 +760,39 @@ Public Class Entrega_Handler
         Catch ex As Exception
             System.Diagnostics.Debug.WriteLine("ERROR CalcularPagosNoRechazados: " & ex.Message)
         End Try
+        Return 0
+    End Function
+
+    ' ============================================================
+    ' Helper: Parsea un texto a Decimal IGNORANDO la cultura del servidor.
+    ' El JS siempre manda numeros en formato ingles ("320.00") via toFixed(),
+    ' pero si el servidor esta en es-BO/es-ES el "." se toma como miles
+    ' y "320.00" se vuelve 32000. Esto fuerza InvariantCulture (.) primero.
+    ' Si falla, intenta con coma como fallback (por si algun input manual).
+    ' ============================================================
+    Private Function ParseDecimalSeguro(texto As String) As Decimal
+        Dim r As Decimal = 0
+        If texto Is Nothing Then Return 0
+        texto = texto.Trim()
+        If texto = "" Then Return 0
+
+        ' 1) Probar formato invariant (punto decimal)
+        If Decimal.TryParse(texto,
+                            System.Globalization.NumberStyles.Float Or System.Globalization.NumberStyles.AllowThousands,
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            r) Then
+            Return r
+        End If
+
+        ' 2) Fallback: cambiar coma por punto y reintentar
+        Dim alt As String = texto.Replace(",", ".")
+        If Decimal.TryParse(alt,
+                            System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            r) Then
+            Return r
+        End If
+
         Return 0
     End Function
 

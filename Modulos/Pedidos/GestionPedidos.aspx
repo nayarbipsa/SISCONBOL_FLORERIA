@@ -10,11 +10,9 @@
 
 <asp:Content ID="Content3" ContentPlaceHolderID="MainContent" runat="server">
 
-<!-- Alerta -->
 <div class="alerta" id="divAlerta"></div>
 
-<!-- Header con resumen -->
-<div class="panel" style="margin-bottom:14px">
+<div class="panel">
     <div class="panel-head">
         <div class="gp-header-info">
             <div class="gp-header-icon"><i class="ti ti-clipboard-list"></i></div>
@@ -31,26 +29,25 @@
     </div>
 </div>
 
-<!-- Banner WC pendientes (solo si hay) -->
 <% If TotalPendientesWC > 0 Then %>
 <div class="banner-warn" id="bannerWC">
     <div class="banner-warn-head" onclick="toggleBannerWC()">
         <div class="banner-warn-title">
             <i class="ti ti-alert-triangle"></i>
             <div>
-                <div class="t1"><%= TotalPendientesWC %> pedidos de WooCommerce esperando aceptacion manual</div>
+                <div class="t1"><%= TotalPendientesWC %> pedidos WC esperando aceptacion manual</div>
                 <div class="t2">Verifica el pago en tu banco antes de aceptar. WooCommerce nunca los confirmara automaticamente.</div>
             </div>
         </div>
-        <button type="button" class="btn btn-sm" onclick="event.stopPropagation(); toggleBannerWC()">
+        <button type="button" class="btn btn-sm" style="background:transparent;border-color:transparent" onclick="event.stopPropagation();toggleBannerWC()">
             <i class="ti ti-chevron-up" id="iconBannerWC"></i> <span id="textBannerWC">Ocultar</span>
         </button>
     </div>
     <div class="banner-warn-body" id="bannerWCBody">
         <div class="wc-row wc-row-head">
             <span>WC #</span>
-            <span>Cliente / contacto</span>
-            <span>Metodo de pago</span>
+            <span>Cliente</span>
+            <span>Metodo pago</span>
             <span>Estado WC</span>
             <span style="text-align:right">Monto</span>
             <span style="text-align:right">Acciones</span>
@@ -60,7 +57,6 @@
 </div>
 <% End If %>
 
-<!-- Panel principal -->
 <div class="panel">
     <div class="panel-head">
         <div class="panel-title">Pedidos del periodo</div>
@@ -71,7 +67,6 @@
         </div>
     </div>
 
-    <!-- Filtros -->
     <div class="panel-filters">
         <div class="filter-group">
             <label>Buscar</label>
@@ -94,7 +89,7 @@
             <label>&nbsp;</label>
             <label class="filter-check <%= If(ValorSoloHoy = "1", "active", "") %>">
                 <input type="checkbox" id="chkHoy" <%= If(ValorSoloHoy = "1", "checked", "") %>/>
-                <i class="ti ti-calendar-event"></i> Entregas hoy
+                <i class="ti ti-calendar-event"></i> Hoy
             </label>
         </div>
         <div class="filter-group">
@@ -141,7 +136,6 @@
         </div>
     </div>
 
-    <!-- Tabla -->
     <div class="table-container">
         <table class="table">
             <thead>
@@ -163,12 +157,10 @@
     </div>
 </div>
 
-<!-- Hidden fields y boton oculto para postback -->
 <input type="hidden" id="hdAccion" name="hdAccion" value=""/>
 <input type="hidden" id="hdPedidoId" name="hdPedidoId" value=""/>
 <asp:Button ID="btnPostBack" runat="server" Text="" Style="display:none" OnClick="btnAccion_Click"/>
 
-<!-- Modal confirmación aceptar pago -->
 <div class="modal-overlay hidden" id="modalAceptar">
     <div class="modal-confirm">
         <div class="modal-confirm-body">
@@ -200,7 +192,6 @@ function toggleBannerWC() {
     var icon = document.getElementById('iconBannerWC');
     var txt = document.getElementById('textBannerWC');
     if (!body) return;
-    
     if (body.classList.contains('hidden')) {
         body.classList.remove('hidden');
         if (icon) icon.className = 'ti ti-chevron-up';
@@ -213,25 +204,23 @@ function toggleBannerWC() {
 }
 
 function aplicarFiltros() {
-    var buscar = document.getElementById('txBuscar');
-    var desde = document.getElementById('txDesde');
-    var hasta = document.getElementById('txHasta');
+    var b = document.getElementById('txBuscar');
+    var d = document.getElementById('txDesde');
+    var h = document.getElementById('txHasta');
     var hoy = document.getElementById('chkHoy');
-    var pago = document.getElementById('ddPago');
+    var p = document.getElementById('ddPago');
     var op = document.getElementById('ddOperativo');
     var deli = document.getElementById('ddDelivery');
     var exp = document.getElementById('chkExpress');
-    
     var url = 'GestionPedidos.aspx?';
-    if (buscar && buscar.value) url += 'b=' + encodeURIComponent(buscar.value) + '&';
-    if (desde && desde.value) url += 'd=' + desde.value + '&';
-    if (hasta && hasta.value) url += 'h=' + hasta.value + '&';
+    if (b && b.value) url += 'b=' + encodeURIComponent(b.value) + '&';
+    if (d && d.value) url += 'd=' + d.value + '&';
+    if (h && h.value) url += 'h=' + h.value + '&';
     if (hoy && hoy.checked) url += 'hoy=1&';
-    if (pago && pago.value) url += 'p=' + pago.value + '&';
+    if (p && p.value) url += 'p=' + p.value + '&';
     if (op && op.value) url += 'op=' + op.value + '&';
     if (deli && deli.value) url += 'deli=' + deli.value + '&';
     if (exp && exp.checked) url += 'exp=1&';
-    
     window.location.href = url;
 }
 
@@ -239,24 +228,41 @@ function refrescar() {
     window.location.reload();
 }
 
-function verDetalle(pedidoId) {
+function verDetalle(/** @type {number} */ pedidoId) {
+    cerrarTodosDropdowns();
     window.location.href = 'PedidoDetalle.aspx?id=' + pedidoId;
 }
 
-function imprimirTicket(pedidoId) {
-    var ventana = window.open('TicketImprimir.aspx?id=' + pedidoId, 
-        'ticket', 'width=400,height=600,toolbar=no,menubar=no');
-    if (ventana) ventana.focus();
+function imprimirTicket(/** @type {number} */ pedidoId) {
+    cerrarTodosDropdowns();
+    var v = window.open('TicketImprimir.aspx?id=' + pedidoId, 'ticket', 'width=400,height=600');
+    if (v) v.focus();
 }
 
-// Aceptar pago manual
-function abrirModalAceptar(pedidoId, cliente, monto) {
+function toggleDropdown(/** @type {number} */ pedidoId, /** @type {Event} */ evt) {
+    if (evt) { evt.stopPropagation(); }
+    var dd = document.getElementById('dd_' + pedidoId);
+    if (!dd) return;
+    var estaAbierto = dd.classList.contains('open');
+    cerrarTodosDropdowns();
+    if (!estaAbierto) dd.classList.add('open');
+}
+
+function cerrarTodosDropdowns() {
+    var dds = document.querySelectorAll('.dropdown');
+    for (var i = 0; i < dds.length; i++) dds[i].classList.remove('open');
+}
+
+document.addEventListener('click', function(e) {
+    var t = e.target;
+    if (!t.closest || !t.closest('.dropdown')) cerrarTodosDropdowns();
+});
+
+function abrirModalAceptar(/** @type {number} */ pedidoId, /** @type {string} */ cliente, /** @type {string} */ monto) {
     _pedidoAceptarId = pedidoId;
     var msg = document.getElementById('modalAceptarMsg');
     if (msg) {
-        msg.innerHTML = 'Vas a aceptar el pago del pedido <strong>' + cliente + 
-            '</strong> por <strong>Bs ' + monto + '</strong>.<br><br>' +
-            'Asegurate de haber verificado el pago en tu banco. Esta accion no se puede deshacer.';
+        msg.innerHTML = 'Vas a aceptar el pago del pedido <strong>' + cliente + '</strong> por <strong>Bs ' + monto + '</strong>.<br><br>Asegurate de haber verificado el pago en tu banco. Esta accion no se puede deshacer.';
     }
     var modal = document.getElementById('modalAceptar');
     if (modal) modal.classList.remove('hidden');
@@ -270,29 +276,20 @@ function cerrarModalAceptar() {
 
 function confirmarAceptarPago() {
     if (_pedidoAceptarId <= 0) return;
-    
     var hdAccion = document.getElementById('hdAccion');
     var hdPedidoId = document.getElementById('hdPedidoId');
-    
     if (hdAccion) hdAccion.value = 'ACEPTAR_PAGO';
     if (hdPedidoId) hdPedidoId.value = _pedidoAceptarId;
-    
     cerrarModalAceptar();
-    
     var btn = document.getElementById('<%= btnPostBack.ClientID %>');
     if (btn) btn.click();
 }
 
-// Cambiar estado operativo via prompt
-function cambiarEstado(pedidoId, estadoActual) {
-    var estados = [
-        'PENDIENTE', 'IMPRESO', 'EN_PREPARACION', 'LISTO', 
-        'EN_RUTA', 'ENTREGADO', 'NO_ENTREGADO', 'REPROGRAMADO'
-    ];
-    var msg = 'Estado actual: ' + estadoActual + '\n\nNuevo estado (escribe el numero):\n';
-    for (var i = 0; i < estados.length; i++) {
-        msg += (i+1) + '. ' + estados[i] + '\n';
-    }
+function cambiarEstado(/** @type {number} */ pedidoId, /** @type {string} */ estadoActual) {
+    cerrarTodosDropdowns();
+    var estados = ['PENDIENTE','IMPRESO','EN_PREPARACION','LISTO','EN_RUTA','ENTREGADO','NO_ENTREGADO','REPROGRAMADO'];
+    var msg = 'Estado actual: ' + estadoActual + '\n\nElige el numero del nuevo estado:\n';
+    for (var i = 0; i < estados.length; i++) msg += (i+1) + '. ' + estados[i] + '\n';
     var resp = prompt(msg);
     if (!resp) return;
     var idx = parseInt(resp, 10) - 1;
@@ -300,27 +297,42 @@ function cambiarEstado(pedidoId, estadoActual) {
         alert('Numero invalido');
         return;
     }
-    
     var hdAccion = document.getElementById('hdAccion');
     var hdPedidoId = document.getElementById('hdPedidoId');
     if (hdAccion) hdAccion.value = 'CAMBIAR_ESTADO_' + estados[idx];
     if (hdPedidoId) hdPedidoId.value = pedidoId;
-    
     var btn = document.getElementById('<%= btnPostBack.ClientID %>');
     if (btn) btn.click();
 }
 
-// Inicializacion
+function marcarContactado(/** @type {number} */ pedidoId) {
+    cerrarTodosDropdowns();
+    if (!confirm('Marcar como contactado?')) return;
+    var hdAccion = document.getElementById('hdAccion');
+    var hdPedidoId = document.getElementById('hdPedidoId');
+    if (hdAccion) hdAccion.value = 'MARCAR_CONTACTADO';
+    if (hdPedidoId) hdPedidoId.value = pedidoId;
+    var btn = document.getElementById('<%= btnPostBack.ClientID %>');
+    if (btn) btn.click();
+}
+
+function asignarDelivery(/** @type {number} */ pedidoId) {
+    cerrarTodosDropdowns();
+    alert('Asignar delivery - funcionalidad pendiente en proxima entrega');
+}
+
+function editarPedido(/** @type {number} */ pedidoId) {
+    cerrarTodosDropdowns();
+    alert('Editar pedido - funcionalidad pendiente en proxima entrega');
+}
+
 (function() {
-    // Auto-submit con Enter en buscar
     var buscar = document.getElementById('txBuscar');
     if (buscar) {
         buscar.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') aplicarFiltros();
         });
     }
-    
-    // Mostrar alerta si viene de redirect con mensaje
     var alertMsg = '<%= MensajeAlerta %>';
     var alertTipo = '<%= TipoAlerta %>';
     if (alertMsg && alertMsg.length > 0) {

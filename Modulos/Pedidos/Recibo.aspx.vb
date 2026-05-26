@@ -109,7 +109,7 @@ Partial Public Class Modulos_Pedidos_Recibo
                 "       sl.hora_inicio, sl.hora_fin, " &
                 "       pp.codigo AS prepedido_codigo, " &
                 "       pp.cliente_nombre, pp.cliente_apellidos, pp.cliente_celular, " &
-                "       u.nombre AS agente_nombre, u.apellidos AS agente_apellidos " &
+                "       u.nombres AS agente_nombre, u.apellidos AS agente_apellidos " &
                 "FROM FLORERIA_Pedido p " &
                 "LEFT JOIN FLORERIA_Ciudad c     ON c.ciudad_id = p.ciudad_id " &
                 "LEFT JOIN FLORERIA_Zona   z     ON z.zona_id   = p.zona_id " &

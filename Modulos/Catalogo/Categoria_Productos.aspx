@@ -163,7 +163,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       </div>
     </header>
 
-    <div class="content">
+    <div class="contenido">
 
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
         <button type="button" class="btn" onclick="volverCategorias()">

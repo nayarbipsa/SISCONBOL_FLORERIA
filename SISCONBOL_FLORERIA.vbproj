@@ -112,6 +112,7 @@
     <Content Include="Modulos\Pedidos\MODAL_BUSCADOR.html" />
     <Content Include="Modulos\Pedidos\Pedido_Agregar.aspx" />
     <Content Include="Modulos\Pedidos\PrePedido_Links.aspx" />
+    <Content Include="Modulos\Pedidos\Recibo.aspx" />
     <Content Include="Modulos\Pedidos\TicketImprimir.aspx" />
     <Content Include="pp.aspx" />
     <Content Include="Scripts\site.js" />
@@ -219,6 +220,10 @@
     </Compile>
     <Compile Include="Modulos\Pedidos\PrePedido_Lista.aspx.vb">
       <DependentUpon>PrePedido_Lista.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Modulos\Pedidos\Recibo.aspx.vb">
+      <DependentUpon>Recibo.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
     </Compile>
     <Compile Include="Modulos\Pedidos\TicketImprimir.aspx.vb">
