@@ -514,34 +514,48 @@
 // ============================================================
 function enviarLinkCliente() {
     var prepedidoId = parseInt(document.getElementById('hdPrePedidoId').value) || 0;
-    if (prepedidoId === 0) { alert('Pre-pedido invalido'); return; }
+    if (prepedidoId === 0) {
+        alert('Pre-pedido invalido');
+        return;
+    }
 
     var formData = new FormData();
     formData.append('accion', 'GENERAR_TOKEN');
     formData.append('prepedido_id', prepedidoId);
 
     fetch('PrePedido_Handler.ashx', { method: 'POST', body: formData })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-        if (!data.ok) {
-            // Si el handler devolvió entregas_incompletas, mostrar modal detallado
-            if (data.entregas_incompletas && data.entregas_incompletas.length > 0) {
-                mostrarModalEntregasIncompletas(data.entregas_incompletas);
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (!data.ok) {
+                // Si el handler devolvió entregas_incompletas, mostrar modal detallado
+                if (data.entregas_incompletas && data.entregas_incompletas.length > 0) {
+                    mostrarModalEntregasIncompletas(data.entregas_incompletas);
+                    return;
+                }
+                alert('Error: ' + (data.msg || 'no se pudo generar el link'));
                 return;
             }
-            alert('Error: ' + (data.msg || 'no se pudo generar el link'));
-            return;
-        }
 
-        var mensaje = 'Hola! Aqui esta el link para confirmar tu pedido en Miss Flores:\n' + data.url;
-        var url = data.celular_cliente
-            ? ('https://wa.me/' + data.celular_cliente + '?text=' + encodeURIComponent(mensaje))
-            : ('https://wa.me/?text=' + encodeURIComponent(mensaje));
-        window.open(url, '_blank');
+            var mensaje = 'Hola! Aqui esta el link para confirmar tu pedido en Miss Flores:\n' + data.url;
 
-        setTimeout(function() { location.reload(); }, 800);
-    })
-    .catch(function() { alert('Error de red al generar el link'); });
+            // MODIFICACIÓN A OPCIÓN 2: Usar el esquema nativo de WhatsApp
+            var url = data.celular_cliente
+                ? ('whatsapp://send?phone=' + data.celular_cliente + '&text=' + encodeURIComponent(mensaje))
+                : ('whatsapp://send?text=' + encodeURIComponent(mensaje));
+
+            // Usar window.location.href en lugar de window.open('_blank')
+            // Esto dispara la aplicación externa sin abrir ninguna pestaña huérfana
+            window.location.href = url;
+
+            // Aumentamos ligeramente el tiempo de espera a 1.5 seg (1500ms) antes de recargar
+            // para darle tiempo al navegador de ejecutar la llamada a la app de escritorio o móvil
+            setTimeout(function () {
+                location.reload();
+            }, 1500);
+        })
+        .catch(function () {
+            alert('Error de red al generar el link');
+        });
 }
 
 function copiarLink() {

@@ -105,6 +105,7 @@
     <Content Include="Modulos\Catalogo\ProductoEditar.aspx" />
     <Content Include="Modulos\Catalogo\Productos.aspx" />
     <Content Include="Modulos\Config\Migrar.aspx" />
+    <Content Include="Modulos\Config\PermisosMenu.aspx" />
     <Content Include="Modulos\Config\Webhooks_Monitor.aspx" />
     <Content Include="Modulos\Pedidos\Entrega_Agregar.aspx" />
     <Content Include="Modulos\Pedidos\MODAL_BUSCADOR.html" />
@@ -172,6 +173,10 @@
     </Compile>
     <Compile Include="Modulos\Config\Migrar.aspx.vb">
       <DependentUpon>Migrar.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Modulos\Config\PermisosMenu.aspx.vb">
+      <DependentUpon>PermisosMenu.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
     </Compile>
     <Compile Include="Modulos\Config\Usuarios.aspx.vb">

@@ -357,35 +357,63 @@ Partial Public Class Modulos_Pedidos_Entrega_Agregar
 
     ' ============================================================
     ' CargarPagosBorrador
+    ' Lee FLORERIA_PrePedido_Entrega_Pago con los campos REALES:
+    '   monto_bs, monto_usd, estado, creado_en
+    '   (NO monto/moneda/fecha_pago/verificado, esos no existen en la tabla)
+    ' Agrega data-estado y data-monto-bs a cada .ea-pago-row para que
+    ' el JS del checklist pueda validar el monto pagado vs el total.
     ' ============================================================
     Private Sub CargarPagosBorrador()
         Try
             Dim sb As New System.Text.StringBuilder()
             Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
                 conn.Open()
-                Dim sql As String = "SELECT pago_id, metodo_pago, moneda, monto, fecha_pago, verificado " &
-                    "FROM FLORERIA_PrePedido_Entrega_Pago WHERE prepedido_entrega_id = @eid ORDER BY fecha_pago"
+                Dim sql As String = "SELECT pago_id, tipo_pago, metodo_pago, monto_bs, monto_usd, " &
+                    "estado, creado_en " &
+                    "FROM FLORERIA_PrePedido_Entrega_Pago " &
+                    "WHERE prepedido_entrega_id = @eid " &
+                    "ORDER BY creado_en"
                 Using cmd As New SqlCommand(sql, conn)
                     cmd.Parameters.AddWithValue("@eid", PrePedidoEntregaId)
                     Using dr As SqlDataReader = cmd.ExecuteReader()
                         While dr.Read()
                             Dim pagoId As Integer = CInt(dr("pago_id"))
+                            Dim tipoPago As String = dr("tipo_pago").ToString()
                             Dim metodo As String = dr("metodo_pago").ToString()
-                            Dim moneda As String = dr("moneda").ToString()
-                            Dim monto As Decimal = CDec(dr("monto"))
-                            Dim fecha As DateTime = CDate(dr("fecha_pago"))
-                            Dim verificado As Boolean = CBool(dr("verificado"))
+                            Dim montoBs As Decimal = CDec(dr("monto_bs"))
+                            Dim montoUsd As Decimal = If(IsDBNull(dr("monto_usd")), 0D, CDec(dr("monto_usd")))
+                            Dim estado As String = dr("estado").ToString()
+                            Dim fecha As DateTime = CDate(dr("creado_en"))
 
-                            sb.AppendLine("<div class='ea-pago-row'>")
-                            sb.AppendLine("  <span>" & metodo & "</span>")
-                            sb.AppendLine("  <span style='font-weight:500'>" & If(moneda = "USD", "$ ", "Bs ") & monto.ToString("N2") & "</span>")
-                            sb.AppendLine("  <span style='color:#999'>" & moneda & "</span>")
-                            sb.AppendLine("  <span style='font-size:11px;color:#999'>" & fecha.ToString("dd/MM") & "</span>")
-                            If verificado Then
-                                sb.AppendLine("  <span><i class='ti ti-check' style='font-size:14px;color:#2E7D32'></i></span>")
+                            ' Texto del monto: muestra ambas monedas si las dos son > 0
+                            Dim textoMonto As String
+                            If montoBs > 0 AndAlso montoUsd > 0 Then
+                                textoMonto = "Bs " & montoBs.ToString("N2") & " / $ " & montoUsd.ToString("N2")
+                            ElseIf montoUsd > 0 Then
+                                textoMonto = "$ " & montoUsd.ToString("N2")
                             Else
-                                sb.AppendLine("  <span><i class='ti ti-clock' style='font-size:14px;color:#F9A825'></i></span>")
+                                textoMonto = "Bs " & montoBs.ToString("N2")
                             End If
+
+                            ' Icono segun estado
+                            Dim iconoHtml As String
+                            If estado = "VERIFICADO" Then
+                                iconoHtml = "<i class='ti ti-check' style='font-size:14px;color:#2E7D32'></i>"
+                            ElseIf estado = "RECHAZADO" Then
+                                iconoHtml = "<i class='ti ti-x' style='font-size:14px;color:#E53935'></i>"
+                            Else
+                                iconoHtml = "<i class='ti ti-clock' style='font-size:14px;color:#F9A825'></i>"
+                            End If
+
+                            ' data-monto-bs en InvariantCulture para que parseFloat() del JS no falle
+                            Dim montoBsAttr As String = montoBs.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)
+
+                            sb.AppendLine("<div class='ea-pago-row' data-estado='" & estado & "' data-monto-bs='" & montoBsAttr & "'>")
+                            sb.AppendLine("  <span>" & metodo & " <span style='font-size:10px;color:#999'>(" & tipoPago & ")</span></span>")
+                            sb.AppendLine("  <span style='font-weight:500'>" & textoMonto & "</span>")
+                            sb.AppendLine("  <span style='color:#999;font-size:11px'>" & estado & "</span>")
+                            sb.AppendLine("  <span style='font-size:11px;color:#999'>" & fecha.ToString("dd/MM") & "</span>")
+                            sb.AppendLine("  <span>" & iconoHtml & "</span>")
                             sb.AppendLine("  <button type='button' style='border:none;background:none;color:#E53935;cursor:pointer;font-size:13px;padding:0' onclick='eliminarPago(" & pagoId & ", this)'><i class='ti ti-trash'></i></button>")
                             sb.AppendLine("</div>")
                         End While

@@ -633,6 +633,7 @@ function toggleTipoEntrega() {
     var isDomicilio = document.querySelector('input[name="tipoEntrega"][value="DOMICILIO"]').checked;
     document.getElementById('fieldsDomicilio').style.display = isDomicilio ? 'block' : 'none';
     document.getElementById('fieldsRecojo').style.display = isDomicilio ? 'none' : 'block';
+    actualizarChecklist();
 }
 
 // ============================================================
@@ -689,6 +690,7 @@ function guardarCampo(campo, valor) {
     .then(function(r) { return r.json(); })
     .then(function(data) {
         if (data.ok) { mostrarGuardado(); } else { mostrarError(); }
+        actualizarChecklist();
     })
     .catch(function() { mostrarError(); });
 }
@@ -1049,6 +1051,8 @@ function guardarPago() {
             var container = document.getElementById('divPagos');
             var div = document.createElement('div');
             div.className = 'ea-pago-row';
+            div.setAttribute('data-estado', estado);
+            div.setAttribute('data-monto-bs', (montoBs || 0).toFixed(2));
             div.innerHTML =
                 '<span>' + metodo + ' <span style="font-size:10px;color:#999">(' + tipoPago + ')</span></span>' +
                 '<span style="font-weight:500">' + textoMonto + '</span>' +
@@ -1068,6 +1072,7 @@ function guardarPago() {
             var radioDefault = document.querySelector('input[name="pagoEstado"][value="PENDIENTE"]');
             if (radioDefault) radioDefault.checked = true;
             document.getElementById('divConversion').style.display = 'none';
+            actualizarChecklist();
         } else {
             alert('Error al guardar pago: ' + (data.msg || 'desconocido'));
         }
@@ -1081,7 +1086,12 @@ function eliminarPago(pagoId, btn) {
     formData.append('pago_id', pagoId);
     fetch('Entrega_Handler.ashx', { method: 'POST', body: formData })
     .then(function(r) { return r.json(); })
-    .then(function(data) { if (data.ok) { btn.closest('.ea-pago-row').remove(); } });
+    .then(function(data) {
+        if (data.ok) {
+            btn.closest('.ea-pago-row').remove();
+            actualizarChecklist();
+        }
+    });
 }
 
 // ============================================================
@@ -1155,6 +1165,8 @@ function calcularSubtotal() {
     // Pago total (siempre en Bs - es el monto del pedido)
     var pagoTotal = document.getElementById('pagoTotal');
     if (pagoTotal) pagoTotal.innerHTML = fmtBs(total) + convAside(total);
+
+    actualizarChecklist();
 }
 
 // ============================================================
@@ -1353,8 +1365,147 @@ function cerrarModalValidacion() {
     if (overlay) overlay.parentNode.removeChild(overlay);
 }
 function verificarLink() { location.reload(); }
-function crearPedidoWC() { alert('Crear pedido en WooCommerce - En desarrollo'); }
-function seleccionarSucursalRecojo(id) { guardarCampo('sucursal_id', id); }
+function crearPedidoWC() {
+    var resultado = validarChecklistCompleto();
+    if (!resultado.ok) {
+        mostrarToast('Faltan datos: ' + resultado.faltantes.join(', '), 'warn');
+        return;
+    }
+    mostrarToast('Validacion OK. La integracion con WooCommerce se implementara en el siguiente paso.', 'ok');
+}
+function seleccionarSucursalRecojo(id) {
+    guardarCampo('sucursal_id', id);
+    actualizarChecklist();
+}
+
+// ============================================================
+// CHECKLIST DE CAMPOS OBLIGATORIOS
+// Valida los 7 grupos requeridos para enviar el pedido a WooCommerce.
+// Habilita / deshabilita el boton "Crear pedido en WC" y actualiza
+// el contador "X de 7" y la lista visual #divChecklist.
+// ============================================================
+function validarChecklistCompleto() {
+    var items = [];
+
+    // 1. Productos: al menos uno
+    var cantProductos = document.querySelectorAll('.ea-prod-row').length;
+    items.push({ etiqueta: 'Producto(s)', ok: cantProductos > 0 });
+
+    // 2. Ciudad
+    var ddCiudad = document.getElementById('ddCiudad');
+    var ciudadId = ddCiudad ? (parseInt(ddCiudad.value) || 0) : 0;
+    items.push({ etiqueta: 'Ciudad', ok: ciudadId > 0 });
+
+    // 3. Datos de entrega (varia segun tipo)
+    var radioDom = document.querySelector('input[name="tipoEntrega"][value="DOMICILIO"]');
+    var esDomicilio = !!(radioDom && radioDom.checked);
+    var entregaOk = false;
+    var etiquetaEntrega = '';
+    if (esDomicilio) {
+        var hdZ = document.getElementById('hdZonaId');
+        var zonaId = hdZ ? (parseInt(hdZ.value) || 0) : 0;
+        var txDir = document.getElementById('txDireccion');
+        var direccion = txDir ? (txDir.value || '').trim() : '';
+        entregaOk = (zonaId > 0 && direccion !== '');
+        etiquetaEntrega = 'Zona y direccion';
+    } else {
+        var sucSel = document.querySelector('#fieldsRecojo .ea-sucursal-card.selected');
+        entregaOk = !!sucSel;
+        etiquetaEntrega = 'Sucursal de recojo';
+    }
+    items.push({ etiqueta: etiquetaEntrega, ok: entregaOk });
+
+    // 4. Fecha
+    var txF = document.getElementById('txFecha');
+    var fecha = txF ? (txF.value || '').trim() : '';
+    items.push({ etiqueta: 'Fecha de entrega', ok: fecha !== '' });
+
+    // 5. Horario
+    var ddS = document.getElementById('ddSlot');
+    var slotId = ddS ? (parseInt(ddS.value) || 0) : 0;
+    items.push({ etiqueta: 'Horario', ok: slotId > 0 });
+
+    // 6. Receptor (nombre + celular)
+    var txR = document.getElementById('txReceptor');
+    var txC = document.getElementById('txCelularReceptor');
+    var receptor = txR ? (txR.value || '').trim() : '';
+    var celular = txC ? (txC.value || '').trim() : '';
+    items.push({ etiqueta: 'Receptor (nombre y celular)', ok: receptor !== '' && celular !== '' });
+
+    // 7. Pago verificado por monto total (suma data-monto-bs de filas VERIFICADO)
+    var sumaVerificado = 0;
+    document.querySelectorAll('.ea-pago-row[data-estado="VERIFICADO"]').forEach(function(row) {
+        var m = parseFloat(row.getAttribute('data-monto-bs')) || 0;
+        sumaVerificado += m;
+    });
+    var totalPedido = leerTotalPedidoBs();
+    // Tolerancia de 0.01 Bs por redondeo
+    var pagoOk = (totalPedido > 0 && (sumaVerificado + 0.01) >= totalPedido);
+    var etiquetaPago = 'Pago verificado';
+    if (totalPedido <= 0) {
+        etiquetaPago = 'Pago verificado (sin total calculado)';
+    } else if (!pagoOk) {
+        etiquetaPago = 'Pago verificado (Bs ' + sumaVerificado.toFixed(2) + ' de ' + totalPedido.toFixed(2) + ')';
+    }
+    items.push({ etiqueta: etiquetaPago, ok: pagoOk });
+
+    var faltantes = [];
+    items.forEach(function(it) { if (!it.ok) faltantes.push(it.etiqueta); });
+
+    return { ok: faltantes.length === 0, items: items, faltantes: faltantes };
+}
+
+// Lee el total en Bs desde #resTotal (texto "Bs 123.45" o "Bs 123.45 (USD ...)")
+function leerTotalPedidoBs() {
+    var sp = document.getElementById('resTotal');
+    if (!sp) return 0;
+    var txt = sp.textContent || sp.innerText || '';
+    var m = txt.match(/Bs\s+([\d,]+\.?\d*)/);
+    if (!m) return 0;
+    return parseFloat(m[1].replace(/,/g, '')) || 0;
+}
+
+// Pinta el checklist visual, actualiza contador y habilita / deshabilita el boton
+function actualizarChecklist() {
+    var resultado = validarChecklistCompleto();
+    var total = resultado.items.length;
+    var okCount = total - resultado.faltantes.length;
+
+    // Contador "X de N"
+    var spanCont = document.getElementById('spanCamposConteo');
+    if (spanCont) {
+        spanCont.textContent = okCount + ' de ' + total;
+        spanCont.className = 'ea-badge ' + (okCount === total ? 'ea-badge-success' : 'ea-badge-warning');
+    }
+
+    // Lista de items
+    var divCheck = document.getElementById('divChecklist');
+    if (divCheck) {
+        var html = '';
+        resultado.items.forEach(function(it) {
+            var icono = it.ok
+                ? '<i class="ti ti-circle-check" style="font-size:14px;color:#2E7D32" aria-hidden="true"></i>'
+                : '<i class="ti ti-circle" style="font-size:14px;color:#bbb" aria-hidden="true"></i>';
+            var color = it.ok ? '#333' : '#999';
+            html += '<div class="ea-check-item" style="color:' + color + '">' + icono + ' ' + escapeHtml(it.etiqueta) + '</div>';
+        });
+        divCheck.innerHTML = html;
+    }
+
+    // Boton + texto explicativo
+    var btn = document.getElementById('btnCrearWC');
+    var txt = document.getElementById('txtEstadoWC');
+    if (btn) btn.disabled = !resultado.ok;
+    if (txt) {
+        if (resultado.ok) {
+            txt.textContent = 'Todo listo para crear el pedido en WooCommerce';
+            txt.style.color = '#2E7D32';
+        } else {
+            txt.textContent = 'Faltan ' + resultado.faltantes.length + ' campo(s) obligatorio(s)';
+            txt.style.color = '#999';
+        }
+    }
+}
 
 // ============================================================
 // UTILIDADES
@@ -1421,6 +1572,7 @@ document.addEventListener('DOMContentLoaded', function() {
     filtrarZonas(true);  // preservar zona pre-cargada del servidor
     actualizarConteoItems();
     calcularSubtotal();
+    actualizarChecklist();
 });
 </script>
 </asp:Content>
