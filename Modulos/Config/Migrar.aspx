@@ -197,6 +197,74 @@
     <asp:Button ID="btnPostBack" runat="server" Text=""
                 Style="display:none" OnClick="btnAccion_Click"/>
 
+    <!-- ============================================================ -->
+    <!-- PANEL: MIGRACION 2 (simple, todo en VB con transaccion)     -->
+    <!-- ============================================================ -->
+    <div class="panel" style="margin-bottom:16px;border:2px solid var(--rosa);border-radius:12px">
+        <div class="panel-head" style="background:linear-gradient(135deg,#fce4ec,#fff)">
+            <div class="panel-title">
+                <i class="ti ti-rocket"></i> Migracion 2 — Simple y Directa
+            </div>
+        </div>
+        <div class="panel-body">
+
+            <div style="background:#fff8e1;border-left:3px solid #ffa726;padding:10px 12px;border-radius:6px;margin-bottom:14px;font-size:13px;line-height:1.5">
+                <strong><i class="ti ti-info-circle"></i> Esta migracion solo actualiza:</strong>
+                <ul style="margin:6px 0 0 0;padding-left:20px">
+                    <li>Fecha de entrega y horario (slot)</li>
+                    <li>Estado y datos de pago</li>
+                    <li>Productos del pedido (line_items)</li>
+                </ul>
+                <strong style="color:#388e3c">NO toca</strong> direccion, receptor, dedicatoria, ni nada que hayas editado manualmente en SISCONBOL.
+            </div>
+
+            <!-- Filtros -->
+            <div class="grid-2" style="margin-bottom:14px">
+                <div class="form-group">
+                    <label class="form-label">Desde fecha</label>
+                    <input type="date" id="txM2Desde" class="form-control" value="<%=FechaDesdeDefault%>" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Hasta fecha</label>
+                    <input type="date" id="txM2Hasta" class="form-control" value="<%=FechaHastaDefault%>" />
+                </div>
+            </div>
+
+            <div style="display:flex;gap:8px;margin-bottom:14px">
+                <button type="button" class="btn btn-sm btn-primary" onclick="m2Descargar()">
+                    <i class="ti ti-cloud-download"></i> 1. Descargar pedidos
+                </button>
+                <button type="button" class="btn btn-sm" id="btnM2Procesar" onclick="m2ProcesarTodos()" disabled>
+                    <i class="ti ti-play"></i> 2. Procesar todos
+                </button>
+            </div>
+
+            <!-- Lista de pedidos descargados -->
+            <div id="divM2Lista" style="display:none;margin-bottom:14px">
+                <div style="font-size:12px;color:#757575;margin-bottom:6px">
+                    <span id="m2Contador">0</span> pedidos cargados — click en uno para procesarlo solo
+                </div>
+                <div id="m2TablaPedidos" style="max-height:260px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px"></div>
+            </div>
+
+            <!-- Log -->
+            <div id="divM2Log" style="display:none;margin-top:12px">
+                <div style="font-size:11px;font-weight:500;color:#757575;margin-bottom:4px">
+                    <i class="ti ti-terminal"></i> Log:
+                </div>
+                <div id="m2LogContenido"
+                     style="font-family:monospace;font-size:11px;background:#0d1117;color:#c9d1d9;
+                            border-radius:6px;padding:8px 10px;max-height:300px;overflow-y:auto;
+                            line-height:1.6">
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Hidden field para enviar un pedido individual al servidor -->
+    <input type="hidden" id="hdM2PedidoJson" name="hdM2PedidoJson" value=""/>
+
 </asp:Content>
 
 <asp:Content ID="Content4" ContentPlaceHolderID="ScriptsContent" runat="server">
@@ -403,6 +471,11 @@ var _pedAct        = 0;
 var _pedSin        = 0;
 var _pedErr        = 0;
 var _pedProcesados = 0;
+// Control del flujo postback-asincrono
+var _respuestaServidor  = false;
+var _timeoutChequeo     = null;
+var _resultadoPendiente = null;
+var _estadoRestaurado   = false;
 
 // --- Persistencia para sobrevivir al postback ---
 function guardarEstadoPed() {
@@ -459,6 +532,8 @@ function migrarPedidos() {
     // Reset
     _pedPag = 0; _pedTotalPags = 0; _pedTotal = 0; _pedDetener = false;
     _pedIns = 0; _pedAct = 0; _pedSin = 0; _pedErr = 0; _pedProcesados = 0;
+    _estadoRestaurado = true;  // arrancamos desde cero — no hay nada que restaurar
+    _resultadoPendiente = null;
     limpiarEstadoPed();
 
     document.getElementById('divProgresoPed').style.display = '';
@@ -579,6 +654,15 @@ function detenerMigracion() {
 }
 
 function recibirResultadoLote(ins, act, sin, err, detalle) {
+    // Si el estado aun no se restauro, encolamos y procesamos despues
+    if (!_estadoRestaurado) {
+        _resultadoPendiente = { ins: ins, act: act, sin: sin, err: err, detalle: detalle };
+        return;
+    }
+    // Marcamos que el servidor respondio y cancelamos el chequeo de timeout
+    _respuestaServidor = true;
+    if (_timeoutChequeo) { clearTimeout(_timeoutChequeo); _timeoutChequeo = null; }
+
     _pedIns += ins;
     _pedAct += act;
     _pedSin += sin;
@@ -642,46 +726,235 @@ function actualizarBarra(pct, txt) {
     if (t) t.textContent = txt;
 }
 
+// Flag para saber si el servidor respondio (recibirResultadoLote fue llamado)
+function programarChequeoServidor() {
+    // Esperamos hasta 90 segundos a que el servidor responda
+    // Si en ese tiempo no llego ningun recibirResultadoLote(), asumimos error
+    if (_timeoutChequeo) clearTimeout(_timeoutChequeo);
+    _respuestaServidor = false;
+    _timeoutChequeo = setTimeout(function() {
+        if (!_respuestaServidor) {
+            agregarLog('AVISO: Servidor no respondio en 90s en pagina ' + _pedPag + ' — saltando', 'warn');
+            _pedErr += 1;
+            actualizarContadores();
+            _pedPag++;
+            guardarEstadoPed();
+            procesarSiguienteLote();
+        }
+    }, 90000);
+}
+
 // Auto-restauracion al cargar la pagina (despues de postback)
+function ejecutarRestauracion() {
+    if (restaurarEstadoPed()) {
+        _estadoRestaurado = true;
+        // Si ya habia llegado un resultado del servidor, procesarlo ahora
+        if (_resultadoPendiente) {
+            var r = _resultadoPendiente;
+            _resultadoPendiente = null;
+            recibirResultadoLote(r.ins, r.act, r.sin, r.err, r.detalle);
+        } else {
+            // No habia respuesta — programar chequeo de timeout
+            programarChequeoServidor();
+        }
+    }
+}
+
 if (typeof window !== 'undefined') {
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() {
-            if (restaurarEstadoPed()) {
-                // El estado se restauro — esperamos que el servidor llame recibirResultadoLote()
-                // Si por alguna razon no llega (error en server), forzamos siguiente lote
-                setTimeout(function() {
-                    // Si despues de 2 segundos no se llamo a recibirResultadoLote, asumimos error
-                    var ahora = (_pedIns + _pedAct + _pedSin + _pedErr);
-                    if (ahora === _pedProcesados) {
-                        // No hubo cambios desde el guardado → el servidor probablemente fallo en silencio
-                        agregarLog('AVISO: Servidor no respondio en pagina ' + _pedPag + ' — saltando', 'warn');
-                        _pedErr += 1;
-                        actualizarContadores();
-                        _pedPag++;
-                        procesarSiguienteLote();
-                    }
-                }, 3000);
-            }
-        });
+        document.addEventListener('DOMContentLoaded', ejecutarRestauracion);
     } else {
-        if (restaurarEstadoPed()) {
-            setTimeout(function() {
-                var ahora = (_pedIns + _pedAct + _pedSin + _pedErr);
-                if (ahora === _pedProcesados) {
-                    agregarLog('AVISO: Servidor no respondio en pagina ' + _pedPag + ' — saltando', 'warn');
-                    _pedErr += 1;
-                    actualizarContadores();
-                    _pedPag++;
-                    procesarSiguienteLote();
-                }
-            }, 3000);
-        }
+        ejecutarRestauracion();
     }
 }
 
 // Llamada legacy
 function mostrarResultadoPed(ins, act, sin, err) {
     recibirResultadoLote(ins, act, sin, err, '');
+}
+
+// =============================================================
+//  MIGRACION 2 — Simple y directa
+//  Descarga pedidos, los lista, procesa uno por uno
+// =============================================================
+var _m2Pedidos = [];   // pedidos descargados
+var _m2Idx     = 0;    // pedido actualmente procesandose
+var _m2Procesando = false;
+
+function m2Log(msg, tipo) {
+    var log = document.getElementById('m2LogContenido');
+    if (!log) return;
+    document.getElementById('divM2Log').style.display = '';
+    var colores = { 'ok':'#7ee787', 'error':'#ff7b72', 'warn':'#ffa657', 'info':'#79c0ff', 'dim':'#8b949e' };
+    var color = colores[tipo] || '#c9d1d9';
+    var hora  = new Date().toLocaleTimeString('es-BO', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    var linea = document.createElement('div');
+    linea.style.color = color;
+    linea.textContent = '[' + hora + '] ' + msg;
+    log.appendChild(linea);
+    log.scrollTop = log.scrollHeight;
+}
+
+function m2Descargar() {
+    if (!validarCredenciales()) return;
+    var desde = document.getElementById('txM2Desde').value;
+    var hasta = document.getElementById('txM2Hasta').value;
+    if (!desde || !hasta) { mostrarAlerta('Selecciona el rango de fechas', 'warn'); return; }
+
+    _m2Pedidos = [];
+    _m2Idx = 0;
+    document.getElementById('m2TablaPedidos').innerHTML = '';
+    document.getElementById('divM2Lista').style.display = '';
+    document.getElementById('btnM2Procesar').disabled = true;
+    m2Log('Descargando pedidos entre ' + desde + ' y ' + hasta + '...', 'info');
+
+    m2DescargarPagina(desde, hasta, 1);
+}
+
+function m2DescargarPagina(desde, hasta, pagina) {
+    var params = '?per_page=100&page=' + pagina +
+        '&after=' + desde + 'T00:00:00&before=' + hasta + 'T23:59:59&status=any';
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', WC_URL + '/wp-json/wc/v3/orders' + params, true);
+    xhr.setRequestHeader('Authorization', authHeader());
+    xhr.timeout = 60000;
+    xhr.onload = function() {
+        if (xhr.status !== 200) {
+            m2Log('ERROR HTTP ' + xhr.status + ' al descargar pagina ' + pagina, 'error');
+            return;
+        }
+        try {
+            var lote = JSON.parse(xhr.responseText);
+            if (!lote || lote.length === 0) {
+                m2FinDescarga();
+                return;
+            }
+            for (var i = 0; i < lote.length; i++) _m2Pedidos.push(lote[i]);
+            m2Log('Pagina ' + pagina + ': ' + lote.length + ' pedidos descargados (total ' + _m2Pedidos.length + ')', 'dim');
+            if (lote.length === 100) {
+                m2DescargarPagina(desde, hasta, pagina + 1);
+            } else {
+                m2FinDescarga();
+            }
+        } catch (e) {
+            m2Log('ERROR parseando pagina ' + pagina + ': ' + e.message, 'error');
+        }
+    };
+    xhr.onerror   = function() { m2Log('ERROR de red descargando pagina ' + pagina, 'error'); };
+    xhr.ontimeout = function() { m2Log('TIMEOUT descargando pagina ' + pagina, 'error'); };
+    xhr.send();
+}
+
+function m2FinDescarga() {
+    m2Log('Descarga completada: ' + _m2Pedidos.length + ' pedidos', 'ok');
+    document.getElementById('m2Contador').textContent = _m2Pedidos.length;
+    document.getElementById('btnM2Procesar').disabled = (_m2Pedidos.length === 0);
+    m2RenderTabla();
+}
+
+function m2RenderTabla() {
+    var tbl = '<table style="width:100%;font-size:12px;border-collapse:collapse">' +
+              '<thead style="position:sticky;top:0;background:#f5f5f5"><tr>' +
+              '<th style="padding:6px;text-align:left">#</th>' +
+              '<th style="padding:6px;text-align:left">WC#</th>' +
+              '<th style="padding:6px;text-align:left">Estado WC</th>' +
+              '<th style="padding:6px;text-align:left">Receptor</th>' +
+              '<th style="padding:6px;text-align:left">Fecha</th>' +
+              '<th style="padding:6px;text-align:left">Hora</th>' +
+              '<th style="padding:6px;text-align:left">Pago</th>' +
+              '<th style="padding:6px;text-align:right">Total</th>' +
+              '<th style="padding:6px;text-align:center">Accion</th>' +
+              '</tr></thead><tbody>';
+    for (var i = 0; i < _m2Pedidos.length; i++) {
+        var p = _m2Pedidos[i];
+        var meta = {};
+        if (p.meta_data) {
+            for (var j = 0; j < p.meta_data.length; j++) meta[p.meta_data[j].key] = p.meta_data[j].value;
+        }
+        var nombre = (p.shipping.first_name + ' ' + p.shipping.last_name).trim() || (p.billing.first_name + ' ' + p.billing.last_name).trim();
+        var fechaE = meta['delivery_date'] || meta['pickup_date'] || '';
+        var horaE  = meta['delivery_time'] || meta['pickup_time'] || '';
+        tbl += '<tr id="m2row' + i + '" style="border-top:1px solid #eee">' +
+               '<td style="padding:6px">' + (i+1) + '</td>' +
+               '<td style="padding:6px"><strong>' + p.id + '</strong></td>' +
+               '<td style="padding:6px">' + (p.status || '') + '</td>' +
+               '<td style="padding:6px">' + nombre + '</td>' +
+               '<td style="padding:6px">' + fechaE + '</td>' +
+               '<td style="padding:6px">' + horaE + '</td>' +
+               '<td style="padding:6px">' + (p.payment_method_title || p.payment_method || '') + '</td>' +
+               '<td style="padding:6px;text-align:right">' + p.total + '</td>' +
+               '<td style="padding:6px;text-align:center">' +
+                  '<button type="button" class="btn btn-sm" onclick="m2ProcesarUno(' + i + ')" style="padding:2px 8px;font-size:11px">Procesar</button>' +
+               '</td></tr>';
+    }
+    tbl += '</tbody></table>';
+    document.getElementById('m2TablaPedidos').innerHTML = tbl;
+}
+
+function m2MarcarFila(idx, estado, texto) {
+    var row = document.getElementById('m2row' + idx);
+    if (!row) return;
+    var color = estado === 'ok' ? '#e8f5e9' : (estado === 'error' ? '#ffebee' : '#fff3e0');
+    row.style.background = color;
+    var btn = row.querySelector('button');
+    if (btn) btn.textContent = texto;
+}
+
+function m2ProcesarUno(idx) {
+    if (_m2Procesando) { mostrarAlerta('Espera al pedido actual', 'warn'); return; }
+    _m2Procesando = true;
+    _m2Idx = idx;
+    var p = _m2Pedidos[idx];
+    m2Log('Procesando WC#' + p.id + '...', 'info');
+    m2MarcarFila(idx, 'warn', 'Procesando...');
+
+    try {
+        var json = JSON.stringify(p);
+        setHd('hdM2PedidoJson', json);
+        setHd('hdAccion', 'M2_PROCESAR_UNO');
+        document.getElementById('<%= btnPostBack.ClientID %>').click();
+    } catch(e) {
+        m2Log('ERROR enviando WC#' + p.id + ': ' + e.message, 'error');
+        m2MarcarFila(idx, 'error', 'Error');
+        _m2Procesando = false;
+    }
+}
+
+function m2ProcesarTodos() {
+    if (_m2Pedidos.length === 0) return;
+    _m2Idx = 0;
+    m2Log('=== INICIANDO PROCESAMIENTO DE ' + _m2Pedidos.length + ' PEDIDOS ===', 'info');
+    m2ProcesarSiguiente();
+}
+
+function m2ProcesarSiguiente() {
+    if (_m2Idx >= _m2Pedidos.length) {
+        m2Log('=== FIN: ' + _m2Pedidos.length + ' pedidos procesados ===', 'ok');
+        _m2Procesando = false;
+        return;
+    }
+    m2ProcesarUno(_m2Idx);
+}
+
+// Callback del servidor — se llama desde EscribirJS en .vb
+function m2RecibirResultado(idx, accion, mensaje) {
+    var p = _m2Pedidos[idx];
+    if (accion === 'INSERT' || accion === 'UPDATE') {
+        m2Log('WC#' + p.id + ' → ' + accion + ' OK. ' + (mensaje || ''), 'ok');
+        m2MarcarFila(idx, 'ok', accion);
+    } else if (accion === 'NOOP') {
+        m2Log('WC#' + p.id + ' → sin cambios (' + (mensaje || '') + ')', 'dim');
+        m2MarcarFila(idx, 'ok', 'Sin cambios');
+    } else {
+        m2Log('WC#' + p.id + ' → ERROR: ' + (mensaje || '?'), 'error');
+        m2MarcarFila(idx, 'error', 'Error');
+    }
+    _m2Procesando = false;
+    _m2Idx++;
+    // Continuar procesando si estamos en modo "todos"
+    if (_m2Idx < _m2Pedidos.length) {
+        setTimeout(m2ProcesarSiguiente, 200);
+    }
 }
 </script>
 </asp:Content>

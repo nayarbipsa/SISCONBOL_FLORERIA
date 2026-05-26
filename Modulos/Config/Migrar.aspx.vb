@@ -64,6 +64,7 @@ Partial Public Class Modulos_Config_Migrar
             Case "INSERTAR_CATEGORIAS" : ProcesarCategorias()
             Case "INSERTAR_PRODUCTOS"  : ProcesarProductos()
             Case "INSERTAR_PEDIDOS"    : ProcesarPedidos()
+            Case "M2_PROCESAR_UNO"     : M2_ProcesarUno()
         End Select
     End Sub
 
@@ -166,10 +167,14 @@ Partial Public Class Modulos_Config_Migrar
                 EscribirJS("rpedVacio", "agregarLog('No se encontraron pedidos validos en el rango indicado.', 'warn'); finalizarMigracion(false);")
                 Return
             End If
-            Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
-                conn.Open()
-                For Each p In pedidos
-                    Try
+
+            ' IMPORTANTE: una conexion POR PEDIDO, no por lote
+            ' Asi cada pedido libera sus locks inmediatamente al cerrar la conexion
+            ' y si uno falla no afecta a los demas
+            For Each p In pedidos
+                Try
+                    Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
+                        conn.Open()
                         Dim r As String = InsertarPedido(conn, p, uid, ip)
                         If r = "I" Then ins += 1
                         If r = "A" Then act += 1
@@ -178,13 +183,13 @@ Partial Public Class Modulos_Config_Migrar
                             err += 1
                             errDetalle.Append("WC#" & p.WcId & " ")
                         End If
-                    Catch ex As Exception
-                        err += 1
-                        errDetalle.Append("WC#" & p.WcId & "(" & ex.Message.Substring(0, Math.Min(60, ex.Message.Length)) & ") ")
-                        Log("InsertarPedido", "ERROR en pedido WcId=" & p.WcId & ": " & ex.Message)
-                    End Try
-                Next
-            End Using
+                    End Using
+                Catch ex As Exception
+                    err += 1
+                    errDetalle.Append("WC#" & p.WcId & "(" & ex.Message.Substring(0, Math.Min(60, ex.Message.Length)) & ") ")
+                    Log("InsertarPedido", "ERROR en pedido WcId=" & p.WcId & ": " & ex.Message)
+                End Try
+            Next
         Catch ex As Exception
             Log("ProcesarPedidos", "ERROR CRITICO: " & ex.Message)
             EscribirJS("rpedExc", "agregarLog('ERROR CRITICO: " & EscJs(ex.Message) & "', 'error'); finalizarMigracion(true);")
@@ -198,12 +203,474 @@ Partial Public Class Modulos_Config_Migrar
     End Sub
 
     ' ============================================================
+    ' M2_ProcesarUno - Migracion 2
+    '   Procesa UN solo pedido (JSON viene en hdM2PedidoJson)
+    '   Todo dentro de una transaccion: si algo falla → ROLLBACK
+    '   Solo actualiza: fecha_entrega, slot_id, datos de pago, line_items
+    '   NO toca: direccion, receptor, dedicatoria, etc.
+    ' ============================================================
+    Private Sub M2_ProcesarUno()
+        Dim json As String = Request.Form("hdM2PedidoJson")
+        Dim uid  As Integer = SesionHelper.ObtenerUsuarioId(HttpContext.Current)
+        Dim ip   As String  = If(Request.UserHostAddress Is Nothing, "", Request.UserHostAddress)
+
+        If json Is Nothing OrElse json.Trim() = "" Then
+            EscribirJS("m2err", "m2RecibirResultado(_m2Idx, 'ERROR', 'No se recibieron datos del pedido');")
+            Return
+        End If
+
+        Dim wcId As Integer = 0
+        Dim msj  As String  = ""
+        Dim accion As String = "ERROR"
+
+        Try
+            ' --- Parsear el JSON usando el parser existente, esperando 1 solo pedido ---
+            Dim pedidos As List(Of WcPedido) = ParsearPedidos("[" & json & "]")
+            If pedidos Is Nothing OrElse pedidos.Count = 0 Then
+                EscribirJS("m2err", "m2RecibirResultado(_m2Idx, 'ERROR', 'JSON no se pudo parsear');")
+                Return
+            End If
+
+            Dim p As WcPedido = pedidos(0)
+            wcId = p.WcId
+
+            ' --- TRANSACCION ABIERTA ---
+            Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
+                conn.Open()
+                Dim tx As SqlTransaction = conn.BeginTransaction("MigracionUno")
+                Try
+                    ' Llamar al worker
+                    Dim res As M2Resultado = M2_UpsertPedido(conn, tx, p, uid, ip)
+                    accion = res.Accion
+                    msj    = res.Mensaje
+
+                    If accion = "ERROR" Then
+                        tx.Rollback()
+                        Log("M2_ProcesarUno", "WC#" & wcId & " ROLLBACK: " & msj)
+                    Else
+                        tx.Commit()
+                        Log("M2_ProcesarUno", "WC#" & wcId & " COMMIT (" & accion & ") - " & msj)
+                    End If
+
+                Catch ex As Exception
+                    Try : tx.Rollback() : Catch : End Try
+                    accion = "ERROR"
+                    msj    = ex.Message
+                    Log("M2_ProcesarUno", "WC#" & wcId & " ROLLBACK por excepcion: " & ex.Message)
+                End Try
+            End Using
+
+        Catch ex As Exception
+            accion = "ERROR"
+            msj    = ex.Message
+            Log("M2_ProcesarUno", "WC#" & wcId & " ERROR CRITICO: " & ex.Message)
+        End Try
+
+        EscribirJS("m2res", "m2RecibirResultado(_m2Idx, '" & accion & "', '" & EscJs(msj) & "');")
+    End Sub
+
+    ' ============================================================
+    ' M2_UpsertPedido - logica de UPSERT dentro de la transaccion
+    '   Si NO existe → INSERT completo
+    '   Si SI existe → UPDATE solo de: fecha_entrega, slot_id,
+    '                  campos wc_* de pago, y reemplazo de line_items
+    ' ============================================================
+    Private Function M2_UpsertPedido(conn As SqlConnection, tx As SqlTransaction,
+                                      p As WcPedido, uid As Integer, ip As String) As M2Resultado
+        Dim res As New M2Resultado()
+        res.Accion = "ERROR"
+
+        Try
+            ' --- 1. Buscar si existe ---
+            Dim pedidoId As Integer = 0
+            Using chk As New SqlCommand("SELECT pedido_id FROM FLORERIA_Pedido WHERE wc_order_id=@w", conn, tx)
+                chk.CommandTimeout = 30
+                chk.Parameters.AddWithValue("@w", p.WcId)
+                Dim r As Object = chk.ExecuteScalar()
+                If r IsNot Nothing AndAlso Not IsDBNull(r) Then pedidoId = CInt(r)
+            End Using
+
+            ' --- 2. Detectar pickup vs delivery y calcular fecha/slot ---
+            Dim esPickup As Boolean = (p.DeliveryType.ToLower().Trim() = "pickup")
+            Dim horarioStr As String = If(esPickup, p.PickupTime, p.DeliveryTime)
+            Dim fechaParam As Object = DBNull.Value
+            If esPickup AndAlso p.PickupDate.HasValue Then
+                fechaParam = p.PickupDate.Value
+            ElseIf p.DeliveryDate.HasValue Then
+                fechaParam = p.DeliveryDate.Value
+            ElseIf p.PickupDate.HasValue Then
+                fechaParam = p.PickupDate.Value
+            End If
+            ' Si fechaParam es DBNull, NO se actualizara (preserva lo de BD)
+
+            ' --- 3. Resolver slot_id (crear si no existe) ---
+            Dim slotId As Object = DBNull.Value
+            If horarioStr <> "" Then
+                slotId = M2_ObtenerOCrearSlot(conn, tx, horarioStr)
+            End If
+
+            ' --- 4. Calcular datos de pago ---
+            Dim methodLower As String = p.PaymentMethod.ToLower().Trim()
+            Dim titleLower  As String = p.PaymentMethodTitle.ToLower().Trim()
+            Dim esPayPal    As Boolean = methodLower.Contains("paypal") OrElse methodLower.Contains("ppcp") OrElse titleLower.Contains("paypal")
+            Dim esLibelula  As Boolean = methodLower.Contains("libelula") OrElse titleLower.Contains("libelula")
+            Dim estadoPago  As String = "PENDIENTE"
+            If p.WcDatePaid.HasValue AndAlso (esPayPal OrElse esLibelula) Then estadoPago = "PAGADO"
+
+            ' --- 5. INSERT o UPDATE ---
+            If pedidoId > 0 Then
+                ' ============================================================
+                ' UPDATE — SOLO fecha, slot, datos WC de pago, estado_pago
+                ' NO TOCA: direccion, receptor, dedicatoria, nota, tipo_entrega
+                ' ============================================================
+                Using upd As New SqlCommand(
+                    "UPDATE FLORERIA_Pedido SET " &
+                    "  fecha_entrega           = ISNULL(@fe, fecha_entrega), " &
+                    "  slot_id                 = ISNULL(@sid, slot_id), " &
+                    "  wc_order_status         = @wst, " &
+                    "  wc_date_paid            = @wdp, " &
+                    "  wc_date_modified        = @wdm, " &
+                    "  wc_payment_method       = @wpm, " &
+                    "  wc_payment_method_title = @wpmt, " &
+                    "  wc_sync_estado          = 'SINCRONIZADO', " &
+                    "  wc_sync_fecha           = GETDATE(), " &
+                    "  estado_pago             = @ep, " &
+                    "  modificado_por          = @u, " &
+                    "  modificado_en           = GETDATE() " &
+                    "WHERE pedido_id = @pid", conn, tx)
+                    upd.CommandTimeout = 30
+                    upd.Parameters.AddWithValue("@fe",   fechaParam)
+                    upd.Parameters.AddWithValue("@sid",  slotId)
+                    upd.Parameters.AddWithValue("@wst",  If(p.WcOrderStatus <> "",     CObj(p.WcOrderStatus),       DBNull.Value))
+                    upd.Parameters.AddWithValue("@wdp",  If(p.WcDatePaid.HasValue,     CObj(p.WcDatePaid.Value),    DBNull.Value))
+                    upd.Parameters.AddWithValue("@wdm",  If(p.WcDateModified.HasValue, CObj(p.WcDateModified.Value),DBNull.Value))
+                    upd.Parameters.AddWithValue("@wpm",  If(p.PaymentMethod <> "",     CObj(p.PaymentMethod),       DBNull.Value))
+                    upd.Parameters.AddWithValue("@wpmt", If(p.PaymentMethodTitle <> "",CObj(p.PaymentMethodTitle),  DBNull.Value))
+                    upd.Parameters.AddWithValue("@ep",   estadoPago)
+                    upd.Parameters.AddWithValue("@u",    uid)
+                    upd.Parameters.AddWithValue("@pid",  pedidoId)
+                    upd.ExecuteNonQuery()
+                End Using
+
+                ' --- Sincronizar pago en FLORERIA_Pedido_Pago ---
+                M2_SincronizarPago(conn, tx, pedidoId, p, estadoPago, esPayPal, esLibelula, uid)
+
+                ' --- Reemplazar line_items (borrar y volver a insertar) ---
+                M2_ReemplazarDetalles(conn, tx, pedidoId, p)
+
+                res.Accion = "UPDATE"
+                res.Mensaje = "fecha=" & If(fechaParam Is DBNull.Value, "(no tocada)", DirectCast(fechaParam, DateTime).ToString("yyyy-MM-dd")) &
+                              ", slot_id=" & If(slotId Is DBNull.Value, "(no tocado)", slotId.ToString()) &
+                              ", estado_pago=" & estadoPago
+            Else
+                ' ============================================================
+                ' INSERT — pedido nuevo
+                ' ============================================================
+                Dim tipoEntrega As String = If(esPickup, "RECOJO_SUCURSAL", "DOMICILIO")
+                Dim direccion   As String = If(esPickup, "Recojo en sucursal", If(p.Direccion <> "", p.Direccion, "Sin direccion"))
+                Dim receptor    As String = If(p.ShippingNombre <> "", p.ShippingNombre, If(p.BillingNombre <> "", (p.BillingNombre & " " & p.BillingApellidos).Trim(), "Sin nombre"))
+                Dim celular     As String = If(p.ShippingPhone <> "", p.ShippingPhone, If(p.TelefonoRecibe <> "", p.TelefonoRecibe, If(p.BillingPhone <> "", p.BillingPhone, "00000000")))
+                Dim fechaInsert As DateTime
+                If fechaParam Is DBNull.Value Then
+                    fechaInsert = If(p.WcDateCreated.HasValue, p.WcDateCreated.Value.Date, DateTime.Now.Date)
+                Else
+                    fechaInsert = DirectCast(fechaParam, DateTime)
+                End If
+
+                Dim zonaId As Object = DBNull.Value
+                If Not esPickup AndAlso p.ShippingState <> "" Then
+                    zonaId = M2_ObtenerOCrearZona(conn, tx, p.ShippingState)
+                End If
+
+                ' Totales y USD
+                Dim tasa     As Decimal = If(p.WoocsRate > 0, p.WoocsRate, 0D)
+                Dim totalUsd As Decimal = If(tasa > 0, Math.Round(p.TotalBs    * tasa, 2), 0D)
+                Dim envioUsd As Decimal = If(tasa > 0, Math.Round(p.EnvioBs    * tasa, 2), 0D)
+                Dim descUsd  As Decimal = If(tasa > 0, Math.Round(p.DescuentoBs * tasa, 2), 0D)
+
+                Dim nuevoPedidoId As Integer = 0
+                Using ins As New SqlCommand(
+                    "INSERT INTO FLORERIA_Pedido(" &
+                    "  codigo, wc_order_id, wc_order_number, wc_order_url, wc_order_status, " &
+                    "  wc_date_paid, wc_date_modified, wc_payment_method, wc_payment_method_title, " &
+                    "  receptor_nombre, receptor_celular, ciudad_id, zona_id, tipo_entrega, " &
+                    "  direccion, fecha_entrega, slot_id, " &
+                    "  dedicatoria, firma_tarjeta, tipo_ocacion, nota_floreria, gps, observaciones, " &
+                    "  total_bs, total_usd, envio_bs, envio_usd, descuento_bs, descuento_usd, " &
+                    "  estado_pago, estado_operativo, wc_sync_estado, wc_sync_fecha, " &
+                    "  creado_por, creado_en) " &
+                    "VALUES(" &
+                    "  'TEMP', @wid, @wnum, @wurl, @wst, " &
+                    "  @wdp, @wdm, @wpm, @wpmt, " &
+                    "  @rn, @rc, 1, @zid, @te, " &
+                    "  @dir, @fe, @sid, " &
+                    "  @ded, @fir, @toc, @nf, @gps, @obs, " &
+                    "  @tbs, @tusd, @ebs, @eusd, @dbs, @dusd, " &
+                    "  @ep, 'PENDIENTE', 'SINCRONIZADO', GETDATE(), " &
+                    "  @u, GETDATE()); SELECT SCOPE_IDENTITY();", conn, tx)
+                    ins.CommandTimeout = 30
+                    ins.Parameters.AddWithValue("@wid",  p.WcId)
+                    ins.Parameters.AddWithValue("@wnum", If(p.WcOrderNumber <> "",      CObj(p.WcOrderNumber),       DBNull.Value))
+                    ins.Parameters.AddWithValue("@wurl", If(p.WcOrderKey <> "",         CObj(p.WcOrderKey),          DBNull.Value))
+                    ins.Parameters.AddWithValue("@wst",  If(p.WcOrderStatus <> "",      CObj(p.WcOrderStatus),       DBNull.Value))
+                    ins.Parameters.AddWithValue("@wdp",  If(p.WcDatePaid.HasValue,      CObj(p.WcDatePaid.Value),    DBNull.Value))
+                    ins.Parameters.AddWithValue("@wdm",  If(p.WcDateModified.HasValue,  CObj(p.WcDateModified.Value),DBNull.Value))
+                    ins.Parameters.AddWithValue("@wpm",  If(p.PaymentMethod <> "",      CObj(p.PaymentMethod),       DBNull.Value))
+                    ins.Parameters.AddWithValue("@wpmt", If(p.PaymentMethodTitle <> "", CObj(p.PaymentMethodTitle),  DBNull.Value))
+                    ins.Parameters.AddWithValue("@rn",   receptor.Substring(0, Math.Min(200, receptor.Length)))
+                    ins.Parameters.AddWithValue("@rc",   celular.Substring(0, Math.Min(20, celular.Length)))
+                    ins.Parameters.AddWithValue("@zid",  zonaId)
+                    ins.Parameters.AddWithValue("@te",   tipoEntrega)
+                    ins.Parameters.AddWithValue("@dir",  direccion.Substring(0, Math.Min(300, direccion.Length)))
+                    ins.Parameters.AddWithValue("@fe",   fechaInsert)
+                    ins.Parameters.AddWithValue("@sid",  slotId)
+                    ins.Parameters.AddWithValue("@ded",  If(p.MensajeTarjeta <> "", CObj(p.MensajeTarjeta), DBNull.Value))
+                    ins.Parameters.AddWithValue("@fir",  If(p.FirmaTarjeta <> "",   CObj(p.FirmaTarjeta),   DBNull.Value))
+                    ins.Parameters.AddWithValue("@toc",  MapearTipoOcacion(p.TipoOcacion))
+                    ins.Parameters.AddWithValue("@nf",   If(p.NotaFloreria <> "",   CObj(p.NotaFloreria),   DBNull.Value))
+                    ins.Parameters.AddWithValue("@gps",  If(p.Gps <> "",            CObj(p.Gps),            DBNull.Value))
+                    ins.Parameters.AddWithValue("@obs",  If(p.Observaciones <> "",  CObj(p.Observaciones),  DBNull.Value))
+                    ins.Parameters.AddWithValue("@tbs",  p.TotalBs)
+                    ins.Parameters.AddWithValue("@tusd", totalUsd)
+                    ins.Parameters.AddWithValue("@ebs",  p.EnvioBs)
+                    ins.Parameters.AddWithValue("@eusd", envioUsd)
+                    ins.Parameters.AddWithValue("@dbs",  p.DescuentoBs)
+                    ins.Parameters.AddWithValue("@dusd", descUsd)
+                    ins.Parameters.AddWithValue("@ep",   estadoPago)
+                    ins.Parameters.AddWithValue("@u",    uid)
+                    Dim r As Object = ins.ExecuteScalar()
+                    nuevoPedidoId = Convert.ToInt32(r)
+                End Using
+
+                ' Generar codigo definitivo
+                Dim codigo As String = "PED-" & Right("000000" & nuevoPedidoId.ToString(), 6)
+                Using updCod As New SqlCommand("UPDATE FLORERIA_Pedido SET codigo=@c WHERE pedido_id=@pid", conn, tx)
+                    updCod.CommandTimeout = 30
+                    updCod.Parameters.AddWithValue("@c",   codigo)
+                    updCod.Parameters.AddWithValue("@pid", nuevoPedidoId)
+                    updCod.ExecuteNonQuery()
+                End Using
+
+                ' Insertar detalles
+                M2_ReemplazarDetalles(conn, tx, nuevoPedidoId, p)
+
+                ' Insertar pago
+                M2_SincronizarPago(conn, tx, nuevoPedidoId, p, estadoPago, esPayPal, esLibelula, uid)
+
+                res.Accion = "INSERT"
+                res.Mensaje = "pedido_id=" & nuevoPedidoId & ", codigo=" & codigo & ", estado_pago=" & estadoPago
+            End If
+
+        Catch ex As Exception
+            res.Accion = "ERROR"
+            res.Mensaje = ex.Message
+        End Try
+
+        Return res
+    End Function
+
+    ' ============================================================
+    ' M2_ReemplazarDetalles - borra los detalles existentes y los re-inserta desde WC
+    ' ============================================================
+    Private Sub M2_ReemplazarDetalles(conn As SqlConnection, tx As SqlTransaction, pedId As Integer, p As WcPedido)
+        ' Borrar detalles existentes
+        Using del As New SqlCommand("DELETE FROM FLORERIA_Pedido_Detalle WHERE pedido_id=@pid", conn, tx)
+            del.CommandTimeout = 30
+            del.Parameters.AddWithValue("@pid", pedId)
+            del.ExecuteNonQuery()
+        End Using
+
+        ' Insertar los nuevos
+        Dim tasa As Decimal = If(p.WoocsRate > 0, p.WoocsRate, 0D)
+        For Each item As WcPedidoItem In p.Items
+            Try
+                Dim prodId As Object = DBNull.Value
+                If item.WcProductId > 0 Then
+                    Using pCmd As New SqlCommand("SELECT producto_id FROM FLORERIA_Producto WHERE wc_product_id=@w", conn, tx)
+                        pCmd.CommandTimeout = 10
+                        pCmd.Parameters.AddWithValue("@w", item.WcProductId)
+                        Dim pObj As Object = pCmd.ExecuteScalar()
+                        If pObj IsNot Nothing AndAlso Not IsDBNull(pObj) Then prodId = pObj
+                    End Using
+                End If
+
+                Dim precioUsd As Decimal = If(tasa > 0, Math.Round(item.PrecioUnitarioBs * tasa, 2), 0D)
+                Dim subBs     As Decimal = item.PrecioUnitarioBs * item.Cantidad
+                Dim subUsd    As Decimal = If(tasa > 0, Math.Round(subBs * tasa, 2), 0D)
+
+                Using ins As New SqlCommand(
+                    "INSERT INTO FLORERIA_Pedido_Detalle(" &
+                    "  pedido_id, producto_id, wc_line_item_id, es_personalizado, " &
+                    "  nombre_producto, cantidad, precio_unitario_bs, precio_unitario_usd, " &
+                    "  subtotal_bs, subtotal_usd, personalizacion, creado_en) " &
+                    "VALUES(@pid, @prod, @wli, 0, @nom, @cant, @pbs, @pusd, @sbs, @susd, @per, GETDATE())", conn, tx)
+                    ins.CommandTimeout = 30
+                    ins.Parameters.AddWithValue("@pid",  pedId)
+                    ins.Parameters.AddWithValue("@prod", prodId)
+                    ins.Parameters.AddWithValue("@wli",  If(item.WcLineItemId > 0, CObj(item.WcLineItemId), DBNull.Value))
+                    ins.Parameters.AddWithValue("@nom",  item.NombreProducto.Substring(0, Math.Min(200, item.NombreProducto.Length)))
+                    ins.Parameters.AddWithValue("@cant", item.Cantidad)
+                    ins.Parameters.AddWithValue("@pbs",  item.PrecioUnitarioBs)
+                    ins.Parameters.AddWithValue("@pusd", precioUsd)
+                    ins.Parameters.AddWithValue("@sbs",  subBs)
+                    ins.Parameters.AddWithValue("@susd", subUsd)
+                    ins.Parameters.AddWithValue("@per",  If(item.Personalizacion <> "", CObj(item.Personalizacion), DBNull.Value))
+                    ins.ExecuteNonQuery()
+                End Using
+            Catch ex As Exception
+                Log("M2_ReemplazarDetalles", "WC#" & p.WcId & " ERROR en item '" & item.NombreProducto & "': " & ex.Message)
+                Throw  ' propagar para que la transaccion haga rollback
+            End Try
+        Next
+    End Sub
+
+    ' ============================================================
+    ' M2_SincronizarPago - upsert del registro de pago
+    ' ============================================================
+    Private Sub M2_SincronizarPago(conn As SqlConnection, tx As SqlTransaction, pedId As Integer,
+                                    p As WcPedido, estadoPago As String,
+                                    esPayPal As Boolean, esLibelula As Boolean, uid As Integer)
+        Dim metodo As String = MapearMetodoPago(p.PaymentMethod, p.PaymentMethodTitle)
+        Dim referencia As String = If(p.PaypalOrderId <> "", p.PaypalOrderId,
+                                       If(p.WcOrderNumber <> "", "WC#" & p.WcOrderNumber, ""))
+        Dim estadoReg As String = "PENDIENTE"
+        If p.WcDatePaid.HasValue AndAlso (esPayPal OrElse esLibelula) Then estadoReg = "VERIFICADO"
+
+        ' Calcular total USD
+        Dim tasa As Decimal = If(p.WoocsRate > 0, p.WoocsRate, 0D)
+        Dim totalUsd As Decimal = If(tasa > 0, Math.Round(p.TotalBs * tasa, 2), 0D)
+
+        ' Existe ya un pago?
+        Dim existePago As Boolean = False
+        Using chk As New SqlCommand("SELECT COUNT(1) FROM FLORERIA_Pedido_Pago WHERE pedido_id=@pid", conn, tx)
+            chk.CommandTimeout = 30
+            chk.Parameters.AddWithValue("@pid", pedId)
+            existePago = (CInt(chk.ExecuteScalar()) > 0)
+        End Using
+
+        If existePago Then
+            ' UPDATE: actualizar metodo, monto, referencia. Estado solo si mejora.
+            Using upd As New SqlCommand(
+                "UPDATE FLORERIA_Pedido_Pago SET " &
+                "  metodo_pago = @mp, " &
+                "  monto_bs    = @mbs, " &
+                "  monto_usd   = @musd, " &
+                "  referencia  = ISNULL(@ref, referencia), " &
+                "  estado      = CASE WHEN @est='VERIFICADO' THEN 'VERIFICADO' ELSE estado END " &
+                "WHERE pedido_id = @pid", conn, tx)
+                upd.CommandTimeout = 30
+                upd.Parameters.AddWithValue("@mp",   metodo)
+                upd.Parameters.AddWithValue("@mbs",  p.TotalBs)
+                upd.Parameters.AddWithValue("@musd", totalUsd)
+                upd.Parameters.AddWithValue("@ref",  If(referencia <> "", CObj(referencia), DBNull.Value))
+                upd.Parameters.AddWithValue("@est",  estadoReg)
+                upd.Parameters.AddWithValue("@pid",  pedId)
+                upd.ExecuteNonQuery()
+            End Using
+        Else
+            ' INSERT
+            Using ins As New SqlCommand(
+                "INSERT INTO FLORERIA_Pedido_Pago(" &
+                "  pedido_id, tipo_pago, metodo_pago, monto_bs, monto_usd, " &
+                "  referencia, estado, observaciones, creado_por, creado_en) " &
+                "VALUES(@pid, 'TOTAL', @mp, @mbs, @musd, @ref, @est, @obs, @u, GETDATE())", conn, tx)
+                ins.CommandTimeout = 30
+                ins.Parameters.AddWithValue("@pid",  pedId)
+                ins.Parameters.AddWithValue("@mp",   metodo)
+                ins.Parameters.AddWithValue("@mbs",  p.TotalBs)
+                ins.Parameters.AddWithValue("@musd", totalUsd)
+                ins.Parameters.AddWithValue("@ref",  If(referencia <> "", CObj(referencia), DBNull.Value))
+                ins.Parameters.AddWithValue("@est",  estadoReg)
+                ins.Parameters.AddWithValue("@obs",  If(p.WcOrderStatus <> "", CObj("WC: " & p.WcOrderStatus), DBNull.Value))
+                ins.Parameters.AddWithValue("@u",    uid)
+                ins.ExecuteNonQuery()
+            End Using
+        End If
+    End Sub
+
+    ' ============================================================
+    ' M2_ObtenerOCrearSlot - usa la conexion/transaccion actual
+    ' ============================================================
+    Private Function M2_ObtenerOCrearSlot(conn As SqlConnection, tx As SqlTransaction, horario As String) As Object
+        ' Buscar existente
+        Using cmd As New SqlCommand("SELECT slot_id FROM FLORERIA_Slot_Horario WHERE wc_slot_value=@v", conn, tx)
+            cmd.CommandTimeout = 10
+            cmd.Parameters.AddWithValue("@v", horario)
+            Dim r As Object = cmd.ExecuteScalar()
+            If r IsNot Nothing AndAlso Not IsDBNull(r) Then Return CInt(r)
+        End Using
+
+        ' Parsear horas "HH:mm - HH:mm"
+        Dim partes() As String = horario.Split(New String() {" - "}, StringSplitOptions.RemoveEmptyEntries)
+        Dim hi As String = If(partes.Length > 0, partes(0).Trim() & ":00", "00:00:00")
+        Dim hf As String = If(partes.Length > 1, partes(1).Trim() & ":00", "00:00:00")
+        Dim dur As Integer = 180
+        Try
+            Dim dtI As DateTime = DateTime.Parse(partes(0).Trim())
+            Dim dtF As DateTime = DateTime.Parse(partes(1).Trim())
+            dur = CInt((dtF - dtI).TotalMinutes)
+            If dur <= 0 Then dur = 180
+        Catch
+        End Try
+
+        ' Crear slot activo=0
+        Using ins As New SqlCommand(
+            "INSERT INTO FLORERIA_Slot_Horario(ciudad_id, etiqueta, hora_inicio, hora_fin, duracion_minutos, " &
+            "recargo_bs, es_express, activo, orden_display, wc_slot_value, creado_en) " &
+            "VALUES(1, @etq, @hi, @hf, @dur, 0, 0, 0, 0, @wv, GETDATE()); SELECT SCOPE_IDENTITY();", conn, tx)
+            ins.CommandTimeout = 30
+            ins.Parameters.AddWithValue("@etq", horario)
+            ins.Parameters.AddWithValue("@hi",  hi)
+            ins.Parameters.AddWithValue("@hf",  hf)
+            ins.Parameters.AddWithValue("@dur", dur)
+            ins.Parameters.AddWithValue("@wv",  horario)
+            Return CInt(ins.ExecuteScalar())
+        End Using
+    End Function
+
+    ' ============================================================
+    ' M2_ObtenerOCrearZona - usa la conexion/transaccion actual
+    ' ============================================================
+    Private Function M2_ObtenerOCrearZona(conn As SqlConnection, tx As SqlTransaction, codigo As String) As Object
+        Using cmd As New SqlCommand("SELECT zona_id FROM FLORERIA_Zona WHERE wc_zone_code=@c", conn, tx)
+            cmd.CommandTimeout = 10
+            cmd.Parameters.AddWithValue("@c", codigo)
+            Dim r As Object = cmd.ExecuteScalar()
+            If r IsNot Nothing AndAlso Not IsDBNull(r) Then Return CInt(r)
+        End Using
+
+        Dim cod As String = codigo.Substring(0, Math.Min(20, codigo.Length))
+        Using chkCod As New SqlCommand("SELECT COUNT(1) FROM FLORERIA_Zona WHERE codigo=@c AND ciudad_id=1", conn, tx)
+            chkCod.CommandTimeout = 10
+            chkCod.Parameters.AddWithValue("@c", cod)
+            If CInt(chkCod.ExecuteScalar()) > 0 Then cod = codigo & "_WC"
+        End Using
+
+        Using ins As New SqlCommand(
+            "INSERT INTO FLORERIA_Zona(ciudad_id, nombre, codigo, tipo, activo, orden_display, wc_zone_code, creado_en) " &
+            "VALUES(1, @nom, @cod, 'DELIVERY', 0, 0, @wc, GETDATE()); SELECT SCOPE_IDENTITY();", conn, tx)
+            ins.CommandTimeout = 30
+            ins.Parameters.AddWithValue("@nom", codigo.Substring(0, Math.Min(150, codigo.Length)))
+            ins.Parameters.AddWithValue("@cod", cod)
+            ins.Parameters.AddWithValue("@wc",  codigo)
+            Return CInt(ins.ExecuteScalar())
+        End Using
+    End Function
+
+    Private Class M2Resultado
+        Public Property Accion As String = ""
+        Public Property Mensaje As String = ""
+    End Class
+
+
+    ' ============================================================
     ' InsertarCat
     ' ============================================================
     Private Function InsertarCat(conn As SqlConnection, c As WcCat, uid As Integer) As String
         Try
             Dim existe As Object = Nothing
             Using cmd As New SqlCommand("SELECT categoria_id FROM FLORERIA_Categoria WHERE wc_category_id=@w", conn)
+                    cmd.CommandTimeout = 30
                 cmd.Parameters.AddWithValue("@w", c.WcId)
                 Using dr As SqlDataReader = cmd.ExecuteReader()
                     If dr.Read() Then existe = dr("categoria_id")
@@ -228,6 +695,7 @@ Partial Public Class Modulos_Config_Migrar
                     "UPDATE FLORERIA_Categoria SET nombre=@n,descripcion=@d,padre_id=@p,slug=@s," &
                     "wc_sync_estado='SINCRONIZADO',modificado_por=@u,modificado_en=GETDATE() " &
                     "WHERE categoria_id=@id AND (nombre<>@n OR ISNULL(descripcion,'')<>ISNULL(@d,''))", conn)
+                    cmd.CommandTimeout = 30
                     cmd.Parameters.AddWithValue("@n", c.Nombre)
                     cmd.Parameters.AddWithValue("@d", descP)
                     cmd.Parameters.AddWithValue("@p", padre)
@@ -240,6 +708,7 @@ Partial Public Class Modulos_Config_Migrar
                 Using cmd As New SqlCommand(
                     "INSERT INTO FLORERIA_Categoria(padre_id,nombre,descripcion,slug,orden,wc_category_id,wc_sync_estado,creado_por)" &
                     " VALUES(@p,@n,@d,@s,0,@w,'SINCRONIZADO',@u)", conn)
+                    cmd.CommandTimeout = 30
                     cmd.Parameters.AddWithValue("@p", padre)
                     cmd.Parameters.AddWithValue("@n", c.Nombre)
                     cmd.Parameters.AddWithValue("@d", descP)
@@ -296,6 +765,7 @@ Partial Public Class Modulos_Config_Migrar
                     "precio_promo_bs=@pp,promo_desde=@pd,promo_hasta=@ph,destacado=@de,menu_order=@mo," &
                     "imagen_url=@iu,wc_sync_estado='SINCRONIZADO',modificado_por=@u,modificado_en=GETDATE() " &
                     "WHERE producto_id=@id", conn)
+                cmd.CommandTimeout = 30
                     cmd.Parameters.AddWithValue("@n",  p.Nombre)
                     cmd.Parameters.AddWithValue("@d",  descP)
                     cmd.Parameters.AddWithValue("@pb", pb)
@@ -315,6 +785,7 @@ Partial Public Class Modulos_Config_Migrar
                     "INSERT INTO FLORERIA_Producto(sku,nombre,descripcion,precio_base_bs,precio_promo_bs," &
                     "promo_desde,promo_hasta,destacado,menu_order,imagen_url,wc_product_id,wc_sync_estado,creado_por)" &
                     " VALUES(@sk,@n,@d,@pb,@pp,@pd,@ph,@de,@mo,@iu,@w,'SINCRONIZADO',@u)", conn)
+                    cmd.CommandTimeout = 30
                     cmd.Parameters.AddWithValue("@sk", sk)
                     cmd.Parameters.AddWithValue("@n",  p.Nombre)
                     cmd.Parameters.AddWithValue("@d",  descP)
@@ -338,29 +809,19 @@ Partial Public Class Modulos_Config_Migrar
     End Function
 
     ' ============================================================
-    ' InsertarPedido — UPSERT
-    '   INSERT si es nuevo, UPDATE si ya existe
-    '   prepedido_id = NULL (SP alterado para aceptarlo)
+    ' InsertarPedido — UPSERT via SPs
+    '   Llama 3 SPs:
+    '     1. sp_Pedido_UpsertWC          → INSERT o UPDATE del pedido
+    '     2. sp_Pedido_Detalle_SyncWC    → por cada producto del pedido
+    '     3. sp_Pedido_Pago_UpsertWC     → registro de pago
+    '
+    '   Los SPs validan todos los CHECK constraints internamente
+    '   y nunca se cuelgan (XACT_ABORT ON)
     '   Retorna: I=insertado, A=actualizado, E=error
     ' ============================================================
     Private Function InsertarPedido(conn As SqlConnection, p As WcPedido, uid As Integer, ip As String) As String
         Try
-            ' --- 1. Buscar si ya existe por wc_order_id ---
-            Dim pedidoExistenteId As Integer = 0
-            Dim wcDateModBD       As DateTime = DateTime.MinValue
-            Using chk As New SqlCommand(
-                "SELECT pedido_id, ISNULL(wc_date_modified, '1900-01-01') AS wc_date_modified " &
-                "FROM FLORERIA_Pedido WHERE wc_order_id=@w", conn)
-                chk.Parameters.AddWithValue("@w", p.WcId)
-                Using dr As SqlDataReader = chk.ExecuteReader()
-                    If dr.Read() Then
-                        pedidoExistenteId = CInt(dr("pedido_id"))
-                        wcDateModBD       = CDate(dr("wc_date_modified"))
-                    End If
-                End Using
-            End Using
-
-            ' --- 2. Calcular totales (necesario tanto para INSERT como UPDATE) ---
+            ' --- 1. Calcular totales ---
             Dim totalBs  As Decimal = p.TotalBs
             Dim envioBs  As Decimal = p.EnvioBs
             Dim descBs   As Decimal = p.DescuentoBs
@@ -369,205 +830,126 @@ Partial Public Class Modulos_Config_Migrar
             Dim envioUsd As Decimal = If(tasa > 0, Math.Round(envioBs * tasa, 2), 0D)
             Dim descUsd  As Decimal = If(tasa > 0, Math.Round(descBs  * tasa, 2), 0D)
 
-            ' --- 3. Calcular estado_pago y estado_operativo ---
-            ' PayPal/Tarjeta con date_paid confirmado = PAGADO automatico
-            ' QR/Libelula con status processing/completed/entregado = PAGADO
-            ' Todo lo demas = PENDIENTE (verificacion manual)
+            ' --- 2. Calcular estado_pago ---
+            ' SOLO PAGADO si PayPal o Libelula con date_paid confirmado
             Dim estadoPago As String = "PENDIENTE"
-            Dim statusLower As String = p.WcOrderStatus.ToLower().Trim()
-            If p.WcDatePaid.HasValue Then
-                estadoPago = "PAGADO"
-            ElseIf statusLower = "processing" OrElse statusLower = "completed" OrElse statusLower = "entregado" Then
+            Dim methodLower As String = p.PaymentMethod.ToLower().Trim()
+            Dim titleLower  As String = p.PaymentMethodTitle.ToLower().Trim()
+            Dim esPayPal    As Boolean = methodLower.Contains("paypal") OrElse methodLower.Contains("ppcp") OrElse titleLower.Contains("paypal")
+            Dim esLibelula  As Boolean = methodLower.Contains("libelula") OrElse titleLower.Contains("libelula")
+            If p.WcDatePaid.HasValue AndAlso (esPayPal OrElse esLibelula) Then
                 estadoPago = "PAGADO"
             End If
-
-            ' estado_operativo basado en status WC
-            '   entregado/completed → ENTREGADO
-            '   processing          → PREPARANDO (pago confirmado, en proceso)
-            '   on-hold/pending     → PENDIENTE
-            '   failed/cancelled    → FALLIDO
+            ' estado_operativo: SIEMPRE PENDIENTE para pedidos migrados
             Dim estadoOperativo As String = "PENDIENTE"
-            Select Case statusLower
-                Case "entregado", "completed"     : estadoOperativo = "ENTREGADO"
-                Case "processing"                  : estadoOperativo = "PREPARANDO"
-                Case "failed", "cancelled"         : estadoOperativo = "FALLIDO"
-                Case Else                          : estadoOperativo = "PENDIENTE"
-            End Select
 
-            ' ============================================================
-            ' CASO A: PEDIDO YA EXISTE → ACTUALIZAR solo campos de WC
-            ' NO se pisan: receptor_nombre, direccion, fecha_entrega,
-            '              slot_id, zona_id, nota_floreria, dedicatoria
-            '              (pueden haber sido editados en SISCONBOL)
-            ' ============================================================
-            If pedidoExistenteId > 0 Then
-                ' Solo actualizar si WC tiene una version mas nueva
-                Dim wcDateMod As DateTime = If(p.WcDateModified.HasValue, p.WcDateModified.Value, DateTime.MinValue)
-                If wcDateMod <= wcDateModBD Then
-                    Log("InsertarPedido", "WC#" & p.WcId & " sin cambios desde ultima sync - omitido")
-                    Return "S"
-                End If
-
-                Try
-                    Using upd As New SqlCommand(
-                        "UPDATE FLORERIA_Pedido SET " &
-                        "  wc_order_status=@wst, " &
-                        "  wc_date_paid=@wdp, " &
-                        "  wc_payment_method=@wpm, " &
-                        "  wc_payment_method_title=@wpmt, " &
-                        "  wc_date_modified=@wdm, " &
-                        "  wc_order_number=@wnum, " &
-                        "  wc_order_url=@wurl, " &
-                        "  wc_sync_estado='SINCRONIZADO', " &
-                        "  wc_sync_fecha=GETDATE(), " &
-                        "  estado_pago=@ep, " &
-                        "  estado_operativo=@eo, " &
-                        "  total_bs=@tbs, total_usd=@tusd, " &
-                        "  envio_bs=@ebs, envio_usd=@eusd, " &
-                        "  descuento_bs=@dbs, descuento_usd=@dusd, " &
-                        "  observaciones=@obs, " &
-                        "  gps=ISNULL(gps, @gps), " &
-                        "  modificado_por=@u, modificado_en=GETDATE() " &
-                        "WHERE pedido_id=@pid", conn)
-                        upd.Parameters.AddWithValue("@wst",  If(p.WcOrderStatus <> "",         CObj(p.WcOrderStatus),          DBNull.Value))
-                        upd.Parameters.AddWithValue("@wdp",  If(p.WcDatePaid.HasValue,          CObj(p.WcDatePaid.Value),        DBNull.Value))
-                        upd.Parameters.AddWithValue("@wpm",  If(p.PaymentMethod <> "",          CObj(p.PaymentMethod),           DBNull.Value))
-                        upd.Parameters.AddWithValue("@wpmt", If(p.PaymentMethodTitle <> "",     CObj(p.PaymentMethodTitle),      DBNull.Value))
-                        upd.Parameters.AddWithValue("@wdm",  If(p.WcDateModified.HasValue,      CObj(p.WcDateModified.Value),    DBNull.Value))
-                        upd.Parameters.AddWithValue("@wnum", If(p.WcOrderNumber <> "",          CObj(p.WcOrderNumber),           DBNull.Value))
-                        upd.Parameters.AddWithValue("@wurl", If(p.WcOrderKey <> "",             CObj(p.WcOrderKey),              DBNull.Value))
-                        upd.Parameters.AddWithValue("@ep",   estadoPago)
-                        upd.Parameters.AddWithValue("@eo",   estadoOperativo)
-                        upd.Parameters.AddWithValue("@tbs",  totalBs)
-                        upd.Parameters.AddWithValue("@tusd", totalUsd)
-                        upd.Parameters.AddWithValue("@ebs",  envioBs)
-                        upd.Parameters.AddWithValue("@eusd", envioUsd)
-                        upd.Parameters.AddWithValue("@dbs",  descBs)
-                        upd.Parameters.AddWithValue("@dusd", descUsd)
-                        upd.Parameters.AddWithValue("@obs",  If(p.Observaciones <> "",          CObj(p.Observaciones),           DBNull.Value))
-                        upd.Parameters.AddWithValue("@gps",  If(p.Gps <> "",                   CObj(p.Gps),                     DBNull.Value))
-                        upd.Parameters.AddWithValue("@u",    uid)
-                        upd.Parameters.AddWithValue("@pid",  pedidoExistenteId)
-                        upd.ExecuteNonQuery()
-                    End Using
-                    Log("InsertarPedido", "WC#" & p.WcId & " ACTUALIZADO → pedido_id=" & pedidoExistenteId & " estado=" & estadoPago)
-                Catch ex As Exception
-                    Log("InsertarPedido", "WC#" & p.WcId & " - ERROR en UPDATE: " & ex.Message)
-                    Return "E"
-                End Try
-
-                ' Actualizar pago si cambio a PAGADO
-                ActualizarOInsertarPago(conn, pedidoExistenteId, p, totalBs, totalUsd, estadoPago, uid)
-
-                Return "A"
+            ' --- 3. Detectar PICKUP vs DOMICILIO ---
+            Dim esPickup As Boolean = (p.DeliveryType.ToLower().Trim() = "pickup")
+            Dim tipoEntrega As String = If(esPickup, "RECOJO_SUCURSAL", "DOMICILIO")
+            Dim direccion   As String = If(esPickup, "Recojo en sucursal", If(p.Direccion <> "", p.Direccion, "Sin direccion"))
+            ' --- Fecha entrega ---
+            ' Prioridad: pickup_date (si es pickup) > delivery_date > date_created
+            ' IMPORTANTE: si WC NO mando ninguna fecha relevante, se envia NULL
+            ' al SP. El SP detecta NULL y NO pisa la fecha que ya este en la BD.
+            Dim fechaEntregaParam As Object = DBNull.Value
+            If esPickup AndAlso p.PickupDate.HasValue Then
+                fechaEntregaParam = p.PickupDate.Value
+            ElseIf p.DeliveryDate.HasValue Then
+                fechaEntregaParam = p.DeliveryDate.Value
+            ElseIf p.PickupDate.HasValue Then
+                fechaEntregaParam = p.PickupDate.Value
+            ElseIf p.WcDateCreated.HasValue Then
+                ' Solo si es un pedido NUEVO (no tiene fecha en BD), usar date_created como fallback
+                ' El SP se encarga de no pisar la fecha si ya existe
+                fechaEntregaParam = p.WcDateCreated.Value.Date
             End If
+            ' Si fechaEntregaParam queda en DBNull, el SP lo manejara
 
-            ' ============================================================
-            ' CASO B: PEDIDO NUEVO → INSERTAR
-            ' ============================================================
-
-            ' --- 4. Resolver slot_id ---
+            ' --- 4. Resolver slot y zona ---
+            Dim horarioSlot As String = If(esPickup, p.PickupTime, p.DeliveryTime)
             Dim slotId As Object = DBNull.Value
-            If p.DeliveryTime <> "" Then
-                slotId = ObtenerOCrearSlot(conn, p.DeliveryTime)
-                If slotId Is DBNull.Value Then
-                    Log("InsertarPedido", "WC#" & p.WcId & " - No se pudo resolver slot '" & p.DeliveryTime & "'")
-                End If
-            End If
+            If horarioSlot <> "" Then slotId = ObtenerOCrearSlot(conn, horarioSlot)
 
-            ' --- 5. Resolver zona_id ---
             Dim zonaId As Object = DBNull.Value
-            If p.ShippingState <> "" Then
-                zonaId = ObtenerOCrearZona(conn, p.ShippingState)
-                If zonaId Is DBNull.Value Then
-                    Log("InsertarPedido", "WC#" & p.WcId & " - No se pudo resolver zona '" & p.ShippingState & "'")
-                End If
-            End If
+            If Not esPickup AndAlso p.ShippingState <> "" Then zonaId = ObtenerOCrearZona(conn, p.ShippingState)
 
-            ' --- 6. Crear Pedido via SP ---
+            ' --- 5. Calcular receptor ---
             Dim receptorNombre As String = If(p.ShippingNombre <> "", p.ShippingNombre, If(p.BillingNombre <> "", (p.BillingNombre & " " & p.BillingApellidos).Trim(), "Sin nombre"))
             Dim receptorCel    As String = If(p.ShippingPhone <> "", p.ShippingPhone, If(p.TelefonoRecibe <> "", p.TelefonoRecibe, If(p.BillingPhone <> "", p.BillingPhone, "00000000")))
-            Dim direccion      As String = If(p.Direccion <> "", p.Direccion, "Sin direccion")
-            Dim fechaEntrega   As DateTime = If(p.DeliveryDate.HasValue, p.DeliveryDate.Value, DateTime.Now.AddDays(1))
 
+            ' --- 6. Llamar sp_Pedido_UpsertWC ---
             Dim pedId As Integer = 0
-            Try
-                Using cmd As New SqlCommand("FLORERIA_sp_Pedido_Crear", conn)
-                    cmd.CommandType = CommandType.StoredProcedure
-                    cmd.Parameters.AddWithValue("@receptor_nombre",  receptorNombre.Substring(0, Math.Min(200, receptorNombre.Length)))
-                    cmd.Parameters.AddWithValue("@receptor_celular", receptorCel.Substring(0, Math.Min(20, receptorCel.Length)))
-                    cmd.Parameters.AddWithValue("@ciudad_id",        1)
-                    cmd.Parameters.AddWithValue("@zona_id",          zonaId)
-                    cmd.Parameters.AddWithValue("@tipo_entrega",     "DOMICILIO")
-                    cmd.Parameters.AddWithValue("@direccion",        direccion.Substring(0, Math.Min(300, direccion.Length)))
-                    cmd.Parameters.AddWithValue("@fecha_entrega",    fechaEntrega)
-                    cmd.Parameters.AddWithValue("@slot_id",          slotId)
-                    cmd.Parameters.AddWithValue("@dedicatoria",      If(p.MensajeTarjeta <> "", CObj(p.MensajeTarjeta), DBNull.Value))
-                    cmd.Parameters.AddWithValue("@firma_tarjeta",    If(p.FirmaTarjeta <> "",   CObj(p.FirmaTarjeta),   DBNull.Value))
-                    cmd.Parameters.AddWithValue("@wc_order_id",      p.WcId)
-                    cmd.Parameters.AddWithValue("@tipo_ocacion",     MapearTipoOcacion(p.TipoOcacion))
-                    cmd.Parameters.AddWithValue("@nota_floreria",    If(p.NotaFloreria <> "",   CObj(p.NotaFloreria),   DBNull.Value))
-                    cmd.Parameters.AddWithValue("@creado_por",       uid)
-                    cmd.Parameters.AddWithValue("@ip",               ip)
-                    Dim pPedId As New SqlParameter("@pedido_id", SqlDbType.Int)         With {.Direction = ParameterDirection.Output}
-                    Dim pCodP  As New SqlParameter("@codigo",    SqlDbType.VarChar, 20) With {.Direction = ParameterDirection.Output}
-                    cmd.Parameters.Add(pPedId) : cmd.Parameters.Add(pCodP)
-                    cmd.ExecuteNonQuery()
-                    pedId = Convert.ToInt32(pPedId.Value)
-                End Using
-            Catch ex As Exception
-                Log("InsertarPedido", "WC#" & p.WcId & " - ERROR en SP Pedido_Crear: " & ex.Message)
+            Dim accion As String = ""
+            Dim mensajeError As String = ""
+
+            Using cmd As New SqlCommand("FLORERIA_sp_Pedido_UpsertWC", conn)
+                cmd.CommandType = CommandType.StoredProcedure
+                cmd.CommandTimeout = 30
+
+                cmd.Parameters.AddWithValue("@wc_order_id",             p.WcId)
+                cmd.Parameters.AddWithValue("@wc_order_number",         If(p.WcOrderNumber <> "",      CObj(p.WcOrderNumber),      DBNull.Value))
+                cmd.Parameters.AddWithValue("@wc_order_key",            If(p.WcOrderKey <> "",         CObj(p.WcOrderKey),         DBNull.Value))
+                cmd.Parameters.AddWithValue("@wc_order_status",         If(p.WcOrderStatus <> "",      CObj(p.WcOrderStatus),      DBNull.Value))
+                cmd.Parameters.AddWithValue("@wc_date_paid",            If(p.WcDatePaid.HasValue,      CObj(p.WcDatePaid.Value),   DBNull.Value))
+                cmd.Parameters.AddWithValue("@wc_date_modified",        If(p.WcDateModified.HasValue,  CObj(p.WcDateModified.Value), DBNull.Value))
+                cmd.Parameters.AddWithValue("@wc_payment_method",       If(p.PaymentMethod <> "",      CObj(p.PaymentMethod),      DBNull.Value))
+                cmd.Parameters.AddWithValue("@wc_payment_method_title", If(p.PaymentMethodTitle <> "", CObj(p.PaymentMethodTitle), DBNull.Value))
+
+                cmd.Parameters.AddWithValue("@receptor_nombre",  receptorNombre.Substring(0, Math.Min(200, receptorNombre.Length)))
+                cmd.Parameters.AddWithValue("@receptor_celular", receptorCel.Substring(0, Math.Min(20, receptorCel.Length)))
+                cmd.Parameters.AddWithValue("@ciudad_id",        CShort(1))
+                cmd.Parameters.AddWithValue("@zona_id",          zonaId)
+                cmd.Parameters.AddWithValue("@slot_id",          slotId)
+                cmd.Parameters.AddWithValue("@tipo_entrega",     tipoEntrega)
+                cmd.Parameters.AddWithValue("@direccion",        direccion.Substring(0, Math.Min(300, direccion.Length)))
+                cmd.Parameters.AddWithValue("@fecha_entrega",    fechaEntregaParam)
+                cmd.Parameters.AddWithValue("@dedicatoria",      If(p.MensajeTarjeta <> "", CObj(p.MensajeTarjeta), DBNull.Value))
+                cmd.Parameters.AddWithValue("@firma_tarjeta",    If(p.FirmaTarjeta <> "",   CObj(p.FirmaTarjeta),   DBNull.Value))
+                cmd.Parameters.AddWithValue("@tipo_ocacion",     MapearTipoOcacion(p.TipoOcacion))
+                cmd.Parameters.AddWithValue("@nota_floreria",    If(p.NotaFloreria <> "",   CObj(p.NotaFloreria),   DBNull.Value))
+                cmd.Parameters.AddWithValue("@gps",              If(p.Gps <> "",            CObj(p.Gps),            DBNull.Value))
+                cmd.Parameters.AddWithValue("@observaciones",    If(p.Observaciones <> "",  CObj(p.Observaciones),  DBNull.Value))
+
+                cmd.Parameters.AddWithValue("@total_bs",      totalBs)
+                cmd.Parameters.AddWithValue("@total_usd",     totalUsd)
+                cmd.Parameters.AddWithValue("@envio_bs",      envioBs)
+                cmd.Parameters.AddWithValue("@envio_usd",     envioUsd)
+                cmd.Parameters.AddWithValue("@descuento_bs",  descBs)
+                cmd.Parameters.AddWithValue("@descuento_usd", descUsd)
+
+                cmd.Parameters.AddWithValue("@estado_pago",      estadoPago)
+                cmd.Parameters.AddWithValue("@estado_operativo", estadoOperativo)
+                cmd.Parameters.AddWithValue("@creado_por",       uid)
+                cmd.Parameters.AddWithValue("@ip",               ip)
+
+                Dim pId  As New SqlParameter("@pedido_id",     SqlDbType.Int)            With {.Direction = ParameterDirection.Output}
+                Dim pCod As New SqlParameter("@codigo",        SqlDbType.VarChar,  20)   With {.Direction = ParameterDirection.Output}
+                Dim pAcc As New SqlParameter("@accion",        SqlDbType.VarChar,  10)   With {.Direction = ParameterDirection.Output}
+                Dim pErr As New SqlParameter("@mensaje_error", SqlDbType.NVarChar, 500)  With {.Direction = ParameterDirection.Output}
+                cmd.Parameters.Add(pId)
+                cmd.Parameters.Add(pCod)
+                cmd.Parameters.Add(pAcc)
+                cmd.Parameters.Add(pErr)
+
+                cmd.ExecuteNonQuery()
+
+                pedId        = If(IsDBNull(pId.Value),  0,  Convert.ToInt32(pId.Value))
+                accion       = If(IsDBNull(pAcc.Value), "", Convert.ToString(pAcc.Value))
+                mensajeError = If(IsDBNull(pErr.Value), "", Convert.ToString(pErr.Value))
+            End Using
+
+            If accion = "ERROR" OrElse pedId = 0 Then
+                Log("InsertarPedido", "WC#" & p.WcId & " - SP devolvio ERROR: " & mensajeError)
                 Return "E"
-            End Try
+            End If
 
-            ' --- 7. UPDATE campos extra que SP no recibe (incluye nuevas columnas WC) ---
-            Try
-                Using upd As New SqlCommand(
-                    "UPDATE FLORERIA_Pedido SET " &
-                    "  wc_order_number=@wnum, wc_order_url=@wurl, " &
-                    "  wc_order_status=@wst, " &
-                    "  wc_date_paid=@wdp, " &
-                    "  wc_payment_method=@wpm, " &
-                    "  wc_payment_method_title=@wpmt, " &
-                    "  wc_date_modified=@wdm, " &
-                    "  estado_pago=@ep, " &
-                    "  estado_operativo=@eo, " &
-                    "  gps=@gps, observaciones=@obs, " &
-                    "  total_bs=@tbs, total_usd=@tusd, " &
-                    "  envio_bs=@ebs, envio_usd=@eusd, " &
-                    "  descuento_bs=@dbs, descuento_usd=@dusd, " &
-                    "  wc_sync_estado='SINCRONIZADO', wc_sync_fecha=GETDATE() " &
-                    "WHERE pedido_id=@pid", conn)
-                    upd.Parameters.AddWithValue("@wnum", If(p.WcOrderNumber <> "",      CObj(p.WcOrderNumber),       DBNull.Value))
-                    upd.Parameters.AddWithValue("@wurl", If(p.WcOrderKey <> "",         CObj(p.WcOrderKey),          DBNull.Value))
-                    upd.Parameters.AddWithValue("@wst",  If(p.WcOrderStatus <> "",      CObj(p.WcOrderStatus),       DBNull.Value))
-                    upd.Parameters.AddWithValue("@wdp",  If(p.WcDatePaid.HasValue,      CObj(p.WcDatePaid.Value),    DBNull.Value))
-                    upd.Parameters.AddWithValue("@wpm",  If(p.PaymentMethod <> "",      CObj(p.PaymentMethod),       DBNull.Value))
-                    upd.Parameters.AddWithValue("@wpmt", If(p.PaymentMethodTitle <> "", CObj(p.PaymentMethodTitle),  DBNull.Value))
-                    upd.Parameters.AddWithValue("@wdm",  If(p.WcDateModified.HasValue,  CObj(p.WcDateModified.Value),DBNull.Value))
-                    upd.Parameters.AddWithValue("@ep",   estadoPago)
-                    upd.Parameters.AddWithValue("@eo",   estadoOperativo)
-                    upd.Parameters.AddWithValue("@gps",  If(p.Gps <> "",               CObj(p.Gps),                 DBNull.Value))
-                    upd.Parameters.AddWithValue("@obs",  If(p.Observaciones <> "",      CObj(p.Observaciones),       DBNull.Value))
-                    upd.Parameters.AddWithValue("@tbs",  totalBs)
-                    upd.Parameters.AddWithValue("@tusd", totalUsd)
-                    upd.Parameters.AddWithValue("@ebs",  envioBs)
-                    upd.Parameters.AddWithValue("@eusd", envioUsd)
-                    upd.Parameters.AddWithValue("@dbs",  descBs)
-                    upd.Parameters.AddWithValue("@dusd", descUsd)
-                    upd.Parameters.AddWithValue("@pid",  pedId)
-                    upd.ExecuteNonQuery()
-                End Using
-            Catch ex As Exception
-                Log("InsertarPedido", "WC#" & p.WcId & " - AVISO UPDATE campos extra: " & ex.Message)
-            End Try
-
-            ' --- 8. Insertar line_items ---
+            ' --- 7. Sincronizar productos (line_items) ---
             For Each item As WcPedidoItem In p.Items
                 Try
                     Dim prodId As Object = DBNull.Value
                     If item.WcProductId > 0 Then
                         Using pCmd As New SqlCommand("SELECT producto_id FROM FLORERIA_Producto WHERE wc_product_id=@w", conn)
+                            pCmd.CommandTimeout = 10
                             pCmd.Parameters.AddWithValue("@w", item.WcProductId)
                             Dim pObj As Object = pCmd.ExecuteScalar()
                             If pObj IsNot Nothing AndAlso Not IsDBNull(pObj) Then prodId = pObj
@@ -576,56 +958,90 @@ Partial Public Class Modulos_Config_Migrar
 
                     Dim precioBs  As Decimal = item.PrecioUnitarioBs
                     Dim precioUsd As Decimal = If(tasa > 0, Math.Round(precioBs * tasa, 2), 0D)
-                    Dim subtotBs  As Decimal = item.SubtotalBs
-                    Dim subtotUsd As Decimal = If(tasa > 0, Math.Round(subtotBs * tasa, 2), 0D)
 
-                    Using dCmd As New SqlCommand("FLORERIA_sp_Pedido_AgregarProducto", conn)
+                    Using dCmd As New SqlCommand("FLORERIA_sp_Pedido_Detalle_SyncWC", conn)
                         dCmd.CommandType = CommandType.StoredProcedure
+                        dCmd.CommandTimeout = 30
                         dCmd.Parameters.AddWithValue("@pedido_id",           pedId)
+                        dCmd.Parameters.AddWithValue("@wc_line_item_id",     item.WcLineItemId)
                         dCmd.Parameters.AddWithValue("@producto_id",         prodId)
-                        dCmd.Parameters.AddWithValue("@es_personalizado",    0)
                         dCmd.Parameters.AddWithValue("@nombre_producto",     item.NombreProducto.Substring(0, Math.Min(200, item.NombreProducto.Length)))
                         dCmd.Parameters.AddWithValue("@cantidad",            item.Cantidad)
                         dCmd.Parameters.AddWithValue("@precio_unitario_bs",  precioBs)
                         dCmd.Parameters.AddWithValue("@precio_unitario_usd", precioUsd)
                         dCmd.Parameters.AddWithValue("@personalizacion",     If(item.Personalizacion <> "", CObj(item.Personalizacion), DBNull.Value))
-                        dCmd.ExecuteNonQuery()
-                    End Using
 
-                    If item.WcLineItemId > 0 Then
-                        Try
-                            Using updItem As New SqlCommand(
-                                "UPDATE TOP(1) FLORERIA_Pedido_Detalle SET wc_line_item_id=@wli " &
-                                "WHERE pedido_id=@pid AND nombre_producto=@nom AND wc_line_item_id IS NULL", conn)
-                                updItem.Parameters.AddWithValue("@wli", item.WcLineItemId)
-                                updItem.Parameters.AddWithValue("@pid", pedId)
-                                updItem.Parameters.AddWithValue("@nom", item.NombreProducto.Substring(0, Math.Min(200, item.NombreProducto.Length)))
-                                updItem.ExecuteNonQuery()
-                            End Using
-                        Catch ex As Exception
-                            Log("InsertarPedido", "WC#" & p.WcId & " - AVISO wc_line_item_id=" & item.WcLineItemId & ": " & ex.Message)
-                        End Try
-                    End If
+                        Dim pAccD As New SqlParameter("@accion",        SqlDbType.VarChar,  10)  With {.Direction = ParameterDirection.Output}
+                        Dim pErrD As New SqlParameter("@mensaje_error", SqlDbType.NVarChar, 500) With {.Direction = ParameterDirection.Output}
+                        dCmd.Parameters.Add(pAccD)
+                        dCmd.Parameters.Add(pErrD)
+
+                        dCmd.ExecuteNonQuery()
+
+                        Dim accD As String = If(IsDBNull(pAccD.Value), "", Convert.ToString(pAccD.Value))
+                        If accD = "ERROR" Then
+                            Log("InsertarPedido", "WC#" & p.WcId & " - detalle ERROR: " & Convert.ToString(pErrD.Value))
+                        End If
+                    End Using
                 Catch ex As Exception
-                    Log("InsertarPedido", "WC#" & p.WcId & " - ERROR line_item WcProductId=" & item.WcProductId & " '" & item.NombreProducto & "': " & ex.Message)
+                    Log("InsertarPedido", "WC#" & p.WcId & " - ERROR line_item: " & ex.Message)
                 End Try
             Next
 
-            ' --- 9. Registrar pago en FLORERIA_Pedido_Pago ---
-            ActualizarOInsertarPago(conn, pedId, p, totalBs, totalUsd, estadoPago, uid)
+            ' --- 8. Registrar pago via SP ---
+            Try
+                Dim metodoPago As String = MapearMetodoPago(p.PaymentMethod, p.PaymentMethodTitle)
+                Dim referencia As String = If(p.PaypalOrderId <> "", p.PaypalOrderId, If(p.WcOrderNumber <> "", "WC#" & p.WcOrderNumber, ""))
+                Dim estadoRegistro As String = "PENDIENTE"
+                If p.WcDatePaid.HasValue AndAlso (esPayPal OrElse esLibelula) Then
+                    estadoRegistro = "VERIFICADO"
+                End If
 
-            Log("InsertarPedido", "WC#" & p.WcId & " INSERTADO OK → pedido_id=" & pedId & " estado_pago=" & estadoPago)
-            Return "I"
+                Using pCmd As New SqlCommand("FLORERIA_sp_Pedido_Pago_UpsertWC", conn)
+                    pCmd.CommandType = CommandType.StoredProcedure
+                    pCmd.CommandTimeout = 30
+                    pCmd.Parameters.AddWithValue("@pedido_id",     pedId)
+                    pCmd.Parameters.AddWithValue("@metodo_pago",   metodoPago)
+                    pCmd.Parameters.AddWithValue("@monto_bs",      totalBs)
+                    pCmd.Parameters.AddWithValue("@monto_usd",     totalUsd)
+                    pCmd.Parameters.AddWithValue("@referencia",    If(referencia <> "", CObj(referencia), DBNull.Value))
+                    pCmd.Parameters.AddWithValue("@estado",        estadoRegistro)
+                    pCmd.Parameters.AddWithValue("@observaciones", If(p.WcOrderStatus <> "", CObj("WC status: " & p.WcOrderStatus), DBNull.Value))
+                    pCmd.Parameters.AddWithValue("@creado_por",    uid)
+
+                    Dim pAccP As New SqlParameter("@accion",        SqlDbType.VarChar,  10)  With {.Direction = ParameterDirection.Output}
+                    Dim pErrP As New SqlParameter("@mensaje_error", SqlDbType.NVarChar, 500) With {.Direction = ParameterDirection.Output}
+                    pCmd.Parameters.Add(pAccP)
+                    pCmd.Parameters.Add(pErrP)
+
+                    pCmd.ExecuteNonQuery()
+
+                    Dim accP As String = If(IsDBNull(pAccP.Value), "", Convert.ToString(pAccP.Value))
+                    If accP = "ERROR" Then
+                        Log("InsertarPedido", "WC#" & p.WcId & " - pago ERROR: " & Convert.ToString(pErrP.Value))
+                    End If
+                End Using
+            Catch ex As Exception
+                Log("InsertarPedido", "WC#" & p.WcId & " - ERROR registrando pago: " & ex.Message)
+            End Try
+
+            Log("InsertarPedido", "WC#" & p.WcId & " " & accion & " OK → pedido_id=" & pedId & " estado_pago=" & estadoPago)
+            Return If(accion = "INSERT", "I", "A")
 
         Catch ex As Exception
-            Log("InsertarPedido", "WC#" & p.WcId & " - ERROR CRITICO: " & ex.Message & " | " & ex.StackTrace.Substring(0, Math.Min(200, ex.StackTrace.Length)))
+            Log("InsertarPedido", "WC#" & p.WcId & " - ERROR CRITICO: " & ex.Message)
             Return "E"
         End Try
     End Function
 
+
+    ' ============================================================
+    ' ObtenerOCrearSlot
+    '   Busca slot por wc_slot_value. Si no existe lo crea activo=0
+    ' ============================================================
     ' ============================================================
     ' MapearMetodoPago
-    '   Convierte el valor de WC al CHECK constraint
+    '   Convierte el valor de WC al CHECK constraint de FLORERIA_Pedido_Pago
     '   BD acepta: PAYPAL, QR, TRANSFERENCIA, TARJETA, EFECTIVO,
     '              PIX, YAPE, CRIPTO, PAGOMOVIL
     ' ============================================================
@@ -633,30 +1049,19 @@ Partial Public Class Modulos_Config_Migrar
         Dim m As String = If(method, "").ToLower().Trim()
         Dim t As String = If(title,  "").ToLower().Trim()
 
-        ' PayPal y tarjetas via PayPal
         If m.Contains("paypal") OrElse t.Contains("paypal") Then Return "PAYPAL"
         If m.Contains("ppcp")   OrElse m.Contains("ppec")   Then Return "PAYPAL"
         If m.Contains("card")   OrElse t.Contains("tarjeta") OrElse t.Contains("card") Then Return "TARJETA"
-
-        ' QR Bolivia (Banco Nacional, etc.)
-        If m.Contains("bnb") OrElse m.Contains("banconacional") OrElse m.Contains("qr") OrElse t.Contains("qr") Then Return "QR"
-
-        ' Libelula
+        If m.Contains("bnb")    OrElse m.Contains("banconacional") OrElse m.Contains("qr") OrElse t.Contains("qr") Then Return "QR"
         If m.Contains("libelula") OrElse t.Contains("libelula") Then Return "TRANSFERENCIA"
-
-        ' Transferencia
-        If m.Contains("bacs") OrElse m.Contains("transfer") OrElse t.Contains("transfer") Then Return "TRANSFERENCIA"
-
-        ' Efectivo / contra entrega
-        If m.Contains("cod") OrElse m.Contains("cash") OrElse t.Contains("efectivo") OrElse t.Contains("contra entrega") Then Return "EFECTIVO"
-
-        ' Default: si no sabemos, usar TRANSFERENCIA (es lo mas seguro y editable luego)
+        If m.Contains("bacs")   OrElse m.Contains("transfer") OrElse t.Contains("transfer") Then Return "TRANSFERENCIA"
+        If m.Contains("cod")    OrElse m.Contains("cash") OrElse t.Contains("efectivo") OrElse t.Contains("contra entrega") Then Return "EFECTIVO"
         Return "TRANSFERENCIA"
     End Function
 
     ' ============================================================
     ' MapearTipoOcacion
-    '   Convierte el valor libre de WC al valor del CHECK constraint
+    '   Convierte el valor libre de WC al CHECK constraint
     '   BD acepta: CUMPLEANOS, ANIVERSARIO, AMOR, AGRADECIMIENTO,
     '              CONDOLENCIAS, GRADUACION, NACIMIENTO, OTRO
     ' ============================================================
@@ -681,72 +1086,6 @@ Partial Public Class Modulos_Config_Migrar
                 Return "OTRO"
         End Select
     End Function
-    '   Registra o actualiza el pago en FLORERIA_Pedido_Pago
-    '   Solo inserta si no existe ya un pago para ese pedido_id
-    ' ============================================================
-    Private Sub ActualizarOInsertarPago(conn As SqlConnection, pedId As Integer, p As WcPedido,
-                                         totalBs As Decimal, totalUsd As Decimal,
-                                         estadoPago As String, uid As Integer)
-        Try
-            ' Ver si ya existe un pago para este pedido
-            Dim pagoExiste As Boolean = False
-            Using chk As New SqlCommand("SELECT COUNT(1) FROM FLORERIA_Pedido_Pago WHERE pedido_id=@pid", conn)
-                chk.Parameters.AddWithValue("@pid", pedId)
-                pagoExiste = (CInt(chk.ExecuteScalar()) > 0)
-            End Using
-
-            ' Estado del pago: PayPal con date_paid = VERIFICADO, resto = PENDIENTE
-            Dim estadoRegistro As String = "PENDIENTE"
-            If p.WcDatePaid.HasValue AndAlso p.PaymentMethod.ToLower().Contains("paypal") Then
-                estadoRegistro = "VERIFICADO"
-            End If
-
-            ' Referencia: transaction_id de PayPal o wc_order_number
-            Dim referencia As String = If(p.PaypalOrderId <> "", p.PaypalOrderId, If(p.WcOrderNumber <> "", "WC#" & p.WcOrderNumber, ""))
-
-            ' Metodo de pago legible
-            ' Mapear metodo_pago al CHECK constraint (PAYPAL/QR/TRANSFERENCIA/TARJETA/EFECTIVO/...)
-            Dim metodoPago As String = MapearMetodoPago(p.PaymentMethod, p.PaymentMethodTitle)
-
-            If Not pagoExiste Then
-                ' INSERT nuevo registro de pago
-                Using ins As New SqlCommand(
-                    "INSERT INTO FLORERIA_Pedido_Pago(pedido_id,tipo_pago,metodo_pago,monto_bs,monto_usd," &
-                    "referencia,estado,observaciones,creado_por,creado_en) " &
-                    "VALUES(@pid,'TOTAL',@mp,@mbs,@musd,@ref,@est,@obs,@u,GETDATE())", conn)
-                    ins.Parameters.AddWithValue("@pid",  pedId)
-                    ins.Parameters.AddWithValue("@mp",   metodoPago)
-                    ins.Parameters.AddWithValue("@mbs",  totalBs)
-                    ins.Parameters.AddWithValue("@musd", totalUsd)
-                    ins.Parameters.AddWithValue("@ref",  If(referencia <> "", CObj(referencia), DBNull.Value))
-                    ins.Parameters.AddWithValue("@est",  estadoRegistro)
-                    ins.Parameters.AddWithValue("@obs",  If(p.WcOrderStatus <> "", CObj("WC status: " & p.WcOrderStatus), DBNull.Value))
-                    ins.Parameters.AddWithValue("@u",    uid)
-                    ins.ExecuteNonQuery()
-                    Log("ActualizarOInsertarPago", "Pago registrado pedido_id=" & pedId & " metodo=" & metodoPago & " estado=" & estadoRegistro)
-                End Using
-            Else
-                ' UPDATE solo si el estado mejoro (PENDIENTE → VERIFICADO)
-                If estadoRegistro = "VERIFICADO" Then
-                    Using upd As New SqlCommand(
-                        "UPDATE FLORERIA_Pedido_Pago SET estado=@est, referencia=@ref, " &
-                        "metodo_pago=@mp, monto_bs=@mbs, monto_usd=@musd " &
-                        "WHERE pedido_id=@pid AND estado='PENDIENTE'", conn)
-                        upd.Parameters.AddWithValue("@est",  estadoRegistro)
-                        upd.Parameters.AddWithValue("@ref",  If(referencia <> "", CObj(referencia), DBNull.Value))
-                        upd.Parameters.AddWithValue("@mp",   metodoPago)
-                        upd.Parameters.AddWithValue("@mbs",  totalBs)
-                        upd.Parameters.AddWithValue("@musd", totalUsd)
-                        upd.Parameters.AddWithValue("@pid",  pedId)
-                        upd.ExecuteNonQuery()
-                        Log("ActualizarOInsertarPago", "Pago actualizado a VERIFICADO pedido_id=" & pedId)
-                    End Using
-                End If
-            End If
-        Catch ex As Exception
-            Log("ActualizarOInsertarPago", "pedido_id=" & pedId & " - ERROR: " & ex.Message)
-        End Try
-    End Sub
 
     ' ============================================================
     ' ObtenerOCrearSlot
@@ -783,6 +1122,7 @@ Partial Public Class Modulos_Config_Migrar
                 "INSERT INTO FLORERIA_Slot_Horario(ciudad_id,etiqueta,hora_inicio,hora_fin,duracion_minutos," &
                 "recargo_bs,es_express,activo,orden_display,wc_slot_value,creado_en) " &
                 "VALUES(1,@etq,@hi,@hf,@dur,0,0,0,0,@wv,GETDATE()); SELECT SCOPE_IDENTITY();", conn)
+                cmd.CommandTimeout = 30
                 cmd.Parameters.AddWithValue("@etq", deliveryTime)
                 cmd.Parameters.AddWithValue("@hi",  horaInicio)
                 cmd.Parameters.AddWithValue("@hf",  horaFin)
@@ -799,54 +1139,42 @@ Partial Public Class Modulos_Config_Migrar
     End Function
 
     ' ============================================================
-    ' ============================================================
     ' ObtenerOCrearZona
     '   Busca zona por wc_zone_code. Si no existe la crea activo=0
-    '   IMPORTANTE: usa conexion separada para el INSERT asi el
-    '   commit es inmediato y la FK del SP Pedido_Crear lo encuentra
+    '   Usa la misma conexion (ahora cada pedido tiene su propia conexion limpia)
     ' ============================================================
     Private Function ObtenerOCrearZona(conn As SqlConnection, wcZoneCode As String) As Object
         Try
-            ' Buscar existente en la conexion actual
+            ' Buscar existente
             Using cmd As New SqlCommand("SELECT zona_id FROM FLORERIA_Zona WHERE wc_zone_code=@c", conn)
+                cmd.CommandTimeout = 10
                 cmd.Parameters.AddWithValue("@c", wcZoneCode)
                 Dim r As Object = cmd.ExecuteScalar()
                 If r IsNot Nothing AndAlso Not IsDBNull(r) Then Return CInt(r)
             End Using
 
-            ' No existe — crear en conexion SEPARADA para garantizar commit antes del SP
+            ' No existe — crear
             Dim codigoFinal As String = wcZoneCode.Substring(0, Math.Min(20, wcZoneCode.Length))
-            Dim newZonaId   As Integer = 0
 
-            Using conn2 As New SqlConnection(SesionHelper.ObtenerCadena())
-                conn2.Open()
-
-                ' Verificar que el codigo no exista ya
-                Using chk As New SqlCommand("SELECT COUNT(1) FROM FLORERIA_Zona WHERE codigo=@c AND ciudad_id=1", conn2)
-                    chk.Parameters.AddWithValue("@c", codigoFinal)
-                    If CInt(chk.ExecuteScalar()) > 0 Then codigoFinal = wcZoneCode & "_WC"
-                End Using
-
-                ' Doble check — puede que otro hilo la haya creado
-                Using chk2 As New SqlCommand("SELECT zona_id FROM FLORERIA_Zona WHERE wc_zone_code=@c", conn2)
-                    chk2.Parameters.AddWithValue("@c", wcZoneCode)
-                    Dim r2 As Object = chk2.ExecuteScalar()
-                    If r2 IsNot Nothing AndAlso Not IsDBNull(r2) Then Return CInt(r2)
-                End Using
-
-                Using ins As New SqlCommand(
-                    "INSERT INTO FLORERIA_Zona(ciudad_id,nombre,codigo,tipo,activo,orden_display,wc_zone_code,creado_en) " &
-                    "VALUES(1,@nom,@cod,'DELIVERY',0,0,@wc,GETDATE()); SELECT SCOPE_IDENTITY();", conn2)
-                    ins.Parameters.AddWithValue("@nom", wcZoneCode.Substring(0, Math.Min(150, wcZoneCode.Length)))
-                    ins.Parameters.AddWithValue("@cod", codigoFinal)
-                    ins.Parameters.AddWithValue("@wc",  wcZoneCode)
-                    Dim newId As Object = ins.ExecuteScalar()
-                    newZonaId = CInt(newId)
-                End Using
+            ' Verificar que el codigo no exista ya
+            Using chk As New SqlCommand("SELECT COUNT(1) FROM FLORERIA_Zona WHERE codigo=@c AND ciudad_id=1", conn)
+                chk.CommandTimeout = 10
+                chk.Parameters.AddWithValue("@c", codigoFinal)
+                If CInt(chk.ExecuteScalar()) > 0 Then codigoFinal = wcZoneCode & "_WC"
             End Using
 
-            Log("ObtenerOCrearZona", "Zona creada activo=0 para '" & wcZoneCode & "' → zona_id=" & newZonaId)
-            Return newZonaId
+            ' Insertar
+            Using ins As New SqlCommand(
+                "INSERT INTO FLORERIA_Zona(ciudad_id,nombre,codigo,tipo,activo,orden_display,wc_zone_code,creado_en) " &
+                "VALUES(1,@nom,@cod,'DELIVERY',0,0,@wc,GETDATE()); SELECT SCOPE_IDENTITY();", conn)
+                ins.CommandTimeout = 10
+                ins.Parameters.AddWithValue("@nom", wcZoneCode.Substring(0, Math.Min(150, wcZoneCode.Length)))
+                ins.Parameters.AddWithValue("@cod", codigoFinal)
+                ins.Parameters.AddWithValue("@wc",  wcZoneCode)
+                Dim newId As Object = ins.ExecuteScalar()
+                Log("ObtenerOCrearZona", "Zona creada activo=0 para '" & wcZoneCode & "' → zona_id=" & newId.ToString())
+                Return CInt(newId)
+            End Using
 
         Catch ex As Exception
             Log("ObtenerOCrearZona", "ERROR con '" & wcZoneCode & "': " & ex.Message)
@@ -959,6 +1287,13 @@ Partial Public Class Modulos_Config_Migrar
                     If DateTime.TryParse(dateModStr, dtMod) Then ped.WcDateModified = dtMod
                 End If
 
+                ' date_created (fallback si no hay delivery_date ni pickup_date)
+                Dim dateCreStr As String = ExtraerStr(obj, "date_created")
+                If dateCreStr <> "" Then
+                    Dim dtCre As DateTime
+                    If DateTime.TryParse(dateCreStr, dtCre) Then ped.WcDateCreated = dtCre
+                End If
+
                 Dim totalStr As String = ExtraerStr(obj, "total")
                 Decimal.TryParse(totalStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, ped.TotalBs)
 
@@ -1000,7 +1335,9 @@ Partial Public Class Modulos_Config_Migrar
                 Dim metaArr As String = ExtraerArray(obj, "meta_data")
                 If metaArr <> "" Then
                     ped.TelefonoRecibe = ExtraerMetaValor(metaArr, "TelefonoRecibe")
+                    ped.DeliveryType   = ExtraerMetaValor(metaArr, "delivery_type")
                     ped.DeliveryTime   = ExtraerMetaValor(metaArr, "delivery_time")
+                    ped.PickupTime     = ExtraerMetaValor(metaArr, "pickup_time")
                     ped.MensajeTarjeta = ExtraerMetaValor(metaArr, "mensaje_tarjeta")
                     ped.FirmaTarjeta   = ExtraerMetaValor(metaArr, "firma_tarjeta")
                     ped.TipoOcacion    = ExtraerMetaValor(metaArr, "tipo_de_ocacion")
@@ -1019,6 +1356,13 @@ Partial Public Class Modulos_Config_Migrar
                     If fechaStr <> "" Then
                         Dim dtParsed As DateTime
                         If DateTime.TryParse(fechaStr, dtParsed) Then ped.DeliveryDate = dtParsed
+                    End If
+
+                    ' Fecha de recojo (si delivery_type=pickup)
+                    Dim pickupFechaStr As String = ExtraerMetaValor(metaArr, "pickup_date")
+                    If pickupFechaStr <> "" Then
+                        Dim dtPickup As DateTime
+                        If DateTime.TryParse(pickupFechaStr, dtPickup) Then ped.PickupDate = dtPickup
                     End If
                 End If
 
@@ -1266,6 +1610,7 @@ Partial Public Class Modulos_Config_Migrar
         Public Property WcOrderStatus      As String = ""   ' on-hold, processing, entregado, failed...
         Public Property WcDatePaid         As DateTime?     ' date_paid de WC
         Public Property WcDateModified     As DateTime?     ' date_modified de WC
+        Public Property WcDateCreated      As DateTime?     ' date_created de WC (fallback para fecha_entrega)
         Public Property PaymentMethod      As String = ""   ' banconacionalboliviapay, paypal...
         Public Property PaymentMethodTitle As String = ""   ' Paga con QR, PayPal...
         Public Property PaypalOrderId      As String = ""   ' _ppcp_paypal_order_id
@@ -1286,8 +1631,11 @@ Partial Public Class Modulos_Config_Migrar
         Public Property ShippingState      As String = ""   ' BO164 → zona
         ' Meta_data
         Public Property TelefonoRecibe     As String = ""
+        Public Property DeliveryType       As String = ""   ' "delivery" o "pickup"
         Public Property DeliveryTime       As String = ""   ' 15:00 - 18:00 → slot
         Public Property DeliveryDate       As DateTime?     ' fecha REAL de entrega
+        Public Property PickupDate         As DateTime?     ' fecha de recojo (si delivery_type=pickup)
+        Public Property PickupTime         As String = ""   ' hora de recojo (si delivery_type=pickup)
         Public Property MensajeTarjeta     As String = ""   ' → dedicatoria
         Public Property FirmaTarjeta       As String = ""   ' → firma_tarjeta
         Public Property TipoOcacion        As String = ""   ' → tipo_ocacion
