@@ -193,12 +193,18 @@ Partial Public Class Modulos_Pedidos_Entrega_Agregar
 
     ' ============================================================
     ' CargarDatosPrePedido
+    ' Lee tambien los timestamps del token para calcular EstadoLink:
+    '   0 = No enviado          (token_web IS NULL)
+    '   1 = Esperando (enviado, no confirmado)
+    '   2 = Completo            (token_confirmado_por_cliente_en IS NOT NULL)
     ' ============================================================
     Private Sub CargarDatosPrePedido()
         Try
             Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
                 conn.Open()
-                Dim sql As String = "SELECT codigo, cliente_nombre, cliente_apellidos, cliente_celular, cliente_email, tasa_cambio " &
+                Dim sql As String = "SELECT codigo, cliente_nombre, cliente_apellidos, cliente_celular, " &
+                                    "cliente_email, tasa_cambio, " &
+                                    "token_web, token_abierto_en, token_confirmado_por_cliente_en " &
                                     "FROM FLORERIA_PrePedido WHERE prepedido_id = @id"
                 Using cmd As New SqlCommand(sql, conn)
                     cmd.Parameters.AddWithValue("@id", PrePedidoId)
@@ -213,6 +219,17 @@ Partial Public Class Modulos_Pedidos_Entrega_Agregar
                             ClienteEmail = If(IsDBNull(dr("cliente_email")), "", dr("cliente_email").ToString())
                             If Not IsDBNull(dr("tasa_cambio")) Then
                                 TasaCambio = CDec(dr("tasa_cambio"))
+                            End If
+
+                            ' Calcular EstadoLink segun los timestamps del token
+                            Dim tieneToken As Boolean = Not IsDBNull(dr("token_web")) AndAlso dr("token_web").ToString() <> ""
+                            Dim confirmado As Boolean = Not IsDBNull(dr("token_confirmado_por_cliente_en"))
+                            If Not tieneToken Then
+                                EstadoLink = 0   ' No enviado
+                            ElseIf confirmado Then
+                                EstadoLink = 2   ' Completo
+                            Else
+                                EstadoLink = 1   ' Esperando
                             End If
                         Else
                             Response.Redirect("PrePedidos.aspx", False)

@@ -3,187 +3,163 @@ Imports System.Data.SqlClient
 Imports System.Web.Script.Serialization
 
 ' ============================================================
-' MODULO: Crear Pre-Pedido
+' MODULO: Lista de Pre-Pedidos
 ' Archivo: Modulos/Pedidos/PrePedidos.aspx.vb
+' Arquitectura: MasterPage — NO tocar sesión ni menú aquí
 ' ============================================================
 Partial Public Class Modulos_Pedidos_PrePedidos
     Inherits System.Web.UI.Page
 
-    Public Property MenuHtml As String = ""
-    Public Property ResultData As String = ""
+    ' JSON para la primera carga (evita segundo request)
+    Public Property JsonInicial As String = ""
 
-    ' ====================================
-    ' PAGE LOAD
-    ' ====================================
-    Protected Sub Page_Load(sender As Object, e As EventArgs) Handles Me.Load
-        ' 1. Verificar sesión
-        If Not SesionHelper.VerificarSesion(Context) Then
-            Response.Redirect("~/Login.aspx")
-            Return
-        End If
+    Protected Sub Page_Load(ByVal sender As Object, ByVal e As EventArgs) Handles Me.Load
+        If Not IsPostBack Then
+            ' Detectar si viene como petición AJAX (fetch del JS)
+            Dim esAjax As Boolean = (Request.Headers("X-Requested-With") = "XMLHttpRequest")
+            Dim accion As String = If(Request.QueryString("accion"), "")
 
-        ' 2. Generar menú
-        MenuHtml = SesionHelper.GenerarMenuHtml(Context, Me)
-
-        ' 3. Si es postback, procesar acción
-        If IsPostBack Then
-            ProcesarAccion()
-        End If
-    End Sub
-
-    ' ====================================
-    ' PROCESAR ACCIÓN
-    ' ====================================
-    Private Sub ProcesarAccion()
-        Dim accion As String = Request.Form("hdAccion")
-        If accion Is Nothing Then accion = ""
-
-        If accion = "CREAR" Then
-            CrearPrePedido()
+            If esAjax AndAlso accion = "LISTAR" Then
+                ResponderAjax()
+            Else
+                ' Primera carga normal: pre-cargar datos en JSON para el JS
+                JsonInicial = ObtenerJson(
+                    buscar:=If(Request.QueryString("buscar"), ""),
+                    estado:=If(Request.QueryString("estado"), ""),
+                    pagina:=1
+                )
+            End If
         End If
     End Sub
 
-    ' ====================================
-    ' CREAR PRE-PEDIDO
-    ' ====================================
-    Private Sub CrearPrePedido()
-        ' Obtener datos del formulario
-        Dim celular As String = Request.Form("hdCelular")
-        If celular Is Nothing Then celular = ""
-        celular = celular.Trim()
+    ' ============================================================
+    ' RESPUESTA AJAX — fetch() desde el JS
+    ' ============================================================
+    Private Sub ResponderAjax()
+        Dim buscar As String = If(Request.QueryString("buscar"), "")
+        Dim estado As String = If(Request.QueryString("estado"), "")
+        Dim pagina As Integer = 1
+        If Not Integer.TryParse(Request.QueryString("p"), pagina) Then pagina = 1
 
-        Dim nombre As String = Request.Form("hdNombre")
-        If nombre Is Nothing Then nombre = ""
-        nombre = nombre.Trim()
+        Dim json As String = ObtenerJson(buscar, estado, pagina)
 
-        Dim apellidos As String = Request.Form("hdApellidos")
-        If apellidos Is Nothing Then apellidos = ""
-        apellidos = apellidos.Trim()
+        Response.Clear()
+        Response.ContentType = "application/json"
+        Response.Charset = "utf-8"
+        Response.Write(json)
+        Response.End()
+    End Sub
 
-        Dim email As String = Request.Form("hdEmail")
-        If email Is Nothing Then email = ""
-        email = email.Trim()
-
-        Dim tipo As String = Request.Form("hdTipo")
-        If tipo Is Nothing Then tipo = "PRE_PEDIDO"
-
-        ' Validar celular
-        If celular = "" Then
-            EnviarResultado(False, "El celular es obligatorio", 0)
-            Return
-        End If
-
-        If celular.Length < 7 OrElse celular.Length > 8 Then
-            EnviarResultado(False, "El celular debe tener 7 u 8 dígitos", 0)
-            Return
-        End If
-
-        ' Obtener datos de sesión
-        Dim usuarioId As Integer = SesionHelper.ObtenerUsuarioId(Context)
-        Dim ip As String = Request.ServerVariables("REMOTE_ADDR")
-        If ip Is Nothing Then ip = "127.0.0.1"
-
-        ' Crear pre-pedido
-        Dim prepedidoId As Integer = 0
-        Dim codigo As String = ""
+    ' ============================================================
+    ' OBTENER JSON — usado tanto en primera carga como en AJAX
+    ' ============================================================
+    Private Function ObtenerJson(buscar As String, estado As String, pagina As Integer) As String
+        Dim usuarioId As Integer = SesionHelper.ObtenerUsuarioId(HttpContext.Current)
+        Dim porPagina As Integer = 20
+        Dim totalRegistros As Integer = 0
+        Dim items As New List(Of PrePedidoItem)()
 
         Try
             Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
                 conn.Open()
-
-                ' Llamar al SP
-                Using cmd As New SqlCommand("FLORERIA_sp_PrePedido_Crear", conn)
+                Using cmd As New SqlCommand("FLORERIA_sp_PrePedido_Listar", conn)
                     cmd.CommandType = CommandType.StoredProcedure
 
-                    cmd.Parameters.AddWithValue("@tipo_registro", tipo)
-                    cmd.Parameters.AddWithValue("@cliente_celular", celular)
+                    ' Siempre filtrar por agente actual
                     cmd.Parameters.AddWithValue("@agente_id", usuarioId)
-                    cmd.Parameters.AddWithValue("@ip", ip)
 
-                    ' Parámetros OUTPUT
-                    Dim paramId As New SqlParameter("@prepedido_id", SqlDbType.Int)
-                    paramId.Direction = ParameterDirection.Output
-                    cmd.Parameters.Add(paramId)
+                    ' Tipo: por defecto solo PRE_PEDIDO en esta pantalla
+                    cmd.Parameters.AddWithValue("@tipo_registro", "PRE_PEDIDO")
 
-                    Dim paramCodigo As New SqlParameter("@codigo", SqlDbType.VarChar, 20)
-                    paramCodigo.Direction = ParameterDirection.Output
-                    cmd.Parameters.Add(paramCodigo)
-
-                    cmd.ExecuteNonQuery()
-
-                    ' Obtener valores OUTPUT
-                    If paramId.Value IsNot Nothing AndAlso Not IsDBNull(paramId.Value) Then
-                        prepedidoId = CInt(paramId.Value)
+                    ' Estado (NULL = todos)
+                    If estado <> "" Then
+                        cmd.Parameters.AddWithValue("@estado", estado)
+                    Else
+                        cmd.Parameters.AddWithValue("@estado", DBNull.Value)
                     End If
 
-                    If paramCodigo.Value IsNot Nothing AndAlso Not IsDBNull(paramCodigo.Value) Then
-                        codigo = paramCodigo.Value.ToString()
+                    ' Búsqueda (NULL = sin filtro)
+                    If buscar <> "" Then
+                        cmd.Parameters.AddWithValue("@buscar", buscar)
+                    Else
+                        cmd.Parameters.AddWithValue("@buscar", DBNull.Value)
+                    End If
+
+                    cmd.Parameters.AddWithValue("@pagina", pagina)
+                    cmd.Parameters.AddWithValue("@por_pagina", porPagina)
+
+                    Dim paramTotal As New SqlParameter("@total_registros", SqlDbType.Int)
+                    paramTotal.Direction = ParameterDirection.Output
+                    cmd.Parameters.Add(paramTotal)
+
+                    Using reader As SqlDataReader = cmd.ExecuteReader()
+                        While reader.Read()
+                            Dim item As New PrePedidoItem()
+                            item.prepedido_id = CInt(reader("prepedido_id"))
+                            item.codigo = reader("codigo").ToString()
+                            item.cliente_celular = reader("cliente_celular").ToString()
+                            item.estado = reader("estado").ToString()
+                            item.total_general_bs = CDec(reader("total_general_bs"))
+                            item.estado_pago = reader("estado_pago").ToString()
+                            item.creado_en = CDate(reader("creado_en")).ToString("yyyy-MM-ddTHH:mm:ss")
+
+                            ' Nombre completo
+                            Dim nom As String = ""
+                            If Not IsDBNull(reader("cliente_nombre")) Then nom = reader("cliente_nombre").ToString().Trim()
+                            If Not IsDBNull(reader("cliente_apellidos")) AndAlso reader("cliente_apellidos").ToString().Trim() <> "" Then
+                                nom = (nom & " " & reader("cliente_apellidos").ToString().Trim()).Trim()
+                            End If
+                            item.cliente_nombre = If(nom = "", Nothing, nom)
+
+                            ' Token
+                            If Not IsDBNull(reader("token_web")) Then
+                                item.token_web = reader("token_web").ToString()
+                            End If
+                            If Not IsDBNull(reader("token_expira")) Then
+                                item.token_expira = CDate(reader("token_expira")).ToString("yyyy-MM-ddTHH:mm:ss")
+                            End If
+
+                            ' Quien verificó
+                            If Not IsDBNull(reader("pago_verificado_por")) Then
+                                item.pago_verificado_por = reader("pago_verificado_por").ToString()
+                            End If
+
+                            items.Add(item)
+                        End While
+                    End Using
+
+                    ' Leer OUTPUT después de cerrar el reader
+                    If Not IsDBNull(paramTotal.Value) Then
+                        totalRegistros = CInt(paramTotal.Value)
                     End If
                 End Using
-
-                ' Si se creó, actualizar datos del cliente si se proporcionaron
-                If prepedidoId > 0 AndAlso (nombre <> "" OrElse apellidos <> "" OrElse email <> "") Then
-                    Using cmd As New SqlCommand("FLORERIA_sp_PrePedido_ActualizarCliente", conn)
-                        cmd.CommandType = CommandType.StoredProcedure
-
-                        cmd.Parameters.AddWithValue("@prepedido_id", prepedidoId)
-                        cmd.Parameters.AddWithValue("@cliente_nombre", If(nombre = "", DBNull.Value, CObj(nombre)))
-                        cmd.Parameters.AddWithValue("@cliente_apellidos", If(apellidos = "", DBNull.Value, CObj(apellidos)))
-                        cmd.Parameters.AddWithValue("@cliente_email", If(email = "", DBNull.Value, CObj(email)))
-                        cmd.Parameters.AddWithValue("@cliente_pais_id", DBNull.Value)
-                        cmd.Parameters.AddWithValue("@cliente_ciudad_id", DBNull.Value)
-                        cmd.Parameters.AddWithValue("@modificado_por", usuarioId)
-                        cmd.Parameters.AddWithValue("@ip", ip)
-
-                        cmd.ExecuteNonQuery()
-                    End Using
-                End If
             End Using
 
-            ' Enviar resultado exitoso
-            If prepedidoId > 0 Then
-                EnviarResultado(True, "Pre-pedido " & codigo & " creado exitosamente", prepedidoId)
-            Else
-                EnviarResultado(False, "Error al crear el pre-pedido", 0)
-            End If
-
         Catch ex As SqlException
-            ' Error de SQL Server (ej: validación de unicidad)
-            EnviarResultado(False, ex.Message, 0)
-        Catch ex As Exception
-            ' Error general
-            EnviarResultado(False, "Error al crear el pre-pedido: " & ex.Message, 0)
+            ' Devolver estructura vacía con error
+            Dim errObj = New With {.total = 0, .items = New List(Of PrePedidoItem)(), .error = ex.Message}
+            Return New JavaScriptSerializer().Serialize(errObj)
         End Try
-    End Sub
 
-    ' ====================================
-    ' CLASE RESULTADO
-    ' ====================================
-    Public Class ResultadoCreacion
-        Public Property exito As Boolean
-        Public Property mensaje As String
+        Dim resultado = New With {.total = totalRegistros, .items = items}
+        Return New JavaScriptSerializer().Serialize(resultado)
+    End Function
+
+    ' ============================================================
+    ' CLASE DE DATOS
+    ' ============================================================
+    Public Class PrePedidoItem
         Public Property prepedido_id As Integer
+        Public Property codigo As String
+        Public Property cliente_celular As String
+        Public Property cliente_nombre As String
+        Public Property estado As String
+        Public Property token_web As String
+        Public Property token_expira As String
+        Public Property total_general_bs As Decimal
+        Public Property estado_pago As String
+        Public Property pago_verificado_por As String
+        Public Property creado_en As String
     End Class
-
-    ' ====================================
-    ' ENVIAR RESULTADO
-    ' ====================================
-    Private Sub EnviarResultado(exito As Boolean, mensaje As String, prepedidoId As Integer)
-        Dim resultado As New ResultadoCreacion()
-        resultado.exito = exito
-        resultado.mensaje = mensaje
-        resultado.prepedido_id = prepedidoId
-
-        Dim serializer As New JavaScriptSerializer()
-        ResultData = serializer.Serialize(resultado)
-    End Sub
-
-    ' ====================================
-    ' POSTBACK BUTTON CLICK
-    ' ====================================
-    Protected Sub btnPostBack_Click(sender As Object, e As EventArgs)
-        ' Este método se ejecuta automáticamente
-        ' La lógica está en Page_Load cuando IsPostBack = True
-    End Sub
 
 End Class

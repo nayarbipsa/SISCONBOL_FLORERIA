@@ -259,6 +259,9 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
                     sb.AppendLine("      <span style='background:#E8F5E9;color:#2E7D32;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:500'>")
                     sb.AppendLine("        <i class='ti ti-check' style='font-size:13px;vertical-align:-2px'></i> CONFIRMADO")
                     sb.AppendLine("      </span>")
+                    sb.AppendLine("      <a href='Recibo.aspx?id=" & pedidoId & "' target='_blank' style='background:#EBF0FF;color:#3B5BDB;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:500;text-decoration:none;display:inline-flex;align-items:center;gap:3px;border:1px solid #90CAF9'>")
+                    sb.AppendLine("        <i class='ti ti-printer' style='font-size:13px;vertical-align:-2px'></i> Imprimir recibo")
+                    sb.AppendLine("      </a>")
                     sb.AppendLine("    </div>")
                     sb.AppendLine("  </div>")
                     

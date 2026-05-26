@@ -108,9 +108,11 @@
     <Content Include="Modulos\Config\PermisosMenu.aspx" />
     <Content Include="Modulos\Config\Webhooks_Monitor.aspx" />
     <Content Include="Modulos\Pedidos\Entrega_Agregar.aspx" />
+    <Content Include="Modulos\Pedidos\GestionPedidos.aspx" />
     <Content Include="Modulos\Pedidos\MODAL_BUSCADOR.html" />
     <Content Include="Modulos\Pedidos\Pedido_Agregar.aspx" />
     <Content Include="Modulos\Pedidos\PrePedido_Links.aspx" />
+    <Content Include="Modulos\Pedidos\TicketImprimir.aspx" />
     <Content Include="pp.aspx" />
     <Content Include="Scripts\site.js" />
     <Content Include="Login.aspx" />
@@ -191,6 +193,10 @@
       <DependentUpon>Entrega_Agregar.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
     </Compile>
+    <Compile Include="Modulos\Pedidos\GestionPedidos.aspx.vb">
+      <DependentUpon>GestionPedidos.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
     <Compile Include="Modulos\Pedidos\Pedido_Agregar.aspx.vb">
       <DependentUpon>Pedido_Agregar.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
@@ -213,6 +219,10 @@
     </Compile>
     <Compile Include="Modulos\Pedidos\PrePedido_Lista.aspx.vb">
       <DependentUpon>PrePedido_Lista.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Modulos\Pedidos\TicketImprimir.aspx.vb">
+      <DependentUpon>TicketImprimir.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
     </Compile>
     <Compile Include="My Project\AssemblyInfo.vb" />

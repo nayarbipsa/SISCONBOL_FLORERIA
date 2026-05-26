@@ -1645,3 +1645,500 @@ select.form-control {
 /* ============================================
    FIN DE ARCHIVO
    ============================================ */
+
+
+/* ============================================================
+   GESTION DE PEDIDOS - estilos adicionales
+   AGREGAR AL FINAL DE Estilos/site.css
+   ============================================================ */
+
+/* Tablas */
+.table-container {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+    .table thead {
+        background: #fafafa;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+        .table thead th {
+            padding: 10px 12px;
+            text-align: left;
+            font-size: 10px;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+    .table tbody tr {
+        border-bottom: 1px solid #f0f0f0;
+        transition: background 0.1s;
+    }
+
+        .table tbody tr:last-child {
+            border-bottom: none;
+        }
+
+        .table tbody tr:hover {
+            background: #fafafa;
+        }
+
+    .table tbody td {
+        padding: 11px 12px;
+        vertical-align: middle;
+    }
+
+.table-empty {
+    padding: 40px 20px;
+    text-align: center;
+    color: #999;
+    font-size: 13px;
+}
+
+    .table-empty i {
+        font-size: 36px;
+        color: #ccc;
+        margin-bottom: 10px;
+        display: block;
+    }
+
+/* Filtros */
+.panel-filters {
+    padding: 14px 16px;
+    background: #fafafa;
+    border-bottom: 1px solid #e0e0e0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-end;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+    .filter-group label {
+        font-size: 10px;
+        color: #999;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        font-weight: 500;
+    }
+
+    .filter-group .form-control {
+        min-width: 140px;
+    }
+
+.filter-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    height: 36px;
+    white-space: nowrap;
+}
+
+    .filter-check input {
+        width: auto;
+        margin: 0;
+    }
+
+    .filter-check.active {
+        background: var(--rosa-cl);
+        border-color: var(--rosa);
+        color: var(--rosa);
+    }
+
+/* Search input con icono */
+.search-wrap {
+    position: relative;
+}
+
+    .search-wrap i {
+        position: absolute;
+        left: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 15px;
+        color: #999;
+        pointer-events: none;
+    }
+
+    .search-wrap input {
+        padding-left: 32px;
+    }
+
+/* Banner colapsable WC pendientes */
+.banner-warn {
+    background: #FFF8E1;
+    border: 1px solid #FFE082;
+    border-radius: 8px;
+    margin-bottom: 14px;
+    overflow: hidden;
+}
+
+.banner-warn-head {
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    cursor: pointer;
+    user-select: none;
+}
+
+    .banner-warn-head:hover {
+        background: rgba(0,0,0,0.02);
+    }
+
+.banner-warn-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+    .banner-warn-title > i {
+        font-size: 22px;
+        color: #F57F17;
+    }
+
+    .banner-warn-title .t1 {
+        font-weight: 600;
+        font-size: 14px;
+        color: #F57F17;
+    }
+
+    .banner-warn-title .t2 {
+        font-size: 12px;
+        color: #F57F17;
+        opacity: 0.85;
+    }
+
+.banner-warn-body {
+    background: white;
+    border-top: 1px solid #FFE082;
+    padding: 0 16px;
+}
+
+    .banner-warn-body.hidden {
+        display: none;
+    }
+
+/* Filas WC pendientes */
+.wc-row {
+    display: grid;
+    grid-template-columns: 75px 1fr 145px 85px 90px 130px;
+    gap: 12px;
+    padding: 11px 0;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 13px;
+    align-items: center;
+}
+
+    .wc-row:last-child {
+        border-bottom: none;
+    }
+
+.wc-row-head {
+    font-size: 10px;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 8px 0 6px;
+    border-bottom: 1px solid #f0f0f0;
+    font-weight: 600;
+}
+
+.code-mono {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    color: var(--azul);
+    font-weight: 500;
+}
+
+.code-wc-small {
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    color: #999;
+}
+
+.method-pago {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+}
+
+    .method-pago i {
+        font-size: 15px;
+        color: #757575;
+    }
+
+.cell-subtle {
+    font-size: 11px;
+    color: #999;
+}
+
+.contacto-ok {
+    font-size: 10px;
+    color: var(--verde);
+    margin-left: 4px;
+    font-weight: 500;
+}
+
+/* Badges estados operativos */
+.badge-pendiente {
+    background: #f5f5f5;
+    color: #757575;
+}
+
+.badge-impreso {
+    background: #FFF3E0;
+    color: #F57C00;
+}
+
+.badge-prep {
+    background: #F3E5F5;
+    color: #6A1B9A;
+}
+
+.badge-listo {
+    background: #E3F2FD;
+    color: #1976D2;
+}
+
+.badge-ruta {
+    background: #E0F2F1;
+    color: #00695C;
+}
+
+.badge-entregado {
+    background: #E8F5E9;
+    color: #2E7D32;
+}
+
+.badge-no-entregado {
+    background: #FFEBEE;
+    color: #D32F2F;
+}
+
+.badge-reprogramado {
+    background: #ECEFF1;
+    color: #455A64;
+}
+
+.badge-warn {
+    background: #FFF8E1;
+    color: #F57F17;
+}
+
+.badge-anticipo {
+    background: #FFF3E0;
+    color: #F57C00;
+}
+
+.badge-pagado {
+    background: #E8F5E9;
+    color: #2E7D32;
+}
+
+.badge-express {
+    background: #FFF8E1;
+    color: #F57F17;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-weight: 500;
+}
+
+/* Hora con badge express stack */
+.hora-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    align-items: flex-start;
+}
+
+.codigos-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.receptor-info .nombre {
+    font-weight: 500;
+    margin-bottom: 2px;
+}
+
+.receptor-info .dir {
+    font-size: 11px;
+    color: #757575;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
+.delivery-vacio {
+    font-size: 12px;
+    color: #bbb;
+}
+
+/* Acciones en celda */
+.actions-cell {
+    display: flex;
+    gap: 4px;
+    justify-content: flex-end;
+}
+
+.btn-icon-only {
+    padding: 5px 7px;
+    font-size: 12px;
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #424242;
+    transition: background 0.1s;
+}
+
+    .btn-icon-only:hover {
+        background: #f5f5f5;
+    }
+
+    .btn-icon-only i {
+        font-size: 14px;
+    }
+
+.btn-success-sm {
+    color: var(--verde);
+    border-color: var(--verde);
+    padding: 5px 11px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+    .btn-success-sm:hover {
+        background: var(--verde-cl);
+    }
+
+/* Header de gestión */
+.gp-header-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.gp-header-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    background: var(--rosa-cl);
+    color: var(--rosa);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+}
+
+.gp-header-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 2px 0;
+}
+
+.gp-header-subtitle {
+    font-size: 12px;
+    color: #757575;
+}
+
+/* Modal de confirmación simple */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 20px;
+}
+
+    .modal-overlay.hidden {
+        display: none;
+    }
+
+.modal-confirm {
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    width: 100%;
+    max-width: 380px;
+    overflow: hidden;
+}
+
+.modal-confirm-body {
+    padding: 24px 20px;
+    text-align: center;
+}
+
+.modal-icon-big {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--verde-cl);
+    color: var(--verde);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    margin-bottom: 12px;
+}
+
+.modal-title-big {
+    font-size: 17px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.modal-msg {
+    font-size: 13px;
+    color: #757575;
+    line-height: 1.5;
+}
+
+    .modal-msg strong {
+        color: #212121;
+        font-weight: 600;
+    }
+
+.modal-footer {
+    padding: 12px 18px;
+    border-top: 1px solid #e0e0e0;
+    background: #fafafa;
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+}

@@ -525,7 +525,10 @@
             </div>
             <div style="margin-bottom:10px">
                 <label class="ea-label">Monto *</label>
-                <input type="number" id="txPagoMonto" placeholder="0.00" step="0.01" class="ea-input" oninput="recalcularConversion()" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
+                <div style="display:flex;gap:6px;align-items:stretch">
+                    <input type="number" id="txPagoMonto" placeholder="0.00" step="0.01" class="ea-input" style="flex:1" oninput="recalcularConversion()" onkeydown="if(event.key==='Enter'){event.preventDefault();return false;}">
+                    <button type="button" onclick="llenarMontoTotal()" title="Llenar con el total del pedido" style="font-size:12px;padding:0 12px;background:#E8F5E9;color:#2E7D32;border:1px solid #A5D6A7;border-radius:6px;cursor:pointer;font-weight:500;white-space:nowrap"><i class="ti ti-cash" style="font-size:13px;vertical-align:-1px" aria-hidden="true"></i> Pagó el total</button>
+                </div>
                 <div id="divConversion" style="font-size:11px;color:#999;margin-top:4px;display:none">
                     <i class="ti ti-arrow-right" style="font-size:11px;vertical-align:-1px"></i>
                     Equivale a <span id="spanConversion" style="color:#3B5BDB;font-weight:500"></span>
@@ -542,8 +545,8 @@
             <div style="margin-bottom:16px">
                 <label class="ea-label">Estado del pago</label>
                 <div style="display:flex;gap:1rem;align-items:center">
-                    <label class="ea-radio-label"><input type="radio" name="pagoEstado" value="PENDIENTE" checked> Pendiente</label>
-                    <label class="ea-radio-label"><input type="radio" name="pagoEstado" value="VERIFICADO"> Verificado</label>
+                    <label class="ea-radio-label"><input type="radio" name="pagoEstado" value="PENDIENTE"> Pendiente</label>
+                    <label class="ea-radio-label"><input type="radio" name="pagoEstado" value="VERIFICADO" checked> Verificado</label>
                     <label class="ea-radio-label"><input type="radio" name="pagoEstado" value="RECHAZADO"> Rechazado</label>
                 </div>
             </div>
@@ -962,6 +965,30 @@ function abrirModalPago() {
 }
 function cerrarModalPago() { document.getElementById('modalPago').style.display = 'none'; }
 
+// Llena el monto con el total del pedido, convertido a la moneda seleccionada en el modal.
+// El usuario sigue eligiendo metodo, tipo y guarda manualmente.
+function llenarMontoTotal() {
+    var totalBs = leerTotalPedidoBs();
+    if (totalBs <= 0) {
+        mostrarToast('No hay un total calculado todavia', 'warn');
+        return;
+    }
+    var ddMon = document.getElementById('ddPagoMoneda');
+    var monedaPago = ddMon ? ddMon.value : 'BOB';
+    var tasa = parseFloat((document.getElementById('txPagoTasa') || {}).value) || 0;
+
+    var monto = totalBs;
+    if (monedaPago === 'USD' && tasa > 0) {
+        monto = totalBs / tasa;
+    }
+
+    var txMonto = document.getElementById('txPagoMonto');
+    if (txMonto) {
+        txMonto.value = monto.toFixed(2);
+    }
+    recalcularConversion();
+}
+
 // Muestra "equivale a X" cuando el usuario tipea el monto
 function recalcularConversion() {
     var moneda = document.getElementById('ddPagoMoneda').value;
@@ -1069,7 +1096,7 @@ function guardarPago() {
             document.getElementById('txPagoMonto').value = '';
             document.getElementById('txPagoRef').value = '';
             document.getElementById('txPagoObs').value = '';
-            var radioDefault = document.querySelector('input[name="pagoEstado"][value="PENDIENTE"]');
+            var radioDefault = document.querySelector('input[name="pagoEstado"][value="VERIFICADO"]');
             if (radioDefault) radioDefault.checked = true;
             document.getElementById('divConversion').style.display = 'none';
             actualizarChecklist();
@@ -1241,8 +1268,13 @@ function enviarCotizacionWsp() {
     if (costoEnvio > 0) {
         mensaje += 'Envio (' + zonaTexto + '): ' + fmtTextoMoneda(costoEnvio, monedaEnvio) + '\n';
     }
-    if (recargoHorario > 0) {
-        mensaje += 'Recargo horario (' + horarioTexto + '): ' + fmtTextoMoneda(recargoHorario, monedaEnvio) + '\n';
+    // Horario: siempre que el cliente eligio uno, con o sin recargo
+    if (horarioTexto !== '') {
+        if (recargoHorario > 0) {
+            mensaje += 'Horario (' + horarioTexto + '): ' + fmtTextoMoneda(recargoHorario, monedaEnvio) + '\n';
+        } else {
+            mensaje += 'Horario (' + horarioTexto + '): sin recargo\n';
+        }
     }
     if (recargoExpress > 0) {
         mensaje += 'Recargo express: ' + fmtTextoMoneda(recargoExpress, monedaEnvio) + '\n';
@@ -1264,8 +1296,7 @@ function enviarCotizacionWsp() {
         numLimpio = '591' + numLimpio;
     }
 
-    var url = 'https://wa.me/' + numLimpio + '?text=' + encodeURIComponent(mensaje);
-    window.open(url, '_blank');
+    abrirWhatsApp(numLimpio, mensaje);
 }
 
 // ============================================================
@@ -1292,11 +1323,8 @@ function enviarLinkCliente() {
             return;
         }
 
-        var mensaje = 'Hola! Aqui esta el link para confirmar tu pedido en Miss Flores:\n' + data.url;
-        var url = data.celular_cliente
-            ? ('https://wa.me/' + data.celular_cliente + '?text=' + encodeURIComponent(mensaje))
-            : ('https://wa.me/?text=' + encodeURIComponent(mensaje));
-        window.open(url, '_blank');
+        var mensaje = 'Por favor ingrese al siguiente link para confirmar, llenar los datos de su pedido y completar el pago:\n' + data.url;
+        abrirWhatsApp(data.celular_cliente, mensaje);
         mostrarToast('Link generado y enviado', 'ok');
 
         setTimeout(function() { location.reload(); }, 1200);
@@ -1371,7 +1399,73 @@ function crearPedidoWC() {
         mostrarToast('Faltan datos: ' + resultado.faltantes.join(', '), 'warn');
         return;
     }
-    mostrarToast('Validacion OK. La integracion con WooCommerce se implementara en el siguiente paso.', 'ok');
+
+    if (!confirm('Esto va a:\n1) Confirmar el pedido en SISCONBOL (genera codigo PED-...)\n2) Crear el pedido en WooCommerce.\n\n¿Continuar?')) {
+        return;
+    }
+
+    var btn = document.getElementById('btnCrearWC');
+    var txt = document.getElementById('txtEstadoWC');
+    if (btn) btn.disabled = true;
+    if (txt) {
+        txt.innerHTML = '<i class="ti ti-loader" style="font-size:13px;vertical-align:-1px"></i> Procesando... no cierre esta pagina';
+        txt.style.color = '#3B5BDB';
+    }
+
+    var formData = new FormData();
+    formData.append('accion', 'CREAR_WC');
+    formData.append('prepedido_entrega_id', prepedidoEntregaId);
+
+    fetch('Entrega_Handler.ashx', { method: 'POST', body: formData })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.ok) {
+            var msg = 'Pedido creado: ' + (data.codigo || '?');
+            if (data.wc_order_id && data.wc_order_id > 0) {
+                msg += '  |  WooCommerce #' + data.wc_order_id;
+            }
+            mostrarToast(msg, 'ok', 6000);
+            if (txt) {
+                txt.innerHTML = '<i class="ti ti-circle-check" style="font-size:13px;vertical-align:-1px"></i> ' + msg;
+                txt.style.color = '#2E7D32';
+            }
+
+            // Abrir el recibo en nueva pestaña para imprimir
+            if (data.pedido_id && data.pedido_id > 0) {
+                window.open('Recibo.aspx?id=' + data.pedido_id, '_blank');
+            }
+
+            // Volver al detalle del prepedido tras 2s
+            setTimeout(function() {
+                window.location.href = 'PrePedido_Detalle.aspx?id=' + prepedidoId;
+            }, 2000);
+        } else {
+            // Si confirmar funciono pero WC fallo, igual nos quedamos en la pagina
+            // para que el agente vea el error y pueda reintentar luego.
+            var msg = data.msg || 'Error al crear el pedido';
+            mostrarToast('Error: ' + msg, 'err', 8000);
+            if (txt) {
+                txt.innerHTML = '<i class="ti ti-alert-triangle" style="font-size:13px;vertical-align:-1px"></i> ' + escapeHtml(msg);
+                txt.style.color = '#C62828';
+            }
+            // Si el pedido SI se confirmo (existe pedido_id), reactivar el boton
+            // tendria poco sentido. Mejor recargar para ver el estado real.
+            if (data.pedido_id && data.pedido_id > 0) {
+                setTimeout(function() { location.reload(); }, 4000);
+            } else {
+                // Si fallo antes de confirmar, podemos reactivar el boton
+                if (btn) btn.disabled = false;
+            }
+        }
+    })
+    .catch(function(err) {
+        mostrarToast('Error de red: ' + err, 'err', 8000);
+        if (btn) btn.disabled = false;
+        if (txt) {
+            txt.textContent = 'Error de red. Intente de nuevo.';
+            txt.style.color = '#C62828';
+        }
+    });
 }
 function seleccionarSucursalRecojo(id) {
     guardarCampo('sucursal_id', id);
@@ -1432,20 +1526,27 @@ function validarChecklistCompleto() {
     var celular = txC ? (txC.value || '').trim() : '';
     items.push({ etiqueta: 'Receptor (nombre y celular)', ok: receptor !== '' && celular !== '' });
 
-    // 7. Pago verificado por monto total (suma data-monto-bs de filas VERIFICADO)
+    // 7. Pago: suma de pagos VERIFICADOS debe igualar el total (con tolerancia 0.01 Bs)
+    //    Tambien se controla EXCESO: si la suma supera el total, marca error.
     var sumaVerificado = 0;
     document.querySelectorAll('.ea-pago-row[data-estado="VERIFICADO"]').forEach(function(row) {
         var m = parseFloat(row.getAttribute('data-monto-bs')) || 0;
         sumaVerificado += m;
     });
     var totalPedido = leerTotalPedidoBs();
-    // Tolerancia de 0.01 Bs por redondeo
-    var pagoOk = (totalPedido > 0 && (sumaVerificado + 0.01) >= totalPedido);
+    var pagoOk = false;
     var etiquetaPago = 'Pago verificado';
     if (totalPedido <= 0) {
         etiquetaPago = 'Pago verificado (sin total calculado)';
-    } else if (!pagoOk) {
+    } else if (sumaVerificado + 0.01 < totalPedido) {
+        // Faltan pagos
         etiquetaPago = 'Pago verificado (Bs ' + sumaVerificado.toFixed(2) + ' de ' + totalPedido.toFixed(2) + ')';
+    } else if (sumaVerificado > totalPedido + 0.01) {
+        // Excede el total
+        var exceso = sumaVerificado - totalPedido;
+        etiquetaPago = 'Pago excede el total en Bs ' + exceso.toFixed(2);
+    } else {
+        pagoOk = true;
     }
     items.push({ etiqueta: etiquetaPago, ok: pagoOk });
 
@@ -1541,6 +1642,42 @@ function escapeAttr(text) {
         .replace(/&/g, '&amp;')
         .replace(/"/g, '&quot;')
         .replace(/</g, '&lt;');
+}
+
+// ============================================================
+// ABRIR WHATSAPP usando el esquema directo whatsapp://
+// Evita la pestaña en blanco que deja https://wa.me/ con window.open.
+// Si el usuario no tiene WhatsApp instalado, hace fallback a wa.me.
+// ============================================================
+function abrirWhatsApp(celular, mensaje) {
+    var numero = (celular || '').toString().replace(/[^0-9]/g, '');
+    var texto = encodeURIComponent(mensaje || '');
+    var urlApp = numero
+        ? ('whatsapp://send?phone=' + numero + '&text=' + texto)
+        : ('whatsapp://send?text=' + texto);
+    var urlWeb = numero
+        ? ('https://wa.me/' + numero + '?text=' + texto)
+        : ('https://wa.me/?text=' + texto);
+
+    // Crear un <a> efimero, dispararlo, y removerlo. No deja pestaña en blanco.
+    var a = document.createElement('a');
+    a.href = urlApp;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    // Fallback: si en 1.5s no salio del foco (no se lanzo WhatsApp),
+    // abrir wa.me en nueva pestaña como ultimo recurso.
+    var perdioFoco = false;
+    var marcador = function() { perdioFoco = true; };
+    window.addEventListener('blur', marcador, { once: true });
+    setTimeout(function() {
+        window.removeEventListener('blur', marcador);
+        if (!perdioFoco) {
+            window.open(urlWeb, '_blank');
+        }
+    }, 1500);
 }
 
 // ============================================================

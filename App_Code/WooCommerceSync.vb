@@ -447,26 +447,153 @@ Public Class WooCommerceSync
         Return resultado
     End Function
 
+    ' ============================================================
+    ' ObtenerPedido - lee TODO lo necesario para armar JSON WooCommerce
+    ' ============================================================
     Private Shared Function ObtenerPedido(pedidoId As Integer) As Dictionary(Of String, Object)
         Try
             Using conn As New SqlConnection(ConfigurationManager.ConnectionStrings("SISCONBOL").ConnectionString)
                 conn.Open()
-                Using cmd As New SqlCommand("SELECT * FROM FLORERIA_Pedido WHERE pedido_id=@id", conn)
+
+                ' --- 1. Datos del pedido + prepedido + ciudad/zona/slot ---
+                Dim sql As String =
+                    "SELECT p.pedido_id, p.codigo, p.prepedido_id, " &
+                    "       p.receptor_nombre, p.receptor_celular, " &
+                    "       p.direccion, p.referencia, p.gps, " &
+                    "       p.fecha_entrega, p.es_express, " &
+                    "       p.dedicatoria, p.firma_tarjeta, p.tipo_ocacion, " &
+                    "       p.nota_floreria, p.observaciones, " &
+                    "       p.subtotal_productos_bs, p.envio_bs, " &
+                    "       p.recargo_express_bs, p.recargo_horario_bs, " &
+                    "       p.descuento_bs, p.total_bs, " &
+                    "       p.tipo_entrega, p.wc_order_id, " &
+                    "       c.nombre AS ciudad_nombre, " &
+                    "       z.nombre AS zona_nombre, " &
+                    "       sl.etiqueta AS slot_etiqueta, sl.wc_slot_value, " &
+                    "       pp.cliente_nombre, pp.cliente_apellidos, " &
+                    "       pp.cliente_email, pp.cliente_celular " &
+                    "FROM FLORERIA_Pedido p " &
+                    "LEFT JOIN FLORERIA_Ciudad c     ON c.ciudad_id = p.ciudad_id " &
+                    "LEFT JOIN FLORERIA_Zona   z     ON z.zona_id   = p.zona_id " &
+                    "LEFT JOIN FLORERIA_Slot_Horario sl ON sl.slot_id = p.slot_id " &
+                    "LEFT JOIN FLORERIA_PrePedido    pp ON pp.prepedido_id = p.prepedido_id " &
+                    "WHERE p.pedido_id = @id"
+
+                Dim p As Dictionary(Of String, Object) = Nothing
+                Using cmd As New SqlCommand(sql, conn)
                     cmd.Parameters.AddWithValue("@id", pedidoId)
                     Using dr As SqlDataReader = cmd.ExecuteReader()
                         If dr.Read() Then
-                            Dim p As New Dictionary(Of String, Object)()
-                            p("pedido_id") = dr("pedido_id")
-                            p("receptor_nombre") = dr("receptor_nombre").ToString()
-                            p("receptor_celular") = If(IsDBNull(dr("receptor_celular")), "", dr("receptor_celular").ToString())
-                            p("direccion") = If(IsDBNull(dr("direccion")), "", dr("direccion").ToString())
-                            p("total_bs") = CDec(dr("total_bs"))
-                            p("estado_pago") = dr("estado_pago").ToString()
-                            p("wc_order_id") = If(IsDBNull(dr("wc_order_id")), 0, CInt(dr("wc_order_id")))
-                            Return p
+                            p = New Dictionary(Of String, Object)()
+                            p("pedido_id")        = CInt(dr("pedido_id"))
+                            p("codigo")           = dr("codigo").ToString()
+                            p("prepedido_id")     = If(IsDBNull(dr("prepedido_id")), 0, CInt(dr("prepedido_id")))
+                            p("receptor_nombre")  = dr("receptor_nombre").ToString()
+                            p("receptor_celular") = dr("receptor_celular").ToString()
+                            p("direccion")        = If(IsDBNull(dr("direccion")),    "", dr("direccion").ToString())
+                            p("referencia")       = If(IsDBNull(dr("referencia")),   "", dr("referencia").ToString())
+                            p("gps")              = If(IsDBNull(dr("gps")),          "", dr("gps").ToString())
+                            p("fecha_entrega")    = CDate(dr("fecha_entrega")).ToString("yyyy-MM-dd")
+                            p("es_express")       = CBool(dr("es_express"))
+                            p("dedicatoria")      = If(IsDBNull(dr("dedicatoria")),  "", dr("dedicatoria").ToString())
+                            p("firma_tarjeta")    = If(IsDBNull(dr("firma_tarjeta")),"", dr("firma_tarjeta").ToString())
+                            p("tipo_ocacion")     = If(IsDBNull(dr("tipo_ocacion")), "", dr("tipo_ocacion").ToString())
+                            p("nota_floreria")    = If(IsDBNull(dr("nota_floreria")),"", dr("nota_floreria").ToString())
+                            p("observaciones")    = If(IsDBNull(dr("observaciones")),"", dr("observaciones").ToString())
+                            p("subtotal_bs")      = CDec(dr("subtotal_productos_bs"))
+                            p("envio_bs")         = CDec(dr("envio_bs"))
+                            p("recargo_express_bs") = CDec(dr("recargo_express_bs"))
+                            p("recargo_horario_bs") = CDec(dr("recargo_horario_bs"))
+                            p("descuento_bs")     = CDec(dr("descuento_bs"))
+                            p("total_bs")         = CDec(dr("total_bs"))
+                            p("tipo_entrega")     = dr("tipo_entrega").ToString()
+                            p("wc_order_id")      = If(IsDBNull(dr("wc_order_id")), 0, CInt(dr("wc_order_id")))
+                            p("ciudad_nombre")    = If(IsDBNull(dr("ciudad_nombre")), "", dr("ciudad_nombre").ToString())
+                            p("zona_nombre")      = If(IsDBNull(dr("zona_nombre")),   "", dr("zona_nombre").ToString())
+                            p("slot_etiqueta")    = If(IsDBNull(dr("slot_etiqueta")), "", dr("slot_etiqueta").ToString())
+                            p("wc_slot_value")    = If(IsDBNull(dr("wc_slot_value")), "", dr("wc_slot_value").ToString())
+
+                            Dim cn As String = If(IsDBNull(dr("cliente_nombre")),    "", dr("cliente_nombre").ToString())
+                            Dim ca As String = If(IsDBNull(dr("cliente_apellidos")), "", dr("cliente_apellidos").ToString())
+                            p("cliente_nombre")    = cn
+                            p("cliente_apellidos") = ca
+                            p("cliente_email")     = If(IsDBNull(dr("cliente_email")),   "", dr("cliente_email").ToString())
+                            p("cliente_celular")   = If(IsDBNull(dr("cliente_celular")), "", dr("cliente_celular").ToString())
                         End If
                     End Using
                 End Using
+
+                If p Is Nothing Then Return Nothing
+
+                ' --- 2. Productos del pedido (lee wc_product_id) ---
+                Dim items As New List(Of Dictionary(Of String, Object))
+                Dim sqlItems As String =
+                    "SELECT d.detalle_id, d.producto_id, d.es_personalizado, " &
+                    "       d.nombre_producto, d.cantidad, " &
+                    "       d.precio_unitario_bs, d.subtotal_bs, " &
+                    "       d.personalizacion, " &
+                    "       pr.wc_product_id " &
+                    "FROM FLORERIA_Pedido_Detalle d " &
+                    "LEFT JOIN FLORERIA_Producto pr ON pr.producto_id = d.producto_id " &
+                    "WHERE d.pedido_id = @id"
+                Using cmdI As New SqlCommand(sqlItems, conn)
+                    cmdI.Parameters.AddWithValue("@id", pedidoId)
+                    Using dr As SqlDataReader = cmdI.ExecuteReader()
+                        While dr.Read()
+                            Dim it As New Dictionary(Of String, Object)
+                            it("detalle_id")       = CInt(dr("detalle_id"))
+                            it("es_personalizado") = CBool(dr("es_personalizado"))
+                            it("nombre")           = dr("nombre_producto").ToString()
+                            it("cantidad")         = CInt(dr("cantidad"))
+                            it("precio_bs")        = CDec(dr("precio_unitario_bs"))
+                            it("subtotal_bs")      = CDec(dr("subtotal_bs"))
+                            it("personalizacion")  = If(IsDBNull(dr("personalizacion")), "", dr("personalizacion").ToString())
+                            it("wc_product_id")    = If(IsDBNull(dr("wc_product_id")), 0, CInt(dr("wc_product_id")))
+                            items.Add(it)
+                        End While
+                    End Using
+                End Using
+                p("items") = items
+
+                ' --- 3. Metodo de pago: lee el ULTIMO pago verificado del prepedido ---
+                Dim metodoPago As String = ""
+                Dim ppId As Integer = CInt(p("prepedido_id"))
+                If ppId > 0 Then
+                    Dim sqlPago As String =
+                        "SELECT TOP 1 metodo_pago " &
+                        "FROM FLORERIA_PrePedido_Entrega_Pago pa " &
+                        "INNER JOIN FLORERIA_PrePedido_Entrega e " &
+                        "  ON e.prepedido_entrega_id = pa.prepedido_entrega_id " &
+                        "WHERE e.prepedido_id = @pp AND pa.estado = 'VERIFICADO' " &
+                        "ORDER BY pa.creado_en DESC"
+                    Using cmdP As New SqlCommand(sqlPago, conn)
+                        cmdP.Parameters.AddWithValue("@pp", ppId)
+                        Dim r As Object = cmdP.ExecuteScalar()
+                        If r IsNot Nothing AndAlso Not IsDBNull(r) Then
+                            metodoPago = r.ToString()
+                        End If
+                    End Using
+                End If
+                If metodoPago = "" Then metodoPago = "EFECTIVO"
+                p("metodo_pago_sisconbol") = metodoPago
+
+                ' --- 4. Resolver mapeo a WC via SP ---
+                Dim wcMethod As String = "bacs"
+                Dim wcTitle  As String = metodoPago
+                Using cmdM As New SqlCommand("FLORERIA_sp_PagoMetodo_Map_Obtener", conn)
+                    cmdM.CommandType = CommandType.StoredProcedure
+                    cmdM.Parameters.AddWithValue("@codigo_sisconbol", metodoPago)
+                    Using dr As SqlDataReader = cmdM.ExecuteReader()
+                        If dr.Read() Then
+                            wcMethod = dr("wc_payment_method").ToString()
+                            wcTitle  = dr("wc_payment_method_title").ToString()
+                        End If
+                    End Using
+                End Using
+                p("wc_payment_method")       = wcMethod
+                p("wc_payment_method_title") = wcTitle
+
+                Return p
             End Using
         Catch ex As Exception
             System.Diagnostics.Debug.WriteLine("ERROR ObtenerPedido: " & ex.Message)
@@ -474,38 +601,199 @@ Public Class WooCommerceSync
         Return Nothing
     End Function
 
+    ' ============================================================
+    ' ConstruirJsonPedido - JSON completo para WooCommerce
+    ' Mapeo basado en el formato real que usa miss-flores.com
+    ' (los mismos campos que parsea el modulo Migrar al recibir)
+    ' ============================================================
     Private Shared Function ConstruirJsonPedido(pedido As Dictionary(Of String, Object)) As String
+        ' Constante: producto comodin para items personalizados
+        Const WC_PRODUCTO_PERSONALIZADO As Integer = 7076
+
         Dim sb As New StringBuilder()
         sb.Append("{")
 
-        sb.Append("""status"":""" & MapearEstadoPedido(pedido("estado_pago").ToString()) & """,")
+        ' --- Status + pagado ---
+        sb.Append("""status"":""processing"",")
+        sb.Append("""set_paid"":true,")
+        sb.Append("""currency"":""BOB"",")
 
-        ' Información de facturación y envío
+        ' --- Payment method ---
+        Dim wcPm    As String = pedido("wc_payment_method").ToString()
+        Dim wcPmT   As String = pedido("wc_payment_method_title").ToString()
+        sb.Append("""payment_method"":""" & EscaparJson(wcPm) & """,")
+        sb.Append("""payment_method_title"":""" & EscaparJson(wcPmT) & """,")
+
+        ' --- Customer note ---
+        Dim notaFlor As String = pedido("nota_floreria").ToString()
+        Dim obs      As String = pedido("observaciones").ToString()
+        Dim notaFinal As String = ""
+        If notaFlor <> "" Then notaFinal = notaFlor
+        If obs <> "" Then
+            If notaFinal <> "" Then notaFinal &= " | "
+            notaFinal &= obs
+        End If
+        If notaFinal <> "" Then
+            sb.Append("""customer_note"":""" & EscaparJson(notaFinal) & """,")
+        End If
+
+        ' --- Billing (datos del cliente del prepedido) ---
+        Dim cn As String = pedido("cliente_nombre").ToString()
+        Dim ca As String = pedido("cliente_apellidos").ToString()
+        If cn = "" Then cn = pedido("receptor_nombre").ToString()
         sb.Append("""billing"":{")
-        sb.Append("""first_name"":""" & EscaparJson(pedido("receptor_nombre").ToString()) & """,")
-        sb.Append("""phone"":""" & EscaparJson(pedido("receptor_celular").ToString()) & """},")
+        sb.Append("""first_name"":""" & EscaparJson(cn) & """,")
+        sb.Append("""last_name"":"""  & EscaparJson(ca) & """,")
+        sb.Append("""email"":"""      & EscaparJson(pedido("cliente_email").ToString()) & """,")
+        sb.Append("""phone"":"""      & EscaparJson(pedido("cliente_celular").ToString()) & """,")
+        sb.Append("""country"":""BO""")
+        sb.Append("},")
 
+        ' --- Shipping (a quien se le entrega) ---
+        Dim receptor As String = pedido("receptor_nombre").ToString()
+        Dim rNom As String = receptor
+        Dim rApe As String = ""
+        Dim pos As Integer = receptor.IndexOf(" "c)
+        If pos > 0 Then
+            rNom = receptor.Substring(0, pos)
+            rApe = receptor.Substring(pos + 1)
+        End If
         sb.Append("""shipping"":{")
-        sb.Append("""first_name"":""" & EscaparJson(pedido("receptor_nombre").ToString()) & """,")
-        sb.Append("""address_1"":""" & EscaparJson(pedido("direccion").ToString()) & """},")
+        sb.Append("""first_name"":""" & EscaparJson(rNom) & """,")
+        sb.Append("""last_name"":"""  & EscaparJson(rApe) & """,")
+        sb.Append("""phone"":"""      & EscaparJson(pedido("receptor_celular").ToString()) & """,")
+        sb.Append("""address_1"":"""  & EscaparJson(pedido("direccion").ToString()) & """,")
+        sb.Append("""address_2"":"""  & EscaparJson(pedido("referencia").ToString()) & """,")
+        sb.Append("""city"":"""       & EscaparJson(pedido("ciudad_nombre").ToString()) & """,")
+        sb.Append("""state"":"""      & EscaparJson(pedido("zona_nombre").ToString()) & """,")
+        sb.Append("""country"":""BO""")
+        sb.Append("},")
 
-        ' Total
-        sb.Append("""total"":""" & CDec(pedido("total_bs")).ToString("F2") & """,")
+        ' --- Line items ---
+        sb.Append("""line_items"":[")
+        Dim items As List(Of Dictionary(Of String, Object)) = CType(pedido("items"), List(Of Dictionary(Of String, Object)))
+        For i As Integer = 0 To items.Count - 1
+            Dim it As Dictionary(Of String, Object) = items(i)
+            If i > 0 Then sb.Append(",")
 
-        ' TODO: Agregar line_items (productos del pedido)
-        sb.Append("""line_items"":[],")
+            Dim esPers As Boolean = CBool(it("es_personalizado"))
+            Dim wcPid As Integer = CInt(it("wc_product_id"))
+            If esPers OrElse wcPid <= 0 Then wcPid = WC_PRODUCTO_PERSONALIZADO
 
-        If sb.Length > 1 AndAlso sb(sb.Length - 1) = ","c Then sb.Length -= 1
+            Dim cant     As Integer = CInt(it("cantidad"))
+            Dim precio   As Decimal = CDec(it("precio_bs"))
+            Dim subtotal As Decimal = CDec(it("subtotal_bs"))
+
+            sb.Append("{")
+            sb.Append("""product_id"":" & wcPid & ",")
+            sb.Append("""quantity"":" & cant & ",")
+            sb.Append("""subtotal"":""" & subtotal.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) & """,")
+            sb.Append("""total"":""" & subtotal.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) & """")
+
+            ' Meta_data del item (personalizacion + nombre real si es comodin)
+            Dim metaItem As New List(Of String)
+            Dim pers As String = it("personalizacion").ToString()
+            If pers <> "" Then
+                metaItem.Add("{""key"":""personalizacion"",""value"":""" & EscaparJson(pers) & """}")
+            End If
+            If esPers Then
+                ' Cuando se usa el producto comodin, mandar el nombre real del producto
+                metaItem.Add("{""key"":""nombre_personalizado"",""value"":""" & EscaparJson(it("nombre").ToString()) & """}")
+                metaItem.Add("{""key"":""precio_unitario_bs"",""value"":""" & precio.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) & """}")
+            End If
+            If metaItem.Count > 0 Then
+                sb.Append(",""meta_data"":[" & String.Join(",", metaItem) & "]")
+            End If
+            sb.Append("}")
+        Next
+        sb.Append("],")
+
+        ' --- Shipping lines (costo de envio) ---
+        Dim envioBs As Decimal = CDec(pedido("envio_bs"))
+        Dim tipoEnt As String = pedido("tipo_entrega").ToString()
+        sb.Append("""shipping_lines"":[{")
+        If tipoEnt = "RECOJO_SUCURSAL" Then
+            sb.Append("""method_id"":""local_pickup"",")
+            sb.Append("""method_title"":""Recojo en sucursal"",")
+        Else
+            sb.Append("""method_id"":""flat_rate"",")
+            sb.Append("""method_title"":""Envio a domicilio""")
+            If pedido("zona_nombre").ToString() <> "" Then
+                sb.Length -= 1   ' quitar la comilla final
+                sb.Append(" (" & EscaparJson(pedido("zona_nombre").ToString()) & ")"",")
+            Else
+                sb.Append(",")
+            End If
+        End If
+        sb.Append("""total"":""" & envioBs.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) & """")
+        sb.Append("}],")
+
+        ' --- Fee lines (recargos y descuento) ---
+        Dim fees As New List(Of String)
+        Dim recHor As Decimal = CDec(pedido("recargo_horario_bs"))
+        Dim recExp As Decimal = CDec(pedido("recargo_express_bs"))
+        Dim descBs As Decimal = CDec(pedido("descuento_bs"))
+        If recHor > 0 Then
+            Dim nomFee As String = "Recargo horario"
+            If pedido("slot_etiqueta").ToString() <> "" Then
+                nomFee &= " (" & pedido("slot_etiqueta").ToString() & ")"
+            End If
+            fees.Add("{""name"":""" & EscaparJson(nomFee) & """,""total"":""" & recHor.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) & """}")
+        End If
+        If recExp > 0 Then
+            fees.Add("{""name"":""Recargo express"",""total"":""" & recExp.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) & """}")
+        End If
+        If descBs > 0 Then
+            ' En WC los descuentos van como fee con total negativo
+            fees.Add("{""name"":""Descuento"",""total"":""-" & descBs.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) & """}")
+        End If
+        sb.Append("""fee_lines"":[" & String.Join(",", fees) & "],")
+
+        ' --- Meta_data del pedido (mismos keys que parsea Migrar) ---
+        Dim meta As New List(Of String)
+        meta.Add(MetaPair("delivery_date", pedido("fecha_entrega").ToString()))
+        If pedido("wc_slot_value").ToString() <> "" Then
+            meta.Add(MetaPair("delivery_time", pedido("wc_slot_value").ToString()))
+        ElseIf pedido("slot_etiqueta").ToString() <> "" Then
+            meta.Add(MetaPair("delivery_time", pedido("slot_etiqueta").ToString()))
+        End If
+        If pedido("dedicatoria").ToString() <> "" Then
+            meta.Add(MetaPair("mensaje_tarjeta", pedido("dedicatoria").ToString()))
+        End If
+        If pedido("firma_tarjeta").ToString() <> "" Then
+            meta.Add(MetaPair("firma_tarjeta", pedido("firma_tarjeta").ToString()))
+        End If
+        If pedido("tipo_ocacion").ToString() <> "" Then
+            meta.Add(MetaPair("tipo_de_ocacion", pedido("tipo_ocacion").ToString()))
+        End If
+        If pedido("nota_floreria").ToString() <> "" Then
+            meta.Add(MetaPair("nota_floreria", pedido("nota_floreria").ToString()))
+        End If
+        If pedido("gps").ToString() <> "" Then
+            meta.Add(MetaPair("gps", pedido("gps").ToString()))
+        End If
+        If pedido("receptor_celular").ToString() <> "" Then
+            meta.Add(MetaPair("TelefonoRecibe", pedido("receptor_celular").ToString()))
+        End If
+        ' Codigo interno SISCONBOL para trazabilidad
+        meta.Add(MetaPair("sisconbol_codigo", pedido("codigo").ToString()))
+        meta.Add(MetaPair("sisconbol_pedido_id", pedido("pedido_id").ToString()))
+
+        sb.Append("""meta_data"":[" & String.Join(",", meta) & "]")
+
         sb.Append("}")
         Return sb.ToString()
     End Function
 
+    ' Helper para construir cada par {key,value} del meta_data
+    Private Shared Function MetaPair(clave As String, valor As String) As String
+        Return "{""key"":""" & EscaparJson(clave) & """,""value"":""" & EscaparJson(valor) & """}"
+    End Function
+
+    ' (MapearEstadoPedido ya no se usa porque siempre mandamos "processing".
+    '  Se conserva por compatibilidad con codigo viejo, pero queda inerte.)
     Private Shared Function MapearEstadoPedido(estadoPago As String) As String
-        Select Case estadoPago.ToUpper()
-            Case "PENDIENTE" : Return "pending"
-            Case "PAGADO" : Return "processing"
-            Case Else : Return "on-hold"
-        End Select
+        Return "processing"
     End Function
 
     Private Shared Sub ActualizarEstadoSyncPedido(pedidoId As Integer, wcOrderId As Integer, wcOrderNumber As String, estado As String, errorMsg As String)
