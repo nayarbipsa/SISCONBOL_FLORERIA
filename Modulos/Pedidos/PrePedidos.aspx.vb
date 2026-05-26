@@ -3,26 +3,24 @@ Imports System.Data.SqlClient
 Imports System.Web.Script.Serialization
 
 ' ============================================================
-' MODULO: Lista de Pre-Pedidos
-' Archivo: Modulos/Pedidos/PrePedidos.aspx.vb
-' Arquitectura: MasterPage — NO tocar sesión ni menú aquí
+' MODULO : Lista de Pre-Pedidos
+' Archivo : Modulos/Pedidos/PrePedidos.aspx.vb
+' Arq.    : MasterPage — sesión y menú los maneja Site.Master
 ' ============================================================
 Partial Public Class Modulos_Pedidos_PrePedidos
     Inherits System.Web.UI.Page
 
-    ' JSON para la primera carga (evita segundo request)
     Public Property JsonInicial As String = ""
 
     Protected Sub Page_Load(ByVal sender As Object, ByVal e As EventArgs) Handles Me.Load
         If Not IsPostBack Then
-            ' Detectar si viene como petición AJAX (fetch del JS)
             Dim esAjax As Boolean = (Request.Headers("X-Requested-With") = "XMLHttpRequest")
             Dim accion As String = If(Request.QueryString("accion"), "")
 
             If esAjax AndAlso accion = "LISTAR" Then
                 ResponderAjax()
             Else
-                ' Primera carga normal: pre-cargar datos en JSON para el JS
+                ' Primera carga: pre-inyectar datos para evitar fetch extra
                 JsonInicial = ObtenerJson(
                     buscar:=If(Request.QueryString("buscar"), ""),
                     estado:=If(Request.QueryString("estado"), ""),
@@ -32,9 +30,9 @@ Partial Public Class Modulos_Pedidos_PrePedidos
         End If
     End Sub
 
-    ' ============================================================
-    ' RESPUESTA AJAX — fetch() desde el JS
-    ' ============================================================
+    ' ----------------------------------------------------------------
+    ' AJAX — responde al fetch() del JS con Content-Type application/json
+    ' ----------------------------------------------------------------
     Private Sub ResponderAjax()
         Dim buscar As String = If(Request.QueryString("buscar"), "")
         Dim estado As String = If(Request.QueryString("estado"), "")
@@ -50,9 +48,9 @@ Partial Public Class Modulos_Pedidos_PrePedidos
         Response.End()
     End Sub
 
-    ' ============================================================
-    ' OBTENER JSON — usado tanto en primera carga como en AJAX
-    ' ============================================================
+    ' ----------------------------------------------------------------
+    ' OBTENER JSON — primera carga y AJAX usan el mismo método
+    ' ----------------------------------------------------------------
     Private Function ObtenerJson(buscar As String, estado As String, pagina As Integer) As String
         Dim usuarioId As Integer = SesionHelper.ObtenerUsuarioId(HttpContext.Current)
         Dim porPagina As Integer = 20
@@ -65,28 +63,12 @@ Partial Public Class Modulos_Pedidos_PrePedidos
                 Using cmd As New SqlCommand("FLORERIA_sp_PrePedido_Listar", conn)
                     cmd.CommandType = CommandType.StoredProcedure
 
-                    ' Siempre filtrar por agente actual
-                    cmd.Parameters.AddWithValue("@agente_id", usuarioId)
-
-                    ' Tipo: por defecto solo PRE_PEDIDO en esta pantalla
-                    cmd.Parameters.AddWithValue("@tipo_registro", "PRE_PEDIDO")
-
-                    ' Estado (NULL = todos)
-                    If estado <> "" Then
-                        cmd.Parameters.AddWithValue("@estado", estado)
-                    Else
-                        cmd.Parameters.AddWithValue("@estado", DBNull.Value)
-                    End If
-
-                    ' Búsqueda (NULL = sin filtro)
-                    If buscar <> "" Then
-                        cmd.Parameters.AddWithValue("@buscar", buscar)
-                    Else
-                        cmd.Parameters.AddWithValue("@buscar", DBNull.Value)
-                    End If
-
-                    cmd.Parameters.AddWithValue("@pagina", pagina)
-                    cmd.Parameters.AddWithValue("@por_pagina", porPagina)
+                    cmd.Parameters.AddWithValue("@agente_id",     usuarioId)
+                    cmd.Parameters.AddWithValue("@tipo_registro",  "PRE_PEDIDO")
+                    cmd.Parameters.AddWithValue("@estado",         If(estado <> "", CObj(estado), DBNull.Value))
+                    cmd.Parameters.AddWithValue("@buscar",         If(buscar <> "", CObj(buscar), DBNull.Value))
+                    cmd.Parameters.AddWithValue("@pagina",         pagina)
+                    cmd.Parameters.AddWithValue("@por_pagina",     porPagina)
 
                     Dim paramTotal As New SqlParameter("@total_registros", SqlDbType.Int)
                     paramTotal.Direction = ParameterDirection.Output
@@ -95,40 +77,38 @@ Partial Public Class Modulos_Pedidos_PrePedidos
                     Using reader As SqlDataReader = cmd.ExecuteReader()
                         While reader.Read()
                             Dim item As New PrePedidoItem()
-                            item.prepedido_id = CInt(reader("prepedido_id"))
-                            item.codigo = reader("codigo").ToString()
+                            item.prepedido_id    = LeerInt(reader, "prepedido_id")
+                            item.codigo          = reader("codigo").ToString()
                             item.cliente_celular = reader("cliente_celular").ToString()
-                            item.estado = reader("estado").ToString()
-                            item.total_general_bs = CDec(reader("total_general_bs"))
-                            item.estado_pago = reader("estado_pago").ToString()
-                            item.creado_en = CDate(reader("creado_en")).ToString("yyyy-MM-ddTHH:mm:ss")
+                            item.estado          = reader("estado").ToString()
+                            item.total_general_bs = LeerDecimal(reader, "total_general_bs")
+                            item.estado_pago     = reader("estado_pago").ToString()
+                            item.creado_en       = CDate(reader("creado_en")).ToString("yyyy-MM-ddTHH:mm:ss")
+                            item.creado_por_nombre = LeerStr(reader, "creado_por_nombre")
 
-                            ' Nombre completo
-                            Dim nom As String = ""
-                            If Not IsDBNull(reader("cliente_nombre")) Then nom = reader("cliente_nombre").ToString().Trim()
-                            If Not IsDBNull(reader("cliente_apellidos")) AndAlso reader("cliente_apellidos").ToString().Trim() <> "" Then
-                                nom = (nom & " " & reader("cliente_apellidos").ToString().Trim()).Trim()
-                            End If
+                            ' Nombre completo del cliente
+                            Dim nom As String = LeerStr(reader, "cliente_nombre").Trim()
+                            Dim ape As String = LeerStr(reader, "cliente_apellidos").Trim()
+                            If ape <> "" Then nom = (nom & " " & ape).Trim()
                             item.cliente_nombre = If(nom = "", Nothing, nom)
 
                             ' Token
-                            If Not IsDBNull(reader("token_web")) Then
-                                item.token_web = reader("token_web").ToString()
-                            End If
-                            If Not IsDBNull(reader("token_expira")) Then
-                                item.token_expira = CDate(reader("token_expira")).ToString("yyyy-MM-ddTHH:mm:ss")
-                            End If
+                            item.token_web    = LeerStr(reader, "token_web")
+                            Dim te As String  = LeerStr(reader, "token_expira")
+                            If te <> "" Then item.token_expira = CDate(reader("token_expira")).ToString("yyyy-MM-ddTHH:mm:ss")
 
-                            ' Quien verificó
-                            If Not IsDBNull(reader("pago_verificado_por")) Then
-                                item.pago_verificado_por = reader("pago_verificado_por").ToString()
+                            ' Verificador de pago
+                            item.pago_verificado_por = LeerStr(reader, "pago_verificado_por")
+
+                            ' Fecha de entrega más próxima de los pedidos hijos
+                            If Not IsDBNull(reader("fecha_entrega_min")) Then
+                                item.fecha_entrega_min = CDate(reader("fecha_entrega_min")).ToString("yyyy-MM-dd")
                             End If
 
                             items.Add(item)
                         End While
                     End Using
 
-                    ' Leer OUTPUT después de cerrar el reader
                     If Not IsDBNull(paramTotal.Value) Then
                         totalRegistros = CInt(paramTotal.Value)
                     End If
@@ -136,30 +116,49 @@ Partial Public Class Modulos_Pedidos_PrePedidos
             End Using
 
         Catch ex As SqlException
-            ' Devolver estructura vacía con error
-            Dim errObj = New With {.total = 0, .items = New List(Of PrePedidoItem)(), .error = ex.Message}
-            Return New JavaScriptSerializer().Serialize(errObj)
+            Dim err = New With {.total = 0, .items = New List(Of PrePedidoItem)(), .error = ex.Message}
+            Return New JavaScriptSerializer().Serialize(err)
         End Try
 
         Dim resultado = New With {.total = totalRegistros, .items = items}
         Return New JavaScriptSerializer().Serialize(resultado)
     End Function
 
-    ' ============================================================
+    ' ----------------------------------------------------------------
+    ' HELPERS
+    ' ----------------------------------------------------------------
+    Private Function LeerInt(r As SqlDataReader, col As String) As Integer
+        If IsDBNull(r(col)) Then Return 0
+        Return Convert.ToInt32(r(col))
+    End Function
+
+    Private Function LeerDecimal(r As SqlDataReader, col As String) As Decimal
+        If IsDBNull(r(col)) Then Return 0D
+        Return Convert.ToDecimal(r(col))
+    End Function
+
+    Private Function LeerStr(r As SqlDataReader, col As String) As String
+        If IsDBNull(r(col)) Then Return ""
+        Return r(col).ToString()
+    End Function
+
+    ' ----------------------------------------------------------------
     ' CLASE DE DATOS
-    ' ============================================================
+    ' ----------------------------------------------------------------
     Public Class PrePedidoItem
-        Public Property prepedido_id As Integer
-        Public Property codigo As String
-        Public Property cliente_celular As String
-        Public Property cliente_nombre As String
-        Public Property estado As String
-        Public Property token_web As String
-        Public Property token_expira As String
-        Public Property total_general_bs As Decimal
-        Public Property estado_pago As String
+        Public Property prepedido_id       As Integer
+        Public Property codigo             As String
+        Public Property cliente_celular    As String
+        Public Property cliente_nombre     As String
+        Public Property estado             As String
+        Public Property token_web          As String
+        Public Property token_expira       As String
+        Public Property total_general_bs   As Decimal
+        Public Property estado_pago        As String
         Public Property pago_verificado_por As String
-        Public Property creado_en As String
+        Public Property creado_en          As String
+        Public Property creado_por_nombre  As String
+        Public Property fecha_entrega_min  As String
     End Class
 
 End Class
