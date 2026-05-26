@@ -111,6 +111,7 @@ Public Class Pedidos_Handler
         Dim pedidoId As Integer = CInt(dr("pedido_id"))
         Dim codigo As String = LeerStr(dr, "codigo")
         Dim wcNumber As String = LeerStr(dr, "wc_order_number")
+        Dim wcOrderId As Integer = LeerInt(dr, "wc_order_id")
         Dim receptor As String = LeerStr(dr, "receptor_nombre")
         Dim celular As String = LeerStr(dr, "receptor_celular")
         Dim direccion As String = LeerStr(dr, "direccion")
@@ -201,7 +202,7 @@ Public Class Pedidos_Handler
 
         ' ---- COL 5: ACCIONES ----
         sb.Append("<td style=""text-align:right"">")
-        sb.Append(RenderDropdownAcciones(pedidoId, estadoOp, contactado, deliveryId, celular, direccion, gps, receptor, codigo, wcNumber, totalBs, esAdmin))
+        sb.Append(RenderDropdownAcciones(pedidoId, estadoOp, contactado, deliveryId, celular, direccion, gps, receptor, codigo, wcNumber, wcOrderId, totalBs, esAdmin))
         sb.Append("</td>")
 
         sb.Append("</tr>")
@@ -244,6 +245,7 @@ Public Class Pedidos_Handler
     Private Function RenderDropdownAcciones(pid As Integer, estadoOp As String, contactado As Boolean, deliveryId As Integer,
                                             celular As String, direccion As String, gps As String,
                                             receptor As String, codigo As String, wcNumber As String,
+                                            wcOrderId As Integer,
                                             total As Decimal, esAdmin As Boolean) As String
         Dim sb As New StringBuilder()
         sb.Append("<div class=""dropdown"" id=""dd_" & pid & """>")
@@ -299,6 +301,13 @@ Public Class Pedidos_Handler
         Dim mapDest As String = If(gps <> "", gps, direccion)
         sb.Append("<button type=""button"" class=""dropdown-item"" onclick=""abrirMaps('" & HEjs(mapDest) & "')"">")
         sb.Append("<i class=""ti ti-map""></i> Ver en Google Maps</button>")
+
+        ' Ver en WooCommerce - solo si tiene wc_order_id
+        If wcOrderId > 0 Then
+            Dim wcUrl As String = "https://miss-flores.com/wp-admin/post.php?post=" & wcOrderId & "&action=edit"
+            sb.Append("<button type=""button"" class=""dropdown-item"" onclick=""verEnWooCommerce('" & wcUrl & "')"">")
+            sb.Append("<i class=""ti ti-brand-woocommerce""></i> Ver en WooCommerce</button>")
+        End If
 
         ' Seccion Admin (solo admin/gerente)
         If esAdmin Then

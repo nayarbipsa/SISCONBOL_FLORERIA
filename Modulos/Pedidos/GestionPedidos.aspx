@@ -511,6 +511,11 @@ function abrirMaps(dir) {
     window.open('https://maps.google.com/?q=' + encodeURIComponent(dir), '_blank');
 }
 
+function verEnWooCommerce(url) {
+    cerrarTodosDropdowns();
+    window.open(url, '_blank');
+}
+
 function copiarParaWhatsApp(pid) {
     cerrarTodosDropdowns();
     fetch('Pedidos_Handler.ashx?action=copy&id=' + pid)
