@@ -1,5 +1,7 @@
 Imports System.Web
 Imports System.Web.Script.Serialization
+Imports System.Data
+Imports System.Data.SqlClient
 
 ' ============================================================
 ' HANDLER : PrePedidos_WC_Handler.ashx.vb
@@ -59,6 +61,17 @@ Namespace SISCONBOL_FLORERIA
 
                 If ok AndAlso wcOrderId > 0 Then
                     wcUrl = "https://miss-flores.com/wp-admin/post.php?post=" & wcOrderId & "&action=edit"
+
+                    ' [NUEVO] Recalcular estado del PrePedido → pasa a CONVERTIDO
+                    Try
+                        Dim usuarioId As Integer = SesionHelper.ObtenerUsuarioId(context)
+                        Dim prepedidoId As Integer = ObtenerPrepedidoIdDePedido(pedidoId)
+                        If prepedidoId > 0 Then
+                            RecalcularEstadoPrePedido(prepedidoId, usuarioId)
+                        End If
+                    Catch
+                        ' Silencioso: no romper la respuesta al usuario si falla el recalculo
+                    End Try
                 End If
 
                 Dim serializer As New JavaScriptSerializer()
@@ -72,6 +85,47 @@ Namespace SISCONBOL_FLORERIA
 
             Catch ex As Exception
                 context.Response.Write("{""ok"":false,""mensaje"":""Error interno: " & ex.Message.Replace("""", "'") & """}")
+            End Try
+        End Sub
+
+        ' --------------------------------------------------------
+        ' [NUEVO] Helper: obtener prepedido_id desde pedido_id
+        ' --------------------------------------------------------
+        Private Function ObtenerPrepedidoIdDePedido(pedidoId As Integer) As Integer
+            Try
+                Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
+                    conn.Open()
+                    Using cmd As New SqlCommand(
+                        "SELECT prepedido_id FROM FLORERIA_Pedido WHERE pedido_id = @id", conn)
+                        cmd.Parameters.AddWithValue("@id", pedidoId)
+                        Dim val As Object = cmd.ExecuteScalar()
+                        If val IsNot Nothing AndAlso Not IsDBNull(val) Then
+                            Return CInt(val)
+                        End If
+                    End Using
+                End Using
+            Catch
+            End Try
+            Return 0
+        End Function
+
+        ' --------------------------------------------------------
+        ' [NUEVO] Helper: llama al SP que recalcula el estado
+        ' del PrePedido automáticamente según sus datos reales.
+        ' --------------------------------------------------------
+        Private Sub RecalcularEstadoPrePedido(prepedidoId As Integer, usuarioId As Integer)
+            Try
+                Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
+                    conn.Open()
+                    Using cmd As New SqlCommand("FLORERIA_sp_PrePedido_RecalcularEstado", conn)
+                        cmd.CommandType = CommandType.StoredProcedure
+                        cmd.Parameters.AddWithValue("@prepedido_id", prepedidoId)
+                        cmd.Parameters.AddWithValue("@modificado_por", usuarioId)
+                        cmd.ExecuteNonQuery()
+                    End Using
+                End Using
+            Catch
+                ' No interrumpir el flujo principal si falla el recalculo
             End Try
         End Sub
 

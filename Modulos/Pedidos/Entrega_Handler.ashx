@@ -342,6 +342,24 @@ Public Class Entrega_Handler
                 cmd.Parameters.AddWithValue("@eid", entregaId)
                 cmd.ExecuteNonQuery()
             End Using
+
+            ' [NUEVO] Si se actualizo receptor_nombre/celular o fecha_entrega -> recalcular estado
+            ' Esto cubre el caso "agente llena todo manualmente sin enviar form web"
+            If campo = "receptor_nombre" OrElse campo = "receptor_celular" OrElse campo = "fecha_entrega" Then
+                Try
+                    Dim ppId As Integer = ObtenerPrepedidoIdDeEntrega(conn, entregaId)
+                    If ppId > 0 Then
+                        Using cmdR As New SqlCommand("FLORERIA_sp_PrePedido_RecalcularEstado", conn)
+                            cmdR.CommandType = CommandType.StoredProcedure
+                            cmdR.Parameters.AddWithValue("@prepedido_id", ppId)
+                            cmdR.Parameters.AddWithValue("@modificado_por", usuarioId)
+                            cmdR.ExecuteNonQuery()
+                        End Using
+                    End If
+                Catch
+                    ' Silencioso: no interrumpir el guardado
+                End Try
+            End If
         End Using
 
         context.Response.Write("{""ok"":true}")
@@ -403,8 +421,8 @@ Public Class Entrega_Handler
             ' ============================================================
             If estado <> "RECHAZADO" AndAlso montoBs > 0 Then
                 Dim totalPedido As Decimal = CalcularTotalBorrador(conn, entregaId)
-                Dim yaPagado    As Decimal = CalcularPagosNoRechazados(conn, entregaId)
-                Dim saldo       As Decimal = totalPedido - yaPagado
+                Dim yaPagado As Decimal = CalcularPagosNoRechazados(conn, entregaId)
+                Dim saldo As Decimal = totalPedido - yaPagado
 
                 If totalPedido > 0 AndAlso (montoBs - 0.01D) > saldo Then
                     Dim msg As String = "El monto excede el saldo pendiente. " &
@@ -448,6 +466,21 @@ Public Class Entrega_Handler
                 Dim newId As Object = cmd.ExecuteScalar()
                 Dim pagoId As Integer = Convert.ToInt32(newId)
 
+                ' [NUEVO] Recalcular estado del PrePedido -> pasa a ESPERANDO_PAGO o PAGADO
+                Try
+                    Dim ppId As Integer = ObtenerPrepedidoIdDeEntrega(conn, entregaId)
+                    If ppId > 0 Then
+                        Using cmdR As New SqlCommand("FLORERIA_sp_PrePedido_RecalcularEstado", conn)
+                            cmdR.CommandType = CommandType.StoredProcedure
+                            cmdR.Parameters.AddWithValue("@prepedido_id", ppId)
+                            cmdR.Parameters.AddWithValue("@modificado_por", usuarioId)
+                            cmdR.ExecuteNonQuery()
+                        End Using
+                    End If
+                Catch
+                    ' Silencioso: el pago ya se guardo, no romper la respuesta al usuario
+                End Try
+
                 context.Response.Write("{""ok"":true,""pago_id"":" & pagoId & "}")
             End Using
         End Using
@@ -460,12 +493,42 @@ Public Class Entrega_Handler
         Dim pagoId As Integer = 0
         Integer.TryParse(context.Request.Form("pago_id"), pagoId)
 
+        Dim usuarioId As Integer = SesionHelper.ObtenerUsuarioId(HttpContext.Current)
+
         Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
             conn.Open()
+
+            ' [NUEVO] Antes de borrar, obtener el prepedido_id (lo necesitamos despues)
+            Dim ppId As Integer = 0
+            Try
+                Using cmdGet As New SqlCommand(
+                    "SELECT pe.prepedido_id FROM FLORERIA_PrePedido_Entrega_Pago pep " &
+                    "INNER JOIN FLORERIA_PrePedido_Entrega pe ON pep.prepedido_entrega_id = pe.prepedido_entrega_id " &
+                    "WHERE pep.pago_id = @id", conn)
+                    cmdGet.Parameters.AddWithValue("@id", pagoId)
+                    Dim r As Object = cmdGet.ExecuteScalar()
+                    If r IsNot Nothing AndAlso Not IsDBNull(r) Then ppId = CInt(r)
+                End Using
+            Catch
+            End Try
+
             Using cmd As New SqlCommand("DELETE FROM FLORERIA_PrePedido_Entrega_Pago WHERE pago_id = @id", conn)
                 cmd.Parameters.AddWithValue("@id", pagoId)
                 cmd.ExecuteNonQuery()
             End Using
+
+            ' [NUEVO] Recalcular estado (podria bajar de PAGADO -> ESPERANDO_PAGO -> COMPLETADO)
+            If ppId > 0 Then
+                Try
+                    Using cmdR As New SqlCommand("FLORERIA_sp_PrePedido_RecalcularEstado", conn)
+                        cmdR.CommandType = CommandType.StoredProcedure
+                        cmdR.Parameters.AddWithValue("@prepedido_id", ppId)
+                        cmdR.Parameters.AddWithValue("@modificado_por", usuarioId)
+                        cmdR.ExecuteNonQuery()
+                    End Using
+                Catch
+                End Try
+            End If
         End Using
 
         context.Response.Write("{""ok"":true}")
@@ -505,6 +568,20 @@ Public Class Entrega_Handler
                 Dim pedidoId As Integer = CInt(pPedidoId.Value)
                 Dim codigo As String = pCodigo.Value.ToString()
 
+                ' [NUEVO] Recalcular estado tras confirmar (asegura COMPLETADO o superior)
+                Try
+                    Dim ppId As Integer = ObtenerPrepedidoIdDeEntrega(conn, entregaId)
+                    If ppId > 0 Then
+                        Using cmdR As New SqlCommand("FLORERIA_sp_PrePedido_RecalcularEstado", conn)
+                            cmdR.CommandType = CommandType.StoredProcedure
+                            cmdR.Parameters.AddWithValue("@prepedido_id", ppId)
+                            cmdR.Parameters.AddWithValue("@modificado_por", usuarioId)
+                            cmdR.ExecuteNonQuery()
+                        End Using
+                    End If
+                Catch
+                End Try
+
                 context.Response.Write("{""ok"":true,""pedido_id"":" & pedidoId & ",""codigo"":""" & codigo & """}")
             End Using
         End Using
@@ -529,16 +606,17 @@ Public Class Entrega_Handler
         End If
 
         Dim usuarioId As Integer = SesionHelper.ObtenerUsuarioId(HttpContext.Current)
-        Dim pedidoId  As Integer = 0
+        Dim pedidoId As Integer = 0
         Dim codigoPed As String = ""
         Dim yaEstabaConfirmado As Boolean = False
+        Dim prepedidoIdParaRecalc As Integer = 0
 
         ' --- PASO 1: ver si ya fue confirmado antes ---
         Try
             Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
                 conn.Open()
                 Using cmd As New SqlCommand(
-                    "SELECT estado, pedido_id FROM FLORERIA_PrePedido_Entrega WHERE prepedido_entrega_id = @id", conn)
+                    "SELECT estado, pedido_id, prepedido_id FROM FLORERIA_PrePedido_Entrega WHERE prepedido_entrega_id = @id", conn)
                     cmd.Parameters.AddWithValue("@id", entregaId)
                     Using dr As SqlDataReader = cmd.ExecuteReader()
                         If dr.Read() Then
@@ -546,6 +624,9 @@ Public Class Entrega_Handler
                             If est <> "BORRADOR" AndAlso Not IsDBNull(dr("pedido_id")) Then
                                 pedidoId = CInt(dr("pedido_id"))
                                 yaEstabaConfirmado = True
+                            End If
+                            If Not IsDBNull(dr("prepedido_id")) Then
+                                prepedidoIdParaRecalc = CInt(dr("prepedido_id"))
                             End If
                         Else
                             context.Response.Write("{""ok"":false,""msg"":""Entrega no encontrada""}")
@@ -589,7 +670,7 @@ Public Class Entrega_Handler
 
                         cmd.ExecuteNonQuery()
 
-                        pedidoId  = CInt(pId.Value)
+                        pedidoId = CInt(pId.Value)
                         codigoPed = pCod.Value.ToString()
                     End Using
                 Else
@@ -622,9 +703,25 @@ Public Class Entrega_Handler
             Return
         End Try
 
-        Dim okSync   As Boolean = sync IsNot Nothing AndAlso sync.ContainsKey("ok") AndAlso CBool(sync("ok"))
-        Dim msgSync  As String  = If(sync IsNot Nothing AndAlso sync.ContainsKey("mensaje"), sync("mensaje").ToString(), "")
-        Dim wcOrdId  As Integer = If(sync IsNot Nothing AndAlso sync.ContainsKey("wc_order_id"), CInt(sync("wc_order_id")), 0)
+        Dim okSync As Boolean = sync IsNot Nothing AndAlso sync.ContainsKey("ok") AndAlso CBool(sync("ok"))
+        Dim msgSync As String = If(sync IsNot Nothing AndAlso sync.ContainsKey("mensaje"), sync("mensaje").ToString(), "")
+        Dim wcOrdId As Integer = If(sync IsNot Nothing AndAlso sync.ContainsKey("wc_order_id"), CInt(sync("wc_order_id")), 0)
+
+        ' [NUEVO] Recalcular estado tras sincronizar con WC -> pasa a CONVERTIDO
+        If prepedidoIdParaRecalc > 0 Then
+            Try
+                Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
+                    conn.Open()
+                    Using cmdR As New SqlCommand("FLORERIA_sp_PrePedido_RecalcularEstado", conn)
+                        cmdR.CommandType = CommandType.StoredProcedure
+                        cmdR.Parameters.AddWithValue("@prepedido_id", prepedidoIdParaRecalc)
+                        cmdR.Parameters.AddWithValue("@modificado_por", usuarioId)
+                        cmdR.ExecuteNonQuery()
+                    End Using
+                End Using
+            Catch
+            End Try
+        End If
 
         Dim sb As New System.Text.StringBuilder()
         sb.Append("{")
@@ -689,12 +786,12 @@ Public Class Entrega_Handler
                 cmd.Parameters.AddWithValue("@id", entregaId)
                 Using dr As SqlDataReader = cmd.ExecuteReader()
                     If dr.Read() Then
-                        zonaId          = If(IsDBNull(dr("zona_id")),         0,      CInt(dr("zona_id")))
-                        slotId          = If(IsDBNull(dr("slot_id")),         0,      CInt(dr("slot_id")))
-                        esExpress       = If(IsDBNull(dr("es_express")),      False,  CBool(dr("es_express")))
-                        descuentoValor  = If(IsDBNull(dr("descuento_valor")), 0D,     CDec(dr("descuento_valor")))
-                        descuentoMoneda = If(IsDBNull(dr("descuento_moneda")),"BOB",  dr("descuento_moneda").ToString())
-                        ppId            = If(IsDBNull(dr("prepedido_id")),    0,      CInt(dr("prepedido_id")))
+                        zonaId = If(IsDBNull(dr("zona_id")), 0, CInt(dr("zona_id")))
+                        slotId = If(IsDBNull(dr("slot_id")), 0, CInt(dr("slot_id")))
+                        esExpress = If(IsDBNull(dr("es_express")), False, CBool(dr("es_express")))
+                        descuentoValor = If(IsDBNull(dr("descuento_valor")), 0D, CDec(dr("descuento_valor")))
+                        descuentoMoneda = If(IsDBNull(dr("descuento_moneda")), "BOB", dr("descuento_moneda").ToString())
+                        ppId = If(IsDBNull(dr("prepedido_id")), 0, CInt(dr("prepedido_id")))
                     End If
                 End Using
             End Using
@@ -766,6 +863,26 @@ Public Class Entrega_Handler
     End Function
 
     ' ============================================================
+    ' [NUEVO] Helper: obtener prepedido_id desde prepedido_entrega_id
+    ' Usado por los recalculos de estado tras cambios en pagos/campos.
+    ' ============================================================
+    Private Function ObtenerPrepedidoIdDeEntrega(conn As SqlConnection, entregaId As Integer) As Integer
+        Try
+            Using cmd As New SqlCommand(
+                "SELECT prepedido_id FROM FLORERIA_PrePedido_Entrega " &
+                "WHERE prepedido_entrega_id = @id", conn)
+                cmd.Parameters.AddWithValue("@id", entregaId)
+                Dim r As Object = cmd.ExecuteScalar()
+                If r IsNot Nothing AndAlso Not IsDBNull(r) Then
+                    Return CInt(r)
+                End If
+            End Using
+        Catch
+        End Try
+        Return 0
+    End Function
+
+    ' ============================================================
     ' Helper: Parsea un texto a Decimal IGNORANDO la cultura del servidor.
     ' El JS siempre manda numeros en formato ingles ("320.00") via toFixed(),
     ' pero si el servidor esta en es-BO/es-ES el "." se toma como miles
@@ -819,6 +936,8 @@ Public Class Entrega_Handler
             Return
         End If
 
+        Dim usuarioId As Integer = SesionHelper.ObtenerUsuarioId(HttpContext.Current)
+
         Dim sync As Dictionary(Of String, Object) = Nothing
         Try
             sync = WooCommerceSync.SincronizarPedido(pedidoId)
@@ -828,9 +947,34 @@ Public Class Entrega_Handler
             Return
         End Try
 
-        Dim okSync  As Boolean = sync IsNot Nothing AndAlso sync.ContainsKey("ok") AndAlso CBool(sync("ok"))
-        Dim msgSync As String  = If(sync IsNot Nothing AndAlso sync.ContainsKey("mensaje"), sync("mensaje").ToString(), "")
+        Dim okSync As Boolean = sync IsNot Nothing AndAlso sync.ContainsKey("ok") AndAlso CBool(sync("ok"))
+        Dim msgSync As String = If(sync IsNot Nothing AndAlso sync.ContainsKey("mensaje"), sync("mensaje").ToString(), "")
         Dim wcOrdId As Integer = If(sync IsNot Nothing AndAlso sync.ContainsKey("wc_order_id"), CInt(sync("wc_order_id")), 0)
+
+        ' [NUEVO] Recalcular estado del PrePedido tras sincronizar -> CONVERTIDO
+        If okSync AndAlso wcOrdId > 0 Then
+            Try
+                Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
+                    conn.Open()
+                    Dim ppId As Integer = 0
+                    Using cmdGet As New SqlCommand(
+                        "SELECT prepedido_id FROM FLORERIA_Pedido WHERE pedido_id = @id", conn)
+                        cmdGet.Parameters.AddWithValue("@id", pedidoId)
+                        Dim r As Object = cmdGet.ExecuteScalar()
+                        If r IsNot Nothing AndAlso Not IsDBNull(r) Then ppId = CInt(r)
+                    End Using
+                    If ppId > 0 Then
+                        Using cmdR As New SqlCommand("FLORERIA_sp_PrePedido_RecalcularEstado", conn)
+                            cmdR.CommandType = CommandType.StoredProcedure
+                            cmdR.Parameters.AddWithValue("@prepedido_id", ppId)
+                            cmdR.Parameters.AddWithValue("@modificado_por", usuarioId)
+                            cmdR.ExecuteNonQuery()
+                        End Using
+                    End If
+                End Using
+            Catch
+            End Try
+        End If
 
         Dim sb As New System.Text.StringBuilder()
         sb.Append("{")
