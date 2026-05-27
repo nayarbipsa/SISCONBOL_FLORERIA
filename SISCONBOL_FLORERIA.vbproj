@@ -282,7 +282,6 @@
     <Content Include="editorconfig" />
     <Content Include="jsconfig.json" />
     <Content Include="CHECKLIST_OBLIGATORIO_VB.md" />
-    <Content Include="DEFINICIONES_BD.md" />
     <Content Include="Modulos\Pedidos\Entrega_Handler.ashx" />
     <Content Include="cliente\Cliente_PublicHandler.ashx" />
     <Content Include="Modulos\Pedidos\PrePedido_Handler.ashx" />

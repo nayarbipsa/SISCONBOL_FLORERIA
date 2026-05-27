@@ -40,11 +40,28 @@
     opacity: 0.8;
     text-transform: uppercase;
     margin-bottom: 0.25rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 .cliente-value {
     font-size: 15px;
     font-weight: 500;
 }
+.btn-edit-inline{background:rgba(255,255,255,.2);border:none;color:#fff;padding:2px 6px;border-radius:4px;cursor:pointer;opacity:.85;display:inline-flex;align-items:center}
+.btn-edit-inline:hover{opacity:1;background:rgba(255,255,255,.32)}
+.btn-edit-inline i{font-size:13px}
+.cliente-edit{display:flex;flex-direction:column;gap:5px}
+.edit-fields{display:flex;flex-direction:column;gap:4px}
+.edit-inp{background:rgba(255,255,255,.95);border:1px solid rgba(255,255,255,.4);color:#212121;padding:6px 9px;border-radius:6px;font-size:13px;width:100%;outline:none}
+.edit-inp:focus{background:#fff;border-color:#fff}
+.edit-actions{display:flex;gap:6px;margin-top:2px}
+.btn-edit-save,.btn-edit-cancel{border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+.btn-edit-save{background:#4caf50;color:#fff}
+.btn-edit-cancel{background:rgba(255,255,255,.25);color:#fff}
+.edit-error{font-size:11px;color:#ffcdd2;background:rgba(198,40,40,.4);padding:4px 8px;border-radius:4px}
+.btn-cotiz{background:#E8F5E9 !important;border:1px solid #A5D6A7 !important;color:#1B5E20 !important;font-weight:500}
+.btn-cotiz:hover{background:#C8E6C9 !important}
 .pedidos-section {
     margin-bottom: 1.5rem;
 }
@@ -205,6 +222,106 @@
     font-weight: 500;
     color: #667eea;
 }
+
+/* ============================================================
+   CARDS COMPACTAS — entregas borrador y pedidos confirmados
+   3 líneas: header, receptor, info+total. Toda la card es clickeable.
+   ============================================================ */
+.card-compact{
+    background:#fff;
+    border:0.5px solid #e0e0e0;
+    border-radius:6px;
+    padding:10px 12px;
+    margin-bottom:6px;
+    cursor:pointer;
+    transition:all .15s;
+}
+.card-compact:hover{
+    background:#FFF8FB;
+    border-color:#C2185B;
+}
+.card-bor{ background:#FFFDF6; border-color:#FFE0B2; }
+.card-bor:hover{ background:#FFF8E1; border-color:#FB923C; }
+
+.cc-row1{ display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+.cc-num{
+    width:22px; height:22px; border-radius:50%;
+    color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:600;
+    flex-shrink:0;
+}
+.cc-num-conf{ background:#7F77DD; }
+.cc-num-draft{ background:#FB923C; }
+.cc-cod{
+    font-family:monospace; font-size:11px; font-weight:600;
+    color:#7F77DD;
+}
+.cc-tag{
+    padding:2px 7px; border-radius:99px;
+    font-size:10px; font-weight:500;
+    white-space:nowrap;
+    display:inline-flex; align-items:center; gap:3px;
+}
+.cc-tag-conf{ background:#E8F5E9; color:#2E7D32; }
+.cc-tag-draft{ background:#FFF3E0; color:#E65100; }
+.cc-tag i{ font-size:10px; }
+
+.cc-menu-btn{
+    background:#f5f5f5;
+    border:0.5px solid #e0e0e0;
+    padding:3px 8px;
+    border-radius:5px;
+    font-size:10px;
+    cursor:pointer;
+    color:#424242;
+    display:inline-flex;
+    align-items:center;
+    gap:3px;
+    font-weight:500;
+    flex-shrink:0;
+}
+.cc-menu-btn:hover{ background:#eee; }
+.cc-menu-btn i{ font-size:10px; }
+
+.cc-row2{
+    display:flex; align-items:center; gap:10px;
+    flex-wrap:wrap; margin-bottom:3px;
+}
+.cc-nom{ font-size:13px; font-weight:500; color:#212121; }
+.cc-meta{
+    font-size:11px; color:#9e9e9e;
+    display:inline-flex; align-items:center; gap:3px;
+}
+.cc-meta i{ font-size:11px; }
+
+.cc-row3{
+    display:flex; justify-content:space-between; align-items:center;
+    gap:8px;
+    margin-top:4px; padding-top:6px;
+    border-top:0.5px dashed #f0f0f0;
+}
+.cc-info{
+    font-size:11px; color:#666;
+    display:flex; align-items:center; gap:8px;
+    flex-wrap:wrap; flex:1; min-width:0;
+}
+.cc-info-item{ display:inline-flex; align-items:center; gap:3px; }
+.cc-info-item i{ font-size:11px; color:#9e9e9e; }
+
+.cc-pill-exp{
+    background:#FFE0B2; color:#E65100;
+    font-size:9px; padding:1px 5px;
+    border-radius:3px; font-weight:500;
+}
+
+.cc-total-wrap{ text-align:right; flex-shrink:0; }
+.cc-total{ font-size:13px; font-weight:600; color:#212121; white-space:nowrap; }
+.cc-total-empty{ color:#bdbdbd; }
+.cc-total-sub{
+    font-size:9px; color:#9e9e9e;
+    display:block; margin-top:1px;
+}
 .link-section {
     background: #E8F5E9;
     border: 1px solid #4CAF50;
@@ -280,8 +397,24 @@
     
     <div class="cliente-grid">
         <div class="cliente-item">
-            <div class="cliente-label">Cliente</div>
-            <div class="cliente-value"><%=ClienteNombre%></div>
+            <div class="cliente-label">
+                Cliente
+                <button type="button" id="btnEditNombre" class="btn-edit-inline" onclick="iniciarEdicionNombre()" title="Editar nombre">
+                    <i class="ti ti-pencil"></i>
+                </button>
+            </div>
+            <div class="cliente-value" id="vistaNombre"><%=ClienteNombre%></div>
+            <div class="cliente-edit" id="editNombre" style="display:none">
+                <div class="edit-fields">
+                    <input type="text" id="inpNombre" class="edit-inp" maxlength="200" placeholder="Nombre" value="<%=ClienteNombreSolo%>" />
+                    <input type="text" id="inpApellidos" class="edit-inp" maxlength="200" placeholder="Apellidos" value="<%=ClienteApellidos%>" />
+                </div>
+                <div class="edit-actions">
+                    <button type="button" class="btn-edit-save" onclick="guardarNombreCliente()"><i class="ti ti-check"></i> Guardar</button>
+                    <button type="button" class="btn-edit-cancel" onclick="cancelarEdicionNombre()"><i class="ti ti-x"></i> Cancelar</button>
+                </div>
+                <div class="edit-error" id="errEditNombre" style="display:none"></div>
+            </div>
         </div>
         <div class="cliente-item">
             <div class="cliente-label">Celular</div>
@@ -352,6 +485,11 @@
                 <button type="button" onclick="copiarLink()" class="btn btn-sm">
                     <i class="ti ti-copy"></i> Copiar link
                 </button>
+                <% If CantidadPedidos > 0 OrElse CantidadBorradores > 0 Then %>
+                <button type="button" onclick="enviarCotizacion()" class="btn btn-sm btn-cotiz">
+                    <i class="ti ti-brand-whatsapp" style="color:#25D366"></i> Cotización
+                </button>
+                <% End If %>
                 <button type="button" onclick="enviarLinkCliente()" class="btn btn-sm">
                     <i class="ti ti-brand-whatsapp" style="color:#25D366"></i> Reenviar WhatsApp
                 </button>
@@ -362,9 +500,16 @@
                 <p style="margin:0;font-weight:500"><i class="ti ti-check" style="font-size:14px;vertical-align:-2px"></i> Cliente confirmo el <%=TokenConfirmadoEn.ToString("dd/MM HH:mm")%></p>
                 <p style="margin:4px 0 0;font-size:11px;color:#2E7D32">Revisa los datos abajo y confirma el pedido cuando estes listo</p>
             </div>
-            <button type="button" onclick="copiarLink()" class="btn btn-sm">
-                <i class="ti ti-copy"></i> Copiar link
-            </button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" onclick="copiarLink()" class="btn btn-sm">
+                    <i class="ti ti-copy"></i> Copiar link
+                </button>
+                <% If CantidadPedidos > 0 OrElse CantidadBorradores > 0 Then %>
+                <button type="button" onclick="enviarCotizacion()" class="btn btn-sm btn-cotiz">
+                    <i class="ti ti-brand-whatsapp" style="color:#25D366"></i> Cotización
+                </button>
+                <% End If %>
+            </div>
         <% End If %>
 
     </div>
@@ -778,6 +923,77 @@ function sincronizarConWC(pedidoId, btn) {
                 btnAcciones.innerHTML = 'Acciones <i class="ti ti-chevron-down" style="font-size:13px"></i>';
             }
         });
+}
+
+// ============================================================
+// Edición inline del nombre del cliente
+// ============================================================
+function iniciarEdicionNombre() {
+    document.getElementById('vistaNombre').style.display = 'none';
+    document.getElementById('btnEditNombre').style.display = 'none';
+    document.getElementById('errEditNombre').style.display = 'none';
+    document.getElementById('editNombre').style.display = 'flex';
+    var inp = document.getElementById('inpNombre');
+    inp.focus(); inp.select();
+}
+function cancelarEdicionNombre() {
+    document.getElementById('editNombre').style.display = 'none';
+    document.getElementById('errEditNombre').style.display = 'none';
+    document.getElementById('vistaNombre').style.display = '';
+    document.getElementById('btnEditNombre').style.display = '';
+}
+function guardarNombreCliente() {
+    var ppId = parseInt(document.getElementById('hdPrePedidoId').value) || 0;
+    var nombre = document.getElementById('inpNombre').value.trim();
+    var apellidos = document.getElementById('inpApellidos').value.trim();
+    var errBox = document.getElementById('errEditNombre');
+    errBox.style.display = 'none';
+    if (!nombre) { errBox.textContent = 'El nombre es obligatorio'; errBox.style.display = 'block'; return; }
+    var fd = new FormData();
+    fd.append('accion', 'ACTUALIZAR_NOMBRE_CLIENTE');
+    fd.append('prepedido_id', ppId);
+    fd.append('nombre', nombre);
+    fd.append('apellidos', apellidos);
+    fetch('PrePedido_Detalle.aspx?id=' + ppId, {
+        method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: fd
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.ok) {
+            document.getElementById('vistaNombre').textContent = data.nombre_completo;
+            cancelarEdicionNombre();
+        } else {
+            errBox.textContent = data.msg || 'No se pudo guardar';
+            errBox.style.display = 'block';
+        }
+    })
+    .catch(function() { errBox.textContent = 'Error de conexión'; errBox.style.display = 'block'; });
+}
+
+// ============================================================
+// Enviar cotización por WhatsApp
+// ============================================================
+function enviarCotizacion() {
+    var ppId = parseInt(document.getElementById('hdPrePedidoId').value) || 0;
+    var celular = document.getElementById('hdCelular').value || '';
+    if (ppId <= 0) return;
+    var fd = new FormData();
+    fd.append('accion', 'GENERAR_COTIZACION');
+    fd.append('prepedido_id', ppId);
+    fetch('PrePedido_Detalle.aspx?id=' + ppId, {
+        method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: fd
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (!data.ok) { alert(data.msg || 'No se pudo generar la cotización'); return; }
+        var celLimpio = celular.replace(/[^0-9]/g, '');
+        if (celLimpio.length === 8) celLimpio = '591' + celLimpio;
+        var url = celLimpio
+            ? 'whatsapp://send?phone=' + celLimpio + '&text=' + encodeURIComponent(data.mensaje)
+            : 'whatsapp://send?text=' + encodeURIComponent(data.mensaje);
+        window.location.href = url;
+    })
+    .catch(function() { alert('Error de conexión al generar cotización'); });
 }
 </script>
 </asp:Content>

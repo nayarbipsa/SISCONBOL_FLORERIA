@@ -21,6 +21,8 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
     Public Property FechaCreacion As String = ""
     Public Property NombreAgente As String = ""
     Public Property ClienteNombre As String = ""
+    Public Property ClienteNombreSolo As String = ""
+    Public Property ClienteApellidos As String = ""
     Public Property ClienteCelular As String = ""
     Public Property ClienteEmail As String = ""
     Public Property TipoRegistro As String = ""
@@ -52,6 +54,16 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
     ' ============================================================
     Protected Sub Page_Load(ByVal sender As Object, ByVal e As EventArgs) Handles Me.Load
         If Not IsPostBack Then
+            ' --- Ramas AJAX ---
+            Dim esAjax As Boolean = (Request.Headers("X-Requested-With") = "XMLHttpRequest")
+            Dim accion As String = If(Request.Form("accion"), "")
+            If esAjax AndAlso accion = "ACTUALIZAR_NOMBRE_CLIENTE" Then
+                ActualizarNombreCliente() : Return
+            End If
+            If esAjax AndAlso accion = "GENERAR_COTIZACION" Then
+                GenerarCotizacion() : Return
+            End If
+
             Dim idStr As String = Request.QueryString("id")
             
             If String.IsNullOrEmpty(idStr) Then
@@ -68,6 +80,222 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
             PrePedidoId = id
             CargarDatos()
         End If
+    End Sub
+
+    ' ============================================================
+    ' AJAX — Actualizar nombre y apellidos del cliente
+    ' ============================================================
+    Private Sub ActualizarNombreCliente()
+        Response.ContentType = "application/json"
+        Response.Charset = "utf-8"
+        Dim ppId As Integer = 0
+        Integer.TryParse(Request.Form("prepedido_id"), ppId)
+        Dim nuevoNombre As String = If(Request.Form("nombre"), "").Trim()
+        Dim nuevoApellidos As String = If(Request.Form("apellidos"), "").Trim()
+        If ppId <= 0 OrElse nuevoNombre = "" Then
+            Response.Write("{""ok"":false,""msg"":""Falta el ID o el nombre""}") : Return
+        End If
+        Try
+            Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
+                conn.Open()
+                Dim emailActual As Object = DBNull.Value
+                Dim paisIdActual As Object = DBNull.Value
+                Dim ciudadIdActual As Object = DBNull.Value
+                Using cmdGet As New SqlCommand("SELECT cliente_email, cliente_pais_id, cliente_ciudad_id FROM FLORERIA_PrePedido WHERE prepedido_id = @id", conn)
+                    cmdGet.Parameters.AddWithValue("@id", ppId)
+                    Using dr As SqlDataReader = cmdGet.ExecuteReader()
+                        If dr.Read() Then
+                            If Not IsDBNull(dr("cliente_email"))     Then emailActual    = dr("cliente_email")
+                            If Not IsDBNull(dr("cliente_pais_id"))   Then paisIdActual   = dr("cliente_pais_id")
+                            If Not IsDBNull(dr("cliente_ciudad_id")) Then ciudadIdActual = dr("cliente_ciudad_id")
+                        Else
+                            Response.Write("{""ok"":false,""msg"":""Pre-pedido no encontrado""}") : Return
+                        End If
+                    End Using
+                End Using
+                Using cmd As New SqlCommand("FLORERIA_sp_PrePedido_ActualizarCliente", conn)
+                    cmd.CommandType = CommandType.StoredProcedure
+                    cmd.Parameters.AddWithValue("@prepedido_id",      ppId)
+                    cmd.Parameters.AddWithValue("@cliente_nombre",    nuevoNombre)
+                    cmd.Parameters.AddWithValue("@cliente_apellidos", If(nuevoApellidos = "", DBNull.Value, CObj(nuevoApellidos)))
+                    cmd.Parameters.AddWithValue("@cliente_email",     emailActual)
+                    cmd.Parameters.AddWithValue("@cliente_pais_id",   paisIdActual)
+                    cmd.Parameters.AddWithValue("@cliente_ciudad_id", ciudadIdActual)
+                    cmd.Parameters.AddWithValue("@modificado_por",    SesionHelper.ObtenerUsuarioId(HttpContext.Current))
+                    cmd.Parameters.AddWithValue("@ip",                If(Request.UserHostAddress, ""))
+                    cmd.ExecuteNonQuery()
+                End Using
+                Dim nomCompleto As String = nuevoNombre & If(nuevoApellidos <> "", " " & nuevoApellidos, "")
+                Response.Write("{""ok"":true,""nombre_completo"":""" & nomCompleto.Replace("""", "\""") & """}")
+            End Using
+        Catch ex As SqlException
+            Response.Write("{""ok"":false,""msg"":""" & ex.Message.Replace("""", "'").Replace(vbCrLf, " ") & """}")
+        Catch ex As Exception
+            Response.Write("{""ok"":false,""msg"":""Error inesperado""}")
+        End Try
+    End Sub
+
+    ' ============================================================
+    ' AJAX — Generar cotización WhatsApp (borradores + confirmados)
+    ' ============================================================
+    Private Sub GenerarCotizacion()
+        Response.ContentType = "application/json"
+        Response.Charset = "utf-8"
+        Dim ppId As Integer = 0
+        Integer.TryParse(Request.Form("prepedido_id"), ppId)
+        If ppId <= 0 Then
+            Response.Write("{""ok"":false,""msg"":""Pre-pedido invalido""}") : Return
+        End If
+        Try
+            Dim sb As New System.Text.StringBuilder()
+            Dim sumProds As Decimal = 0D
+            Dim sumEnvios As Decimal = 0D
+            Dim sumRecargos As Decimal = 0D
+            Dim sumDesc As Decimal = 0D
+            Dim sumTotal As Decimal = 0D
+            Dim contEntregas As Integer = 0
+
+            Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
+                conn.Open()
+
+                ' Nombre del cliente (solo primer nombre)
+                Dim nombreCliente As String = ""
+                Using cmdC As New SqlCommand("SELECT cliente_nombre FROM FLORERIA_PrePedido WHERE prepedido_id = @id", conn)
+                    cmdC.Parameters.AddWithValue("@id", ppId)
+                    Dim r = cmdC.ExecuteScalar()
+                    If r IsNot Nothing AndAlso Not IsDBNull(r) Then
+                        Dim nom As String = r.ToString().Trim()
+                        Dim idx As Integer = nom.IndexOf(" ")
+                        nombreCliente = If(idx > 0, nom.Substring(0, idx), nom)
+                    End If
+                End Using
+
+                sb.AppendLine(If(nombreCliente <> "", "Hola " & nombreCliente & "! 🌸", "Hola! 🌸"))
+                sb.AppendLine("Te paso la cotización de Miss Flores:")
+                sb.AppendLine("")
+
+                ' ---- Pedidos confirmados ----
+                Dim sqlConf As String =
+                    "SELECT p.receptor_nombre, p.receptor_celular, p.fecha_entrega, " &
+                    "       p.subtotal_productos_bs, p.envio_bs, " &
+                    "       p.recargo_express_bs, p.recargo_horario_bs, " &
+                    "       p.descuento_bs, p.total_bs, " &
+                    "       z.nombre AS zona_nombre, sh.hora_inicio, sh.hora_fin " &
+                    "FROM   FLORERIA_Pedido p " &
+                    "LEFT JOIN FLORERIA_Zona         z  ON p.zona_id = z.zona_id " &
+                    "LEFT JOIN FLORERIA_Slot_Horario sh ON p.slot_id = sh.slot_id " &
+                    "WHERE  p.prepedido_id = @id ORDER BY p.pedido_id"
+
+                Using cmd As New SqlCommand(sqlConf, conn)
+                    cmd.Parameters.AddWithValue("@id", ppId)
+                    Using dr As SqlDataReader = cmd.ExecuteReader()
+                        While dr.Read()
+                            contEntregas += 1
+                            Dim rec As String = If(IsDBNull(dr("receptor_nombre")), "", dr("receptor_nombre").ToString())
+                            Dim cel As String = If(IsDBNull(dr("receptor_celular")), "", dr("receptor_celular").ToString())
+                            Dim fStr As String = ""
+                            If Not IsDBNull(dr("fecha_entrega")) Then fStr = CDate(dr("fecha_entrega")).ToString("dd MMM")
+                            Dim hi As String = If(IsDBNull(dr("hora_inicio")), "", dr("hora_inicio").ToString())
+                            Dim hf As String = If(IsDBNull(dr("hora_fin")), "", dr("hora_fin").ToString())
+                            If hi.Length >= 5 Then hi = hi.Substring(0, 5)
+                            If hf.Length >= 5 Then hf = hf.Substring(0, 5)
+                            Dim zona As String = If(IsDBNull(dr("zona_nombre")), "", dr("zona_nombre").ToString())
+                            Dim subP As Decimal = If(IsDBNull(dr("subtotal_productos_bs")), 0D, CDec(dr("subtotal_productos_bs")))
+                            Dim env As Decimal = If(IsDBNull(dr("envio_bs")), 0D, CDec(dr("envio_bs")))
+                            Dim rExp As Decimal = If(IsDBNull(dr("recargo_express_bs")), 0D, CDec(dr("recargo_express_bs")))
+                            Dim rHor As Decimal = If(IsDBNull(dr("recargo_horario_bs")), 0D, CDec(dr("recargo_horario_bs")))
+                            Dim desc As Decimal = If(IsDBNull(dr("descuento_bs")), 0D, CDec(dr("descuento_bs")))
+                            Dim tot As Decimal = If(IsDBNull(dr("total_bs")), 0D, CDec(dr("total_bs")))
+
+                            sb.AppendLine("📦 *Entrega " & contEntregas & "*")
+                            If rec <> "" Then sb.AppendLine("• Para: " & rec & If(cel <> "", " (" & cel & ")", ""))
+                            If fStr <> "" Then sb.AppendLine("• Fecha: " & fStr & If(hi <> "" AndAlso hf <> "", " · " & hi & " a " & hf, ""))
+                            If zona <> "" Then sb.AppendLine("• Zona: " & zona)
+                            If subP > 0 Then sb.AppendLine("• Productos: " & subP.ToString("N2") & " Bs")
+                            If env > 0 Then sb.AppendLine("• Envío: " & env.ToString("N2") & " Bs")
+                            If rExp > 0 Then sb.AppendLine("• Recargo express: +" & rExp.ToString("N2") & " Bs")
+                            If rHor > 0 Then sb.AppendLine("• Recargo horario: +" & rHor.ToString("N2") & " Bs")
+                            If desc > 0 Then sb.AppendLine("• Descuento: -" & desc.ToString("N2") & " Bs")
+                            sb.AppendLine("• *Subtotal: " & tot.ToString("N2") & " Bs*")
+                            sb.AppendLine("")
+                            sumProds += subP : sumEnvios += env
+                            sumRecargos += rExp + rHor : sumDesc += desc : sumTotal += tot
+                        End While
+                    End Using
+                End Using
+
+                ' ---- Borradores (sin pedido_id aún) ----
+                Dim sqlBor As String =
+                    "SELECT e.receptor_nombre, e.receptor_celular, e.fecha_entrega, " &
+                    "       e.descuento_valor, " &
+                    "       ISNULL((SELECT SUM(d.subtotal_bs) FROM FLORERIA_PrePedido_Entrega_Detalle d WHERE d.prepedido_entrega_id = e.prepedido_entrega_id),0) AS subtotal_bs, " &
+                    "       ISNULL((SELECT COUNT(*) FROM FLORERIA_PrePedido_Entrega_Detalle d WHERE d.prepedido_entrega_id = e.prepedido_entrega_id),0) AS cant_items, " &
+                    "       z.nombre AS zona_nombre, sh.hora_inicio, sh.hora_fin " &
+                    "FROM   FLORERIA_PrePedido_Entrega e " &
+                    "LEFT JOIN FLORERIA_Zona         z  ON e.zona_id = z.zona_id " &
+                    "LEFT JOIN FLORERIA_Slot_Horario sh ON e.slot_id = sh.slot_id " &
+                    "WHERE  e.prepedido_id = @id AND e.estado = 'BORRADOR' AND e.pedido_id IS NULL " &
+                    "ORDER BY e.prepedido_entrega_id"
+
+                Using cmd As New SqlCommand(sqlBor, conn)
+                    cmd.Parameters.AddWithValue("@id", ppId)
+                    Using dr As SqlDataReader = cmd.ExecuteReader()
+                        While dr.Read()
+                            Dim cantIt As Integer = CInt(dr("cant_items"))
+                            If cantIt = 0 Then Continue While  ' sin productos, skip
+                            contEntregas += 1
+                            Dim rec As String = If(IsDBNull(dr("receptor_nombre")), "", dr("receptor_nombre").ToString())
+                            Dim cel As String = If(IsDBNull(dr("receptor_celular")), "", dr("receptor_celular").ToString())
+                            Dim fStr As String = ""
+                            If Not IsDBNull(dr("fecha_entrega")) Then fStr = CDate(dr("fecha_entrega")).ToString("dd MMM")
+                            Dim hi As String = If(IsDBNull(dr("hora_inicio")), "", dr("hora_inicio").ToString())
+                            Dim hf As String = If(IsDBNull(dr("hora_fin")), "", dr("hora_fin").ToString())
+                            If hi.Length >= 5 Then hi = hi.Substring(0, 5)
+                            If hf.Length >= 5 Then hf = hf.Substring(0, 5)
+                            Dim zona As String = If(IsDBNull(dr("zona_nombre")), "", dr("zona_nombre").ToString())
+                            Dim subP As Decimal = CDec(dr("subtotal_bs"))
+                            Dim desc As Decimal = If(IsDBNull(dr("descuento_valor")), 0D, CDec(dr("descuento_valor")))
+                            Dim tot As Decimal = subP - desc
+
+                            sb.AppendLine("📦 *Entrega " & contEntregas & "* _(referencial)_")
+                            If rec <> "" Then sb.AppendLine("• Para: " & rec & If(cel <> "", " (" & cel & ")", ""))
+                            If fStr <> "" Then sb.AppendLine("• Fecha: " & fStr & If(hi <> "" AndAlso hf <> "", " · " & hi & " a " & hf, ""))
+                            If zona <> "" Then sb.AppendLine("• Zona: " & zona)
+                            If subP > 0 Then sb.AppendLine("• Productos: " & subP.ToString("N2") & " Bs")
+                            If desc > 0 Then sb.AppendLine("• Descuento: -" & desc.ToString("N2") & " Bs")
+                            sb.AppendLine("• *Subtotal: " & tot.ToString("N2") & " Bs*")
+                            sb.AppendLine("  _(sin envío ni recargos aún)_")
+                            sb.AppendLine("")
+                            sumProds += subP : sumDesc += desc : sumTotal += tot
+                        End While
+                    End Using
+                End Using
+            End Using
+
+            If contEntregas = 0 Then
+                Response.Write("{""ok"":false,""msg"":""No hay entregas con productos para cotizar""}") : Return
+            End If
+
+            sb.AppendLine("━━━━━━━━━━━━━━━━━")
+            If contEntregas > 1 Then
+                sb.AppendLine("Productos: " & sumProds.ToString("N2") & " Bs")
+                If sumEnvios > 0 Then sb.AppendLine("Envíos: " & sumEnvios.ToString("N2") & " Bs")
+                If sumRecargos > 0 Then sb.AppendLine("Recargos: +" & sumRecargos.ToString("N2") & " Bs")
+                If sumDesc > 0 Then sb.AppendLine("Descuentos: -" & sumDesc.ToString("N2") & " Bs")
+            End If
+            sb.AppendLine("*TOTAL GENERAL: " & sumTotal.ToString("N2") & " Bs*")
+            sb.AppendLine("")
+            sb.AppendLine("Cualquier consulta avísanos 💐")
+
+            Dim msg As String = sb.ToString()
+            Dim msgJson As String = msg.Replace("\", "\\").Replace("""", "\""").
+                                        Replace(vbCrLf, "\n").Replace(vbLf, "\n").
+                                        Replace(vbCr, "\n").Replace(vbTab, "\t")
+            Response.Write("{""ok"":true,""mensaje"":""" & msgJson & """}")
+
+        Catch ex As Exception
+            Response.Write("{""ok"":false,""msg"":""" & ex.Message.Replace("""", "'").Replace(vbCrLf, " ") & """}")
+        End Try
     End Sub
 
     ' ============================================================
@@ -118,6 +346,10 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
                             ' Cliente
                             Dim nombre As String = If(IsDBNull(dr("cliente_nombre")), "", dr("cliente_nombre").ToString())
                             Dim apellidos As String = If(IsDBNull(dr("cliente_apellidos")), "", dr("cliente_apellidos").ToString())
+                            
+                            ' Guardar separados para edición inline
+                            ClienteNombreSolo = nombre.Trim()
+                            ClienteApellidos  = apellidos.Trim()
                             
                             If nombre.Trim() <> "" Then
                                 ClienteNombre = nombre.Trim()
@@ -196,12 +428,13 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
         ' ============================================================
         Dim sql As String = "SELECT " &
             "ped.pedido_id, ped.codigo, ped.receptor_nombre, ped.receptor_celular, " &
-            "ped.fecha_entrega, ped.direccion, ped.tipo_entrega, " &
+            "ped.fecha_entrega, ped.direccion, ped.tipo_entrega, ped.es_express, " &
             "ped.subtotal_productos_bs, ped.envio_bs, ped.total_bs, " &
             "ped.wc_order_id, ped.wc_order_number, " &
             "c.nombre AS ciudad_nombre, " &
             "z.nombre AS zona_nombre, " &
-            "s.hora_inicio, s.hora_fin " &
+            "s.hora_inicio, s.hora_fin, " &
+            "(SELECT COUNT(*) FROM FLORERIA_Pedido_Detalle pd WHERE pd.pedido_id = ped.pedido_id) AS cant_productos " &
             "FROM FLORERIA_Pedido ped " &
             "LEFT JOIN FLORERIA_Ciudad c ON ped.ciudad_id = c.ciudad_id " &
             "LEFT JOIN FLORERIA_Zona z ON ped.zona_id = z.zona_id " &
@@ -251,97 +484,96 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
                     ' WooCommerce
                     Dim wcOrderId As Integer = If(IsDBNull(dr("wc_order_id")), 0, CInt(dr("wc_order_id")))
                     
-                    ' Generar HTML del pedido
-                    sb.AppendLine("<div class='pedido-card'>")
-                    sb.AppendLine("  <div class='pedido-header'>")
-                    sb.AppendLine("    <div class='pedido-numero'>" & numPedido & "</div>")
-                    sb.AppendLine("    <div class='pedido-info'>")
-                    sb.AppendLine("      <h4 class='pedido-codigo'>" & pedidoCodigo & "</h4>")
-                    sb.AppendLine("      <p class='pedido-desc'>Para " & receptor & If(celReceptor <> "", " • " & celReceptor, "") & "</p>")
-                    sb.AppendLine("    </div>")
+                    ' Express y cantidad de productos
+                    Dim esExpress As Boolean = Not IsDBNull(dr("es_express")) AndAlso CBool(dr("es_express"))
+                    Dim cantProductos As Integer = If(IsDBNull(dr("cant_productos")), 0, CInt(dr("cant_productos")))
                     
-                    ' --- Tag CONFIRMADO + Menú "Acciones" desplegable ---
-                    sb.AppendLine("    <div style='display:flex;gap:6px;align-items:center;flex-shrink:0'>")
-                    sb.AppendLine("      <span style='background:#E8F5E9;color:#2E7D32;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:500;white-space:nowrap'>")
-                    sb.AppendLine("        <i class='ti ti-check' style='font-size:13px;vertical-align:-2px'></i> CONFIRMADO")
-                    sb.AppendLine("      </span>")
-                    sb.AppendLine("      <div class='menu-wrap' style='position:relative'>")
-                    sb.AppendLine("        <button type='button' class='btn-acciones-menu' onclick='toggleMenuPedido(this, event)' style='background:#f5f5f5;border:1px solid #e0e0e0;padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;color:#424242;font-weight:500;white-space:nowrap'>")
-                    sb.AppendLine("          Acciones <i class='ti ti-chevron-down' style='font-size:13px'></i>")
-                    sb.AppendLine("        </button>")
-                    sb.AppendLine("        <div class='menu-dropdown-pedido' data-pedido-id='" & pedidoId & "' style='display:none;position:absolute;top:calc(100% + 4px);right:0;background:#fff;border:1px solid #e0e0e0;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.08);min-width:210px;overflow:hidden;z-index:10'>")
+                    ' ============================================================
+                    ' CARD COMPACTA DE PEDIDO CONFIRMADO
+                    ' Toda la card es clickeable hacia Pedido_Detalle.aspx
+                    ' El menú "Acciones" maneja su propio click (stopPropagation)
+                    ' ============================================================
                     
-                    ' Opción: Ir al pedido
-                    sb.AppendLine("          <a href='Pedido_Detalle.aspx?id=" & pedidoId & "' style='display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:12px;text-decoration:none;color:#212121;border-bottom:1px solid #f5f5f5'>")
-                    sb.AppendLine("            <i class='ti ti-eye' style='font-size:15px;width:18px;color:#7F77DD'></i>")
-                    sb.AppendLine("            <div>Ir al pedido<span style='display:block;font-size:10px;color:#9e9e9e;margin-top:1px'>Ver detalle completo</span></div>")
-                    sb.AppendLine("          </a>")
+                    ' Horario compacto (sin segundos)
+                    Dim horarioCompacto As String = horario
+                    If horarioCompacto.Length >= 13 Then
+                        Dim partes() As String = horarioCompacto.Split("-"c)
+                        If partes.Length = 2 Then
+                            horarioCompacto = partes(0).Trim().Substring(0, Math.Min(5, partes(0).Trim().Length)) & "-" & partes(1).Trim().Substring(0, Math.Min(5, partes(1).Trim().Length))
+                        End If
+                    End If
                     
-                    ' Opción: Imprimir recibo
-                    sb.AppendLine("          <a href='Recibo.aspx?id=" & pedidoId & "' target='_blank' style='display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:12px;text-decoration:none;color:#212121;border-bottom:1px solid #f5f5f5'>")
-                    sb.AppendLine("            <i class='ti ti-printer' style='font-size:15px;width:18px;color:#3B5BDB'></i>")
-                    sb.AppendLine("            <div>Imprimir recibo<span style='display:block;font-size:10px;color:#9e9e9e;margin-top:1px'>Ticket térmico 80mm</span></div>")
-                    sb.AppendLine("          </a>")
+                    ' Fecha corta (dd MMM)
+                    Dim fechaCorta As String = ""
+                    If Not IsDBNull(dr("fecha_entrega")) Then
+                        fechaCorta = CDate(dr("fecha_entrega")).ToString("dd MMM")
+                    End If
                     
-                    ' Opción: Ver / Crear en WooCommerce
+                    sb.AppendLine("<div class='card-compact card-ped' onclick=""window.location='Pedido_Detalle.aspx?id=" & pedidoId & "'"">")
+                    
+                    ' --- LÍNEA 1: número + código + tag + botón Acciones ---
+                    sb.AppendLine("  <div class='cc-row1'>")
+                    sb.AppendLine("    <div class='cc-num cc-num-conf'>" & numPedido & "</div>")
+                    sb.AppendLine("    <span class='cc-cod'>" & pedidoCodigo & "</span>")
+                    sb.AppendLine("    <span class='cc-tag cc-tag-conf'><i class='ti ti-check'></i> CONFIRMADO</span>")
+                    
+                    ' Botón Acciones con menú desplegable
+                    sb.AppendLine("    <div class='menu-wrap' style='position:relative;margin-left:auto' onclick='event.stopPropagation()'>")
+                    sb.AppendLine("      <button type='button' class='btn-acciones-menu cc-menu-btn' onclick='toggleMenuPedido(this, event)'>")
+                    sb.AppendLine("        Acciones <i class='ti ti-chevron-down'></i>")
+                    sb.AppendLine("      </button>")
+                    sb.AppendLine("      <div class='menu-dropdown-pedido' data-pedido-id='" & pedidoId & "' style='display:none;position:absolute;top:calc(100% + 4px);right:0;background:#fff;border:1px solid #e0e0e0;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.12);min-width:210px;overflow:hidden;z-index:10'>")
+                    sb.AppendLine("        <a href='Pedido_Detalle.aspx?id=" & pedidoId & "' style='display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:12px;text-decoration:none;color:#212121;border-bottom:1px solid #f5f5f5'>")
+                    sb.AppendLine("          <i class='ti ti-eye' style='font-size:15px;width:18px;color:#7F77DD'></i>")
+                    sb.AppendLine("          <div>Ir al pedido<span style='display:block;font-size:10px;color:#9e9e9e;margin-top:1px'>Ver detalle completo</span></div>")
+                    sb.AppendLine("        </a>")
+                    sb.AppendLine("        <a href='Recibo.aspx?id=" & pedidoId & "' target='_blank' style='display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:12px;text-decoration:none;color:#212121;border-bottom:1px solid #f5f5f5'>")
+                    sb.AppendLine("          <i class='ti ti-printer' style='font-size:15px;width:18px;color:#3B5BDB'></i>")
+                    sb.AppendLine("          <div>Imprimir recibo<span style='display:block;font-size:10px;color:#9e9e9e;margin-top:1px'>Ticket térmico 80mm</span></div>")
+                    sb.AppendLine("        </a>")
                     If wcOrderId > 0 Then
                         Dim wcUrl As String = "https://miss-flores.com/wp-admin/post.php?post=" & wcOrderId & "&action=edit"
-                        sb.AppendLine("          <a href='" & wcUrl & "' target='_blank' style='display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:12px;text-decoration:none;color:#212121'>")
-                        sb.AppendLine("            <i class='ti ti-brand-woocommerce' style='font-size:15px;width:18px;color:#6A1B9A'></i>")
-                        sb.AppendLine("            <div>Ver en WooCommerce<span style='display:block;font-size:10px;color:#9e9e9e;margin-top:1px'>#" & wcOrderId & "</span></div>")
-                        sb.AppendLine("          </a>")
+                        sb.AppendLine("        <a href='" & wcUrl & "' target='_blank' style='display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:12px;text-decoration:none;color:#212121'>")
+                        sb.AppendLine("          <i class='ti ti-brand-woocommerce' style='font-size:15px;width:18px;color:#6A1B9A'></i>")
+                        sb.AppendLine("          <div>Ver en WooCommerce<span style='display:block;font-size:10px;color:#9e9e9e;margin-top:1px'>#" & wcOrderId & "</span></div>")
+                        sb.AppendLine("        </a>")
                     Else
-                        sb.AppendLine("          <button type='button' onclick='sincronizarConWC(" & pedidoId & ", this); cerrarMenusPedido();' style='display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:12px;background:none;border:none;cursor:pointer;width:100%;text-align:left;color:#212121'>")
-                        sb.AppendLine("            <i class='ti ti-brand-woocommerce' style='font-size:15px;width:18px;color:#E65100'></i>")
-                        sb.AppendLine("            <div>Crear en WooCommerce<span style='display:block;font-size:10px;color:#9e9e9e;margin-top:1px'>Sincronizar este pedido</span></div>")
-                        sb.AppendLine("          </button>")
+                        sb.AppendLine("        <button type='button' onclick='sincronizarConWC(" & pedidoId & ", this); cerrarMenusPedido();' style='display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:12px;background:none;border:none;cursor:pointer;width:100%;text-align:left;color:#212121'>")
+                        sb.AppendLine("          <i class='ti ti-brand-woocommerce' style='font-size:15px;width:18px;color:#E65100'></i>")
+                        sb.AppendLine("          <div>Crear en WooCommerce<span style='display:block;font-size:10px;color:#9e9e9e;margin-top:1px'>Sincronizar este pedido</span></div>")
+                        sb.AppendLine("        </button>")
                     End If
+                    sb.AppendLine("      </div>")
+                    sb.AppendLine("    </div>")
+                    sb.AppendLine("  </div>") ' fin cc-row1
                     
-                    sb.AppendLine("        </div>") ' fin menu-dropdown-pedido
-                    sb.AppendLine("      </div>") ' fin menu-wrap
-                    sb.AppendLine("    </div>") ' fin acciones (tag + menú)
-                    sb.AppendLine("  </div>") ' fin pedido-header
-                    
-                    ' Información del pedido
-                    sb.AppendLine("  <div class='pedido-grid'>")
-                    sb.AppendLine("    <div class='pedido-field'>")
-                    sb.AppendLine("      <div class='pedido-field-label'>Fecha entrega</div>")
-                    sb.AppendLine("      <div class='pedido-field-value'>" & fechaEnt & "</div>")
-                    sb.AppendLine("    </div>")
-                    sb.AppendLine("    <div class='pedido-field'>")
-                    sb.AppendLine("      <div class='pedido-field-label'>Horario</div>")
-                    sb.AppendLine("      <div class='pedido-field-value'>" & horario & "</div>")
-                    sb.AppendLine("    </div>")
-                    sb.AppendLine("    <div class='pedido-field'>")
-                    sb.AppendLine("      <div class='pedido-field-label'>Zona</div>")
-                    sb.AppendLine("      <div class='pedido-field-value'>" & zona & "</div>")
-                    sb.AppendLine("    </div>")
-                    sb.AppendLine("    <div class='pedido-field'>")
-                    sb.AppendLine("      <div class='pedido-field-label'>Tipo</div>")
-                    sb.AppendLine("      <div class='pedido-field-value'>" & If(tipoEnt = "DOMICILIO", "Domicilio", "Recojo") & "</div>")
-                    sb.AppendLine("    </div>")
+                    ' --- LÍNEA 2: receptor + celular ---
+                    sb.AppendLine("  <div class='cc-row2'>")
+                    sb.AppendLine("    <span class='cc-nom'>" & receptor & "</span>")
+                    If celReceptor <> "" Then
+                        sb.AppendLine("    <span class='cc-meta'><i class='ti ti-device-mobile'></i> " & celReceptor & "</span>")
+                    End If
                     sb.AppendLine("  </div>")
                     
-                    If direccion <> "" Then
-                        sb.AppendLine("  <div style='margin-bottom:1rem;'>")
-                        sb.AppendLine("    <div class='pedido-field-label'>Direccion</div>")
-                        sb.AppendLine("    <div style='font-size:13px;color:#424242;margin-top:4px;'>" & direccion & "</div>")
-                        sb.AppendLine("  </div>")
+                    ' --- LÍNEA 3: info izquierda + total derecha ---
+                    sb.AppendLine("  <div class='cc-row3'>")
+                    sb.AppendLine("    <div class='cc-info'>")
+                    If fechaCorta <> "" Then
+                        sb.AppendLine("      <span class='cc-info-item'><i class='ti ti-calendar'></i> " & fechaCorta & " · " & horarioCompacto & "</span>")
                     End If
-                    
-                    ' Totales del pedido
-                    sb.AppendLine("  <div class='totales-box'>")
-                    sb.AppendLine("    <div class='total-line'>")
-                    sb.AppendLine("      <span class='total-label'>Productos:</span>")
-                    sb.AppendLine("      <span class='total-value'>" & subtotalProds.ToString("N2") & " Bs</span>")
+                    sb.AppendLine("      <span class='cc-info-item'><i class='ti ti-map-pin'></i> " & zona & "</span>")
+                    If esExpress Then
+                        sb.AppendLine("      <span class='cc-pill-exp'>Express</span>")
+                    End If
+                    If wcOrderId > 0 Then
+                        sb.AppendLine("      <span class='cc-info-item' style='color:#6A1B9A'><i class='ti ti-brand-woocommerce'></i> #" & wcOrderId & "</span>")
+                    Else
+                        sb.AppendLine("      <span class='cc-info-item' style='color:#E65100'><i class='ti ti-brand-woocommerce'></i> Sin WC</span>")
+                    End If
                     sb.AppendLine("    </div>")
-                    sb.AppendLine("    <div class='total-line'>")
-                    sb.AppendLine("      <span class='total-label'>Envio:</span>")
-                    sb.AppendLine("      <span class='total-value'>" & costoEnvio.ToString("N2") & " Bs</span>")
-                    sb.AppendLine("    </div>")
-                    sb.AppendLine("    <div class='total-line main'>")
-                    sb.AppendLine("      <span class='total-label'>TOTAL PEDIDO:</span>")
-                    sb.AppendLine("      <span class='total-value'>" & total.ToString("N2") & " Bs</span>")
+                    sb.AppendLine("    <div class='cc-total-wrap'>")
+                    sb.AppendLine("      <div class='cc-total'>" & total.ToString("N2") & " Bs</div>")
+                    sb.AppendLine("      <span class='cc-total-sub'>" & cantProductos & " prod · env " & costoEnvio.ToString("N0") & "</span>")
                     sb.AppendLine("    </div>")
                     sb.AppendLine("  </div>")
                     
@@ -429,48 +661,74 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
                         receptorLabel = receptor & If(celReceptor <> "", " &bull; " & celReceptor, "")
                     End If
 
-                    sb.AppendLine("<div class='pedido-card' style='border-style:dashed;border-color:#F9A825;background:#FFFDE7'>")
-                    sb.AppendLine("  <div class='pedido-header'>")
-                    sb.AppendLine("    <div class='pedido-numero' style='background:#F9A825'>" & cant & "</div>")
-                    sb.AppendLine("    <div class='pedido-info'>")
-                    sb.AppendLine("      <h4 class='pedido-codigo'>Borrador #" & entId & " " &
-                                  "<span style='font-size:10px;background:#FFF3CD;color:#856404;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:500;text-transform:uppercase'>" &
-                                  "<i class='ti ti-pencil' style='font-size:11px;vertical-align:-1px'></i> Borrador</span></h4>")
-                    sb.AppendLine("      <p class='pedido-desc'>Para " & receptorLabel & "</p>")
-                    sb.AppendLine("    </div>")
-                    sb.AppendLine("    <div style='display:flex;gap:6px;'>")
-                    sb.AppendLine("      <a href='Entrega_Agregar.aspx?prepedido=" & PrePedidoId & "&entrega=" & entId & "' class='btn btn-primary btn-sm'>")
-                    sb.AppendLine("        <i class='ti ti-edit'></i> Continuar editando")
-                    sb.AppendLine("      </a>")
-                    sb.AppendLine("    </div>")
-                    sb.AppendLine("  </div>")
-
-                    sb.AppendLine("  <div class='pedido-grid'>")
-                    sb.AppendLine("    <div class='pedido-field'>")
-                    sb.AppendLine("      <div class='pedido-field-label'>Fecha entrega</div>")
-                    sb.AppendLine("      <div class='pedido-field-value'>" & fechaEnt & "</div>")
-                    sb.AppendLine("    </div>")
-                    sb.AppendLine("    <div class='pedido-field'>")
-                    sb.AppendLine("      <div class='pedido-field-label'>Horario</div>")
-                    sb.AppendLine("      <div class='pedido-field-value'>" & horario & "</div>")
-                    sb.AppendLine("    </div>")
-                    sb.AppendLine("    <div class='pedido-field'>")
-                    sb.AppendLine("      <div class='pedido-field-label'>Destino</div>")
-                    sb.AppendLine("      <div class='pedido-field-value'>" & destinoLabel & "</div>")
-                    sb.AppendLine("    </div>")
-                    sb.AppendLine("    <div class='pedido-field'>")
-                    sb.AppendLine("      <div class='pedido-field-label'>Productos</div>")
-                    sb.AppendLine("      <div class='pedido-field-value'>" & cantItems & " items &mdash; Bs " & subtotalBs.ToString("N2") & "</div>")
-                    sb.AppendLine("    </div>")
-                    sb.AppendLine("  </div>")
-
-                    If direccion <> "" Then
-                        sb.AppendLine("  <div style='margin-bottom:0.5rem;'>")
-                        sb.AppendLine("    <div class='pedido-field-label'>Direccion</div>")
-                        sb.AppendLine("    <div style='font-size:13px;color:#424242;margin-top:4px;'>" & direccion & "</div>")
-                        sb.AppendLine("  </div>")
+                    ' ============================================================
+                    ' CARD COMPACTA DE BORRADOR (entrega en proceso)
+                    ' Toda la card es clickeable → Entrega_Agregar para seguir editando
+                    ' ============================================================
+                    
+                    ' Fecha corta
+                    Dim fechaCortaB As String = ""
+                    If Not IsDBNull(dr("fecha_entrega")) Then
+                        fechaCortaB = CDate(dr("fecha_entrega")).ToString("dd MMM")
                     End If
-
+                    
+                    ' Horario compacto
+                    Dim horarioCompactoB As String = ""
+                    If Not IsDBNull(dr("hora_inicio")) AndAlso Not IsDBNull(dr("hora_fin")) Then
+                        Dim hi As String = dr("hora_inicio").ToString()
+                        Dim hf As String = dr("hora_fin").ToString()
+                        If hi.Length >= 5 Then hi = hi.Substring(0, 5)
+                        If hf.Length >= 5 Then hf = hf.Substring(0, 5)
+                        horarioCompactoB = hi & "-" & hf
+                    End If
+                    
+                    Dim urlEditar As String = "Entrega_Agregar.aspx?prepedido=" & PrePedidoId & "&entrega=" & entId
+                    
+                    sb.AppendLine("<div class='card-compact card-bor' onclick=""window.location='" & urlEditar & "'"">")
+                    
+                    ' --- LÍNEA 1: número + código + tag ---
+                    sb.AppendLine("  <div class='cc-row1'>")
+                    sb.AppendLine("    <div class='cc-num cc-num-draft'>" & cant & "</div>")
+                    sb.AppendLine("    <span class='cc-cod' style='color:#FB923C'>Borrador #" & entId & "</span>")
+                    sb.AppendLine("    <span class='cc-tag cc-tag-draft'><i class='ti ti-pencil'></i> EN PROCESO</span>")
+                    sb.AppendLine("  </div>")
+                    
+                    ' --- LÍNEA 2: receptor + celular ---
+                    sb.AppendLine("  <div class='cc-row2'>")
+                    If receptor = "" Then
+                        sb.AppendLine("    <span class='cc-nom' style='color:#bdbdbd;font-style:italic'>Sin destinatario</span>")
+                    Else
+                        sb.AppendLine("    <span class='cc-nom'>" & receptor & "</span>")
+                        If celReceptor <> "" Then
+                            sb.AppendLine("    <span class='cc-meta'><i class='ti ti-device-mobile'></i> " & celReceptor & "</span>")
+                        End If
+                    End If
+                    sb.AppendLine("  </div>")
+                    
+                    ' --- LÍNEA 3: info izquierda + total derecha ---
+                    sb.AppendLine("  <div class='cc-row3'>")
+                    sb.AppendLine("    <div class='cc-info'>")
+                    If fechaCortaB <> "" OrElse horarioCompactoB <> "" Then
+                        Dim fechaHor As String = fechaCortaB
+                        If horarioCompactoB <> "" Then
+                            If fechaHor <> "" Then fechaHor &= " · "
+                            fechaHor &= horarioCompactoB
+                        End If
+                        sb.AppendLine("      <span class='cc-info-item'><i class='ti ti-calendar'></i> " & fechaHor & "</span>")
+                    Else
+                        sb.AppendLine("      <span class='cc-info-item' style='color:#bdbdbd;font-style:italic'>Sin fecha</span>")
+                    End If
+                    If Not IsDBNull(dr("zona_nombre")) Then
+                        sb.AppendLine("      <span class='cc-info-item'><i class='ti ti-map-pin'></i> " & zona & "</span>")
+                    End If
+                    sb.AppendLine("    </div>")
+                    sb.AppendLine("    <div class='cc-total-wrap'>")
+                    Dim claseTotal As String = If(subtotalBs > 0, "cc-total", "cc-total cc-total-empty")
+                    sb.AppendLine("      <div class='" & claseTotal & "'>" & subtotalBs.ToString("N0") & " Bs</div>")
+                    sb.AppendLine("      <span class='cc-total-sub'>" & cantItems & " producto" & If(cantItems = 1, "", "s") & "</span>")
+                    sb.AppendLine("    </div>")
+                    sb.AppendLine("  </div>")
+                    
                     sb.AppendLine("</div>")
                 End While
             End Using

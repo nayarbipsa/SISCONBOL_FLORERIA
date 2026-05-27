@@ -22,7 +22,7 @@ Namespace SISCONBOL_FLORERIA
 
         Public Sub ProcessRequest(context As HttpContext) Implements IHttpHandler.ProcessRequest
             context.Response.ContentType = "application/json"
-            context.Response.Charset     = "utf-8"
+            context.Response.Charset = "utf-8"
 
             ' Verificar sesión
             If Not SesionHelper.VerificarSesion(context) Then
@@ -54,10 +54,10 @@ Namespace SISCONBOL_FLORERIA
             Try
                 Dim resultado As Dictionary(Of String, Object) = WooCommerceSync.SincronizarPedido(pedidoId)
 
-                Dim ok        As Boolean = CBool(resultado("ok"))
-                Dim mensaje   As String  = resultado("mensaje").ToString()
+                Dim ok As Boolean = CBool(resultado("ok"))
+                Dim mensaje As String = resultado("mensaje").ToString()
                 Dim wcOrderId As Integer = CInt(resultado("wc_order_id"))
-                Dim wcUrl     As String  = ""
+                Dim wcUrl As String = ""
 
                 If ok AndAlso wcOrderId > 0 Then
                     wcUrl = "https://miss-flores.com/wp-admin/post.php?post=" & wcOrderId & "&action=edit"
@@ -75,11 +75,11 @@ Namespace SISCONBOL_FLORERIA
                 End If
 
                 Dim serializer As New JavaScriptSerializer()
-                Dim respuesta  = New With {
-                    .ok        = ok,
-                    .mensaje   = mensaje,
+                Dim respuesta = New With {
+                    .ok = ok,
+                    .mensaje = mensaje,
                     .wc_order_id = wcOrderId,
-                    .wc_url    = wcUrl
+                    .wc_url = wcUrl
                 }
                 context.Response.Write(serializer.Serialize(respuesta))
 
