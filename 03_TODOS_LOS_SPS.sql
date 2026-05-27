@@ -2,18 +2,126 @@
 -- SISCONBOL_FLORERIA - TODOS LOS STORED PROCEDURES
 -- Total SPs: 48
 -- =============================================
- 
-USE SISCONBOL;
+ USE [SISCONBOL]
 GO
- 
--- ============================================================
--- SP: FLORERIA_sp_CambiarPassword
--- ============================================================
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Asignacion_Crear]    Script Date: 26/05/2026 21:40:33 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-USE [SISCONBOL]
+CREATE PROCEDURE [dbo].[FLORERIA_sp_Asignacion_Crear]
+    @pedido_id      INT,
+    @delivery_id    INT,
+    @asignado_por   INT,
+    @observaciones  NVARCHAR(500) = NULL,
+    @ip             VARCHAR(50) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    -- Validar pedido
+    IF NOT EXISTS (SELECT 1 FROM FLORERIA_Pedido WHERE pedido_id = @pedido_id)
+    BEGIN
+        SELECT 0 AS ok, 'Pedido no encontrado.' AS mensaje;
+        RETURN;
+    END
+    
+    -- Validar que el delivery es un usuario tipo DELIVERY (tipo_id = 4)
+    IF NOT EXISTS (SELECT 1 FROM FLORERIA_Usuario 
+                   WHERE usuario_id = @delivery_id 
+                     AND tipo_id = 4 
+                     AND activo = 1)
+    BEGIN
+        SELECT 0 AS ok, 'Usuario delivery invalido o inactivo.' AS mensaje;
+        RETURN;
+    END
+    
+    BEGIN TRANSACTION;
+    
+    -- 1. Liberar asignaciones activas anteriores del mismo pedido
+    UPDATE FLORERIA_Asignacion
+    SET activa = 0,
+        liberado_en = GETDATE(),
+        liberado_por = @asignado_por,
+        motivo_liberacion = 'Reasignacion a otro delivery'
+    WHERE pedido_id = @pedido_id AND activa = 1;
+    
+    -- 2. Crear nueva asignacion
+    INSERT INTO FLORERIA_Asignacion
+        (pedido_id, delivery_id, asignado_por, asignado_en, activa, observaciones)
+    VALUES
+        (@pedido_id, @delivery_id, @asignado_por, GETDATE(), 1, @observaciones);
+    
+    DECLARE @asignacion_id INT = SCOPE_IDENTITY();
+    
+    -- 3. Actualizar delivery_actual_id en el pedido (denormalizado)
+    UPDATE FLORERIA_Pedido
+    SET delivery_actual_id = @delivery_id,
+        modificado_por = @asignado_por,
+        modificado_en = GETDATE()
+    WHERE pedido_id = @pedido_id;
+    
+    -- 4. Log de estado
+    DECLARE @delivery_nombre VARCHAR(400);
+    SELECT @delivery_nombre = nombres + ' ' + apellidos 
+    FROM FLORERIA_Usuario WHERE usuario_id = @delivery_id;
+    
+    INSERT INTO FLORERIA_Pedido_Estado_Log
+        (pedido_id, estado_anterior, estado_nuevo, observaciones, usuario_id, fecha_hora)
+    VALUES
+        (@pedido_id, NULL, 'DELIVERY_ASIGNADO', 
+         'Asignado a ' + @delivery_nombre, @asignado_por, GETDATE());
+    
+    -- 5. Auditoria
+    INSERT INTO FLORERIA_Auditoria
+        (usuario_id, ip, tabla, registro_id, accion, valor_nuevo, motivo)
+    VALUES
+        (@asignado_por, @ip, 'FLORERIA_Asignacion', CAST(@asignacion_id AS VARCHAR),
+         'INSERTAR',
+         '{"pedido_id":"' + CAST(@pedido_id AS VARCHAR) + 
+         '","delivery_id":"' + CAST(@delivery_id AS VARCHAR) + '"}',
+         'Asignacion de delivery a pedido');
+    
+    COMMIT TRANSACTION;
+    
+    SELECT 1 AS ok, 'Delivery asignado correctamente.' AS mensaje, @asignacion_id AS asignacion_id;
+END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_CambiarPassword]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Asignacion_ListarDeliverysActivos]    Script Date: 26/05/2026 21:40:33 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[FLORERIA_sp_Asignacion_ListarDeliverysActivos]
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    SELECT
+        u.usuario_id,
+        u.nombres,
+        u.apellidos,
+        u.nombres + ' ' + u.apellidos AS nombre_completo,
+        u.celular,
+        -- Cantidad de pedidos asignados activos hoy
+        (SELECT COUNT(*) 
+         FROM FLORERIA_Asignacion a
+         INNER JOIN FLORERIA_Pedido p ON a.pedido_id = p.pedido_id
+         WHERE a.delivery_id = u.usuario_id
+           AND a.activa = 1
+           AND p.fecha_entrega = CAST(GETDATE() AS DATE)
+           AND p.estado_operativo NOT IN ('ENTREGADO', 'NO_ENTREGADO')
+        ) AS pedidos_activos_hoy
+    FROM FLORERIA_Usuario u
+    WHERE u.tipo_id = 4
+      AND u.activo = 1
+      AND u.bloqueado = 0
+    ORDER BY u.nombres ASC;
+END;
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_CambiarPassword]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -57,7 +165,7 @@ BEGIN
     SELECT 1 AS ok, 'Contraseña actualizada correctamente.' AS mensaje;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_CargarMenu]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_CargarMenu]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -113,7 +221,7 @@ BEGIN
     ORDER BY m.padre_id, m.orden;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_Actualizar]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_Actualizar]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -187,7 +295,7 @@ BEGIN
     SELECT 1 AS ok, 'Categoria actualizada correctamente.' AS mensaje;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_AgregarProductos]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_AgregarProductos]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -277,7 +385,7 @@ AS BEGIN
         @duplicados AS duplicados;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_BajaProductos]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_BajaProductos]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -336,7 +444,7 @@ BEGIN
            @total AS total_afectados;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_CambiarOrden]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_CambiarOrden]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -384,7 +492,7 @@ BEGIN
     SELECT 1 AS ok, 'Orden actualizado.' AS mensaje;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_Crear]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_Crear]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -447,7 +555,7 @@ BEGIN
     SELECT 1 AS ok, 'Categoria creada correctamente.' AS mensaje, @nueva_id AS categoria_id;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_Eliminar]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_Eliminar]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -498,7 +606,7 @@ BEGIN
     SELECT 1 AS ok, 'Categoria eliminada correctamente.' AS mensaje;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_GuardarWcId]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_GuardarWcId]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -517,7 +625,7 @@ BEGIN
     WHERE categoria_id = @categoria_id;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_HabilitarProductos]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_HabilitarProductos]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -570,7 +678,7 @@ BEGIN
            @total AS total_afectados;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_Listar]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_Listar]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -609,7 +717,7 @@ BEGIN
     ORDER BY c.padre_id, c.orden, c.nombre;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_ListarProductos]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_ListarProductos]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -698,7 +806,7 @@ AS BEGIN
         p.nombre;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_MarcarPrincipal]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_MarcarPrincipal]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -745,7 +853,7 @@ AS BEGIN
     SELECT 1 AS ok, 'Producto marcado como principal' AS mensaje;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_MarcarSincronizada]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_MarcarSincronizada]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -762,7 +870,7 @@ BEGIN
     WHERE categoria_id = @categoria_id;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_ObtenerStats]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_ObtenerStats]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -786,7 +894,7 @@ AS BEGIN
     WHERE pc.categoria_id = @categoria_id;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_ProductosDisponibles]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_ProductosDisponibles]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -839,7 +947,7 @@ AS BEGIN
     ORDER BY p.nombre;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_QuitarProducto]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_QuitarProducto]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -894,7 +1002,7 @@ AS BEGIN
     SELECT 1 AS ok, 'Producto quitado de la categoria' AS mensaje;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_QuitarProductosMasivo]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Categoria_QuitarProductosMasivo]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -951,7 +1059,7 @@ AS BEGIN
         @eliminados AS eliminados;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_CerrarSesion]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_CerrarSesion]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -969,7 +1077,7 @@ BEGIN
     WHERE token = @token AND activa = 1;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Config_Guardar]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Config_Guardar]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -1023,7 +1131,7 @@ BEGIN
     SELECT 1 AS ok, 'Configuracion guardada.' AS mensaje;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Config_ListarTodas]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Config_ListarTodas]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -1047,7 +1155,7 @@ BEGIN
     ORDER BY c.clave;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Config_Obtener]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Config_Obtener]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -1064,7 +1172,7 @@ BEGIN
     WHERE clave = @clave AND activo = 1;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Dashboard_Estadisticas]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Dashboard_Estadisticas]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -1131,7 +1239,106 @@ BEGIN
         
 END
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Login]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Dashboard_PedidosRecientes]    Script Date: 26/05/2026 21:40:33 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- =============================================
+-- SP 2: FLORERIA_sp_Dashboard_PedidosRecientes
+-- Propósito: Últimos N pedidos del agente para dashboard
+--            Muestra origen (SISTEMA vs WOOCOMMERCE)
+--            y estado de pago real
+-- =============================================
+CREATE   PROCEDURE [dbo].[FLORERIA_sp_Dashboard_PedidosRecientes]
+    @usuario_id INT,
+    @cantidad   INT = 5
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT TOP (@cantidad)
+        p.pedido_id,
+        p.codigo,
+        p.receptor_nombre,
+        p.receptor_celular,
+        p.fecha_entrega,
+        p.es_express,
+        p.total_bs,
+        p.anticipo_bs,
+        p.saldo_bs,
+        p.estado_pago,
+        CASE
+            WHEN p.wc_order_id IS NOT NULL THEN 'WOOCOMMERCE'
+            ELSE 'SISTEMA'
+        END AS origen,
+        p.wc_order_number,
+        pp.codigo AS prepedido_codigo,
+        z.nombre  AS zona_nombre,
+        p.creado_en
+    FROM FLORERIA_Pedido p
+    LEFT JOIN FLORERIA_PrePedido pp ON p.prepedido_id = pp.prepedido_id
+    LEFT JOIN FLORERIA_Zona z       ON p.zona_id      = z.zona_id
+    WHERE pp.agente_actual_id = @usuario_id
+       OR (p.wc_order_id IS NOT NULL AND p.creado_por = @usuario_id)
+    ORDER BY p.pedido_id DESC
+END
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Dashboard_PrePedidosRecientes]    Script Date: 26/05/2026 21:40:33 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- =============================================
+-- SP 1: FLORERIA_sp_Dashboard_PrePedidosRecientes
+-- Propósito: Últimos N pre-pedidos del agente para dashboard
+--            Incluye token_web, token_expira y estado de pago
+--            desde FLORERIA_Pedido_Pago (confirmación manual)
+-- =============================================
+CREATE   PROCEDURE [dbo].[FLORERIA_sp_Dashboard_PrePedidosRecientes]
+    @usuario_id INT,
+    @cantidad   INT = 6
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT TOP (@cantidad)
+        pp.prepedido_id,
+        pp.codigo,
+        pp.tipo_registro,
+        pp.cliente_celular,
+        pp.cliente_nombre,
+        pp.cliente_apellidos,
+        pp.estado,
+        pp.token_web,
+        pp.token_expira,
+        pp.total_general_bs,
+        pp.creado_en,
+        ISNULL(
+            (SELECT TOP 1 pag.estado
+             FROM FLORERIA_Pedido_Pago pag
+             WHERE pag.prepedido_id = pp.prepedido_id
+             ORDER BY pag.pago_id DESC),
+            'SIN_PAGO'
+        ) AS estado_pago,
+        ISNULL(
+            (SELECT TOP 1 u2.nombres + ' ' + u2.apellidos
+             FROM FLORERIA_Pedido_Pago pag2
+             INNER JOIN FLORERIA_Usuario u2 ON pag2.verificado_por = u2.usuario_id
+             WHERE pag2.prepedido_id = pp.prepedido_id
+               AND pag2.estado = 'VERIFICADO'
+             ORDER BY pag2.pago_id DESC),
+            NULL
+        ) AS pago_verificado_por
+    FROM FLORERIA_PrePedido pp
+    WHERE pp.agente_actual_id = @usuario_id
+      AND pp.tipo_registro = 'PRE_PEDIDO'
+    ORDER BY pp.prepedido_id DESC
+END
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Login]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -1302,7 +1509,190 @@ BEGIN
         @tipo_id          AS tipo_id
 END
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Pedido_AgregarProducto]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PagoMetodo_Map_Obtener]    Script Date: 26/05/2026 21:40:33 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[FLORERIA_sp_PagoMetodo_Map_Obtener]
+    @codigo_sisconbol VARCHAR(30)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @method VARCHAR(50)
+    DECLARE @title  VARCHAR(100)
+
+    SELECT TOP 1
+        @method = wc_payment_method,
+        @title  = wc_payment_method_title
+    FROM FLORERIA_PagoMetodo_Map
+    WHERE codigo_sisconbol = @codigo_sisconbol
+      AND activo = 1
+
+    -- Fallback si no se encuentra
+    IF @method IS NULL
+    BEGIN
+        SET @method = 'bacs'
+        SET @title  = ISNULL(@codigo_sisconbol, 'Otro')
+    END
+
+    SELECT
+        @method AS wc_payment_method,
+        @title  AS wc_payment_method_title
+END
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Pedido_AceptarPagoManual]    Script Date: 26/05/2026 21:40:33 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[FLORERIA_sp_Pedido_AceptarPagoManual]
+    @pedido_id   INT,
+    @usuario_id  INT,
+    @ip          VARCHAR(50) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    -- Variables del pedido
+    DECLARE @estado_pago_actual VARCHAR(20);
+    DECLARE @wc_order_id INT;
+    DECLARE @total_bs DECIMAL(10,2);
+    DECLARE @total_usd DECIMAL(10,2);
+    DECLARE @wc_payment_method VARCHAR(50);
+    
+    -- Variables calculadas
+    DECLARE @pagado_previo_bs DECIMAL(10,2);
+    DECLARE @pagado_previo_usd DECIMAL(10,2);
+    DECLARE @monto_a_registrar_bs DECIMAL(10,2);
+    DECLARE @monto_a_registrar_usd DECIMAL(10,2);
+    
+    -- 1. Leer datos del pedido
+    SELECT 
+        @estado_pago_actual = estado_pago,
+        @wc_order_id = wc_order_id,
+        @total_bs = total_bs,
+        @total_usd = total_usd,
+        @wc_payment_method = wc_payment_method
+    FROM FLORERIA_Pedido 
+    WHERE pedido_id = @pedido_id;
+    
+    -- Validar que existe
+    IF @estado_pago_actual IS NULL
+    BEGIN
+        SELECT 0 AS ok, 'Pedido no encontrado.' AS mensaje;
+        RETURN;
+    END
+    
+    -- Validar que no esta ya pagado
+    IF @estado_pago_actual = 'PAGADO'
+    BEGIN
+        SELECT 0 AS ok, 'Este pedido ya esta marcado como pagado.' AS mensaje;
+        RETURN;
+    END
+    
+    -- 2. Calcular cuanto se pago previamente (solo pagos verificados)
+    SELECT 
+        @pagado_previo_bs = ISNULL(SUM(monto_bs), 0),
+        @pagado_previo_usd = ISNULL(SUM(monto_usd), 0)
+    FROM FLORERIA_Pedido_Pago
+    WHERE pedido_id = @pedido_id
+      AND estado = 'VERIFICADO';
+    
+    -- 3. VALIDACION: bloquear si ya hay sobrepago en pagos previos
+    IF @pagado_previo_bs > @total_bs
+    BEGIN
+        SELECT 0 AS ok, 
+            'Sobrepago detectado en pagos previos. Total pedido: Bs ' + 
+            CAST(@total_bs AS VARCHAR) + 
+            ' / Pagado previo: Bs ' + 
+            CAST(@pagado_previo_bs AS VARCHAR) + 
+            '. Revisa los pagos registrados antes de continuar.' AS mensaje;
+        RETURN;
+    END
+    
+    -- 4. VALIDACION: bloquear si ya esta totalmente pagado pero estado_pago no se actualizo
+    IF @pagado_previo_bs >= @total_bs
+    BEGIN
+        SELECT 0 AS ok, 
+            'Este pedido ya tiene el total cubierto en pagos previos (Bs ' + 
+            CAST(@pagado_previo_bs AS VARCHAR) + 
+            '). Solo falta actualizar el estado del pedido.' AS mensaje;
+        RETURN;
+    END
+    
+    -- 5. Calcular el monto que falta pagar (lo que vamos a registrar)
+    SET @monto_a_registrar_bs = @total_bs - @pagado_previo_bs;
+    SET @monto_a_registrar_usd = @total_usd - @pagado_previo_usd;
+    
+    -- 6. Ejecutar todo en transaccion
+    BEGIN TRANSACTION;
+    
+    -- 6.1 Actualizar pedido
+    UPDATE FLORERIA_Pedido
+    SET estado_pago = 'PAGADO',
+        anticipo_bs = @total_bs,    -- total pagado ahora = total pedido
+        saldo_bs = 0,
+        modificado_por = @usuario_id,
+        modificado_en = GETDATE()
+    WHERE pedido_id = @pedido_id;
+    
+    -- 6.2 Registrar el pago en FLORERIA_Pedido_Pago
+    --     monto = lo que FALTABA, no el total
+    INSERT INTO FLORERIA_Pedido_Pago
+        (pedido_id, tipo_pago, metodo_pago, monto_bs, monto_usd,
+         referencia, estado, verificado_por, verificado_en,
+         observaciones, creado_por, creado_en)
+    VALUES
+        (@pedido_id, 
+         CASE WHEN @pagado_previo_bs > 0 THEN 'SALDO' ELSE 'TOTAL' END,
+         ISNULL(@wc_payment_method, 'MANUAL'),
+         @monto_a_registrar_bs, @monto_a_registrar_usd,
+         CASE WHEN @wc_order_id IS NOT NULL 
+              THEN 'WC #' + CAST(@wc_order_id AS VARCHAR) 
+              ELSE NULL END,
+         'VERIFICADO', @usuario_id, GETDATE(),
+         CASE WHEN @pagado_previo_bs > 0 
+              THEN 'Saldo aceptado manualmente. Pagado previo: Bs ' + 
+                   CAST(@pagado_previo_bs AS VARCHAR)
+              ELSE 'Aceptado manualmente desde gestion de pedidos'
+         END,
+         @usuario_id, GETDATE());
+    
+    -- 6.3 Log de cambio de estado
+    INSERT INTO FLORERIA_Pedido_Estado_Log
+        (pedido_id, estado_anterior, estado_nuevo, observaciones, usuario_id, fecha_hora)
+    VALUES
+        (@pedido_id, @estado_pago_actual, 'PAGADO', 
+         'Pago aceptado manualmente. Monto: Bs ' + 
+         CAST(@monto_a_registrar_bs AS VARCHAR), 
+         @usuario_id, GETDATE());
+    
+    -- 6.4 Auditoria
+    INSERT INTO FLORERIA_Auditoria
+        (usuario_id, ip, tabla, registro_id, accion, valor_anterior, valor_nuevo, motivo)
+    VALUES
+        (@usuario_id, @ip, 'FLORERIA_Pedido', CAST(@pedido_id AS VARCHAR),
+         'MODIFICAR',
+         '{"estado_pago":"' + @estado_pago_actual + 
+         '","pagado_previo_bs":"' + CAST(@pagado_previo_bs AS VARCHAR) + '"}',
+         '{"estado_pago":"PAGADO","monto_registrado_bs":"' + 
+         CAST(@monto_a_registrar_bs AS VARCHAR) + '"}',
+         'Aceptacion manual de pago WC');
+    
+    COMMIT TRANSACTION;
+    
+    SELECT 1 AS ok, 
+        'Pago aceptado correctamente. Registrado: Bs ' + 
+        CAST(@monto_a_registrar_bs AS VARCHAR) AS mensaje,
+        @monto_a_registrar_bs AS monto_registrado,
+        @pagado_previo_bs AS pagado_previo;
+END;
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Pedido_AgregarProducto]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -1327,7 +1717,7 @@ BEGIN
     );
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Pedido_CalcularEnvio]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Pedido_CalcularEnvio]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -1443,48 +1833,987 @@ BEGIN
     END CATCH
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Pedido_Crear]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Pedido_CambiarEstadoOperativo]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-CREATE PROCEDURE [dbo].[FLORERIA_sp_Pedido_Crear]
-    @prepedido_id INT, @receptor_nombre VARCHAR(200), @receptor_celular VARCHAR(20),
-    @ciudad_id SMALLINT, @zona_id INT = NULL, @sucursal_id SMALLINT = NULL,
-    @tipo_entrega VARCHAR(20), @direccion VARCHAR(300) = NULL, @referencia VARCHAR(300) = NULL,
-    @fecha_entrega DATE, @slot_id SMALLINT = NULL, @es_express BIT = 0,
-    @dedicatoria NVARCHAR(500) = NULL, @firma_tarjeta VARCHAR(100) = NULL,
-    @wc_order_id INT = NULL,
-    @tipo_ocacion VARCHAR(30) = 'OTRO',
-    @nota_floreria NVARCHAR(500) = NULL,
-    @creado_por INT = NULL, @ip VARCHAR(50) = NULL,
-    @pedido_id INT OUTPUT, @codigo VARCHAR(20) OUTPUT
+
+CREATE PROCEDURE [dbo].[FLORERIA_sp_Pedido_CambiarEstadoOperativo]
+    @pedido_id        INT,
+    @estado_nuevo     VARCHAR(20),
+    @observaciones    VARCHAR(500) = NULL,
+    @usuario_id       INT,
+    @ip               VARCHAR(50)  = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
+    
+    -- Validar estado
+    IF @estado_nuevo NOT IN ('PENDIENTE', 'IMPRESO', 'EN_PREPARACION', 'LISTO', 
+                              'EN_RUTA', 'ENTREGADO', 'NO_ENTREGADO', 'REPROGRAMADO')
+    BEGIN
+        SELECT 0 AS ok, 'Estado operativo invalido.' AS mensaje;
+        RETURN;
+    END
+    
+    -- Verificar que el pedido existe
+    DECLARE @estado_anterior VARCHAR(20);
+    SELECT @estado_anterior = estado_operativo
+    FROM FLORERIA_Pedido WHERE pedido_id = @pedido_id;
+    
+    IF @estado_anterior IS NULL
+    BEGIN
+        SELECT 0 AS ok, 'Pedido no encontrado.' AS mensaje;
+        RETURN;
+    END
+    
+    -- No hacer nada si es el mismo estado
+    IF @estado_anterior = @estado_nuevo
+    BEGIN
+        SELECT 0 AS ok, 'El pedido ya esta en ese estado.' AS mensaje;
+        RETURN;
+    END
+    
+    -- Actualizar pedido
+    UPDATE FLORERIA_Pedido
+    SET estado_operativo = @estado_nuevo,
+        modificado_por = @usuario_id,
+        modificado_en = GETDATE()
+    WHERE pedido_id = @pedido_id;
+    
+    -- Registrar en log
+    INSERT INTO FLORERIA_Pedido_Estado_Log
+        (pedido_id, estado_anterior, estado_nuevo, observaciones, usuario_id, fecha_hora)
+    VALUES
+        (@pedido_id, @estado_anterior, @estado_nuevo, @observaciones, @usuario_id, GETDATE());
+    
+    -- Auditoria
+    INSERT INTO FLORERIA_Auditoria
+        (usuario_id, ip, tabla, registro_id, accion, valor_anterior, valor_nuevo)
+    VALUES
+        (@usuario_id, @ip, 'FLORERIA_Pedido', CAST(@pedido_id AS VARCHAR),
+         'MODIFICAR',
+         '{"estado_operativo":"' + @estado_anterior + '"}',
+         '{"estado_operativo":"' + @estado_nuevo + '"}');
+    
+    SELECT 1 AS ok, 'Estado actualizado correctamente.' AS mensaje;
+END;
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Pedido_Crear]    Script Date: 26/05/2026 21:40:33 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================================
+-- ALTER: FLORERIA_sp_Pedido_Crear
+-- Agrega llamada a RecalcularEstado al final del SP
+-- Para que al crear un pedido hijo el PrePedido pase
+-- automáticamente a COMPLETADO
+-- =============================================================
+CREATE PROCEDURE [dbo].[FLORERIA_sp_Pedido_Crear]
+    @prepedido_id   INT,
+    @receptor_nombre  VARCHAR(200),
+    @receptor_celular VARCHAR(20),
+    @ciudad_id        SMALLINT,
+    @zona_id          INT          = NULL,
+    @sucursal_id      SMALLINT     = NULL,
+    @tipo_entrega     VARCHAR(20),
+    @direccion        VARCHAR(300) = NULL,
+    @referencia       VARCHAR(300) = NULL,
+    @fecha_entrega    DATE,
+    @slot_id          SMALLINT     = NULL,
+    @es_express       BIT          = 0,
+    @dedicatoria      NVARCHAR(500)= NULL,
+    @firma_tarjeta    VARCHAR(100) = NULL,
+    @wc_order_id      INT          = NULL,
+    @tipo_ocacion     VARCHAR(30)  = 'OTRO',
+    @nota_floreria    NVARCHAR(500)= NULL,
+    @creado_por       INT          = NULL,
+    @ip               VARCHAR(50)  = NULL,
+    @pedido_id        INT          OUTPUT,
+    @codigo           VARCHAR(20)  OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
     DECLARE @ultimo_numero INT;
-    SELECT @ultimo_numero = ISNULL(MAX(CAST(SUBSTRING(codigo, 5, 6) AS INT)), 0) 
+    SELECT @ultimo_numero = ISNULL(MAX(CAST(SUBSTRING(codigo, 5, 6) AS INT)), 0)
     FROM FLORERIA_Pedido WHERE codigo LIKE 'PED-%';
     SET @codigo = 'PED-' + RIGHT('000000' + CAST(@ultimo_numero + 1 AS VARCHAR), 6);
 
     INSERT INTO [dbo].[FLORERIA_Pedido] (
-        prepedido_id, codigo, wc_order_id, receptor_nombre, receptor_celular, 
-        ciudad_id, zona_id, sucursal_id, tipo_entrega, direccion, referencia, 
-        fecha_entrega, slot_id, es_express, dedicatoria, firma_tarjeta, 
-        tipo_ocacion, nota_floreria, wc_sync_estado, wc_sync_fecha, 
+        prepedido_id, codigo, wc_order_id, receptor_nombre, receptor_celular,
+        ciudad_id, zona_id, sucursal_id, tipo_entrega, direccion, referencia,
+        fecha_entrega, slot_id, es_express, dedicatoria, firma_tarjeta,
+        tipo_ocacion, nota_floreria, wc_sync_estado, wc_sync_fecha,
         creado_por, creado_en
     )
     VALUES (
-        @prepedido_id, @codigo, @wc_order_id, ISNULL(@receptor_nombre, 'Sin nombre'), 
-        ISNULL(@receptor_celular, '00000000'), @ciudad_id, ISNULL(@zona_id, 0), @sucursal_id, 
-        ISNULL(@tipo_entrega, 'DOMICILIO'), @direccion, @referencia, @fecha_entrega, 
-        @slot_id, ISNULL(@es_express, 0), @dedicatoria, @firma_tarjeta, 
+        @prepedido_id, @codigo, @wc_order_id, ISNULL(@receptor_nombre, 'Sin nombre'),
+        ISNULL(@receptor_celular, '00000000'), @ciudad_id, ISNULL(@zona_id, 0), @sucursal_id,
+        ISNULL(@tipo_entrega, 'DOMICILIO'), @direccion, @referencia, @fecha_entrega,
+        @slot_id, ISNULL(@es_express, 0), @dedicatoria, @firma_tarjeta,
         @tipo_ocacion, @nota_floreria, 'SINCRONIZADO', GETDATE(), @creado_por, GETDATE()
     );
     SET @pedido_id = SCOPE_IDENTITY();
+
+    -- *** NUEVO: recalcular estado del PrePedido automáticamente ***
+    IF @prepedido_id IS NOT NULL AND @prepedido_id > 0
+    BEGIN
+        EXEC FLORERIA_sp_PrePedido_RecalcularEstado
+            @prepedido_id   = @prepedido_id,
+            @modificado_por = @creado_por;
+    END
+
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PrePedido_ActualizarCliente]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Pedido_Detalle_SyncWC]    Script Date: 26/05/2026 21:40:33 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[FLORERIA_sp_Pedido_Detalle_SyncWC]
+    @pedido_id           INT,
+    @wc_line_item_id     INT,
+    @producto_id         INT          = NULL,
+    @nombre_producto     VARCHAR(200),
+    @cantidad            INT          = 1,
+    @precio_unitario_bs  DECIMAL(10,2) = 0,
+    @precio_unitario_usd DECIMAL(10,2) = 0,
+    @personalizacion     NVARCHAR(500) = NULL,
+    @accion              VARCHAR(10)  OUTPUT,
+    @mensaje_error       NVARCHAR(500) OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    SET @accion = 'ERROR';
+    SET @mensaje_error = NULL;
+
+    BEGIN TRY
+        -- Defaults
+        IF @cantidad IS NULL OR @cantidad <= 0 SET @cantidad = 1;
+        IF @precio_unitario_bs IS NULL OR @precio_unitario_bs < 0 SET @precio_unitario_bs = 0;
+        IF @precio_unitario_usd IS NULL OR @precio_unitario_usd < 0 SET @precio_unitario_usd = 0;
+        IF @nombre_producto IS NULL OR LTRIM(RTRIM(@nombre_producto)) = ''
+            SET @nombre_producto = 'Producto sin nombre';
+
+        -- Si ya existe detalle con este wc_line_item_id → UPDATE
+        IF EXISTS (SELECT 1 FROM FLORERIA_Pedido_Detalle
+                   WHERE pedido_id = @pedido_id AND wc_line_item_id = @wc_line_item_id)
+        BEGIN
+            UPDATE FLORERIA_Pedido_Detalle
+            SET producto_id          = @producto_id,
+                nombre_producto      = @nombre_producto,
+                cantidad             = @cantidad,
+                precio_unitario_bs   = @precio_unitario_bs,
+                precio_unitario_usd  = @precio_unitario_usd,
+                subtotal_bs          = @cantidad * @precio_unitario_bs,
+                subtotal_usd         = @cantidad * @precio_unitario_usd,
+                personalizacion      = @personalizacion
+            WHERE pedido_id = @pedido_id AND wc_line_item_id = @wc_line_item_id;
+
+            SET @accion = 'UPDATE';
+        END
+        ELSE
+        BEGIN
+            INSERT INTO FLORERIA_Pedido_Detalle (
+                pedido_id, producto_id, wc_line_item_id,
+                es_personalizado, nombre_producto, cantidad,
+                precio_unitario_bs, precio_unitario_usd,
+                subtotal_bs, subtotal_usd,
+                personalizacion, creado_en
+            )
+            VALUES (
+                @pedido_id, @producto_id, @wc_line_item_id,
+                0, @nombre_producto, @cantidad,
+                @precio_unitario_bs, @precio_unitario_usd,
+                @cantidad * @precio_unitario_bs,
+                @cantidad * @precio_unitario_usd,
+                @personalizacion, GETDATE()
+            );
+
+            SET @accion = 'INSERT';
+        END
+
+        SET @mensaje_error = NULL;
+    END TRY
+    BEGIN CATCH
+        SET @accion = 'ERROR';
+        SET @mensaje_error = LEFT(
+            'Detalle WC#' + CAST(@wc_line_item_id AS VARCHAR) + ' - ' + ERROR_MESSAGE(),
+            500
+        );
+    END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Pedido_Listar]    Script Date: 26/05/2026 21:40:33 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[FLORERIA_sp_Pedido_Listar]
+    @buscar NVARCHAR(200) = NULL,
+    @fecha_desde DATE = NULL,
+    @fecha_hasta DATE = NULL,
+    @solo_hoy BIT = 0,
+    @creado_desde DATE = NULL,
+    @creado_hasta DATE = NULL,
+    @estado_pago NVARCHAR(20) = NULL,
+    @estado_operativo NVARCHAR(30) = NULL,
+    @zona_id INT = NULL,
+    @delivery_id INT = NULL,
+    @solo_express BIT = 0,
+    @solo_sin_contactar BIT = 0,
+    @solo_sin_delivery BIT = 0,
+    @pagina INT = 1,
+    @por_pagina INT = 100
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @offset INT = (@pagina - 1) * @por_pagina;
+    DECLARE @hoy DATE = CAST(GETDATE() AS DATE);
+    DECLARE @manana DATE = DATEADD(DAY, 1, @hoy);
+
+    SELECT 
+        p.pedido_id,
+        p.codigo,
+        ISNULL(p.wc_order_id, 0) AS wc_order_id,
+        ISNULL(p.wc_order_number, '') AS wc_order_number,
+        ISNULL(p.wc_order_status, '') AS wc_order_status,
+        ISNULL(p.receptor_nombre, '') AS receptor_nombre,
+        ISNULL(p.receptor_celular, '') AS receptor_celular,
+        ISNULL(p.direccion, '') AS direccion,
+        ISNULL(p.referencia, '') AS referencia,
+        ISNULL(p.gps, '') AS gps,
+        ISNULL(z.nombre, '') AS zona_nombre,
+        ISNULL(p.fecha_entrega, GETDATE()) AS fecha_entrega,
+        ISNULL(p.creado_en, GETDATE()) AS creado_en,
+        ISNULL(s.etiqueta, '') AS slot_etiqueta,
+        s.hora_inicio AS slot_hora_inicio,
+        s.hora_fin AS slot_hora_fin,
+        ISNULL(p.es_express, 0) AS es_express,
+        ISNULL(p.estado_pago, 'PENDIENTE') AS estado_pago,
+        ISNULL(p.estado_operativo, 'PENDIENTE') AS estado_operativo,
+        ISNULL(p.total_bs, 0) AS total_bs,
+        ISNULL((
+            SELECT SUM(pp.monto_bs)
+            FROM FLORERIA_Pedido_Pago pp
+            WHERE pp.pedido_id = p.pedido_id 
+              AND pp.estado = 'VERIFICADO'
+        ), 0) AS monto_pagado,
+        ISNULL(p.contactado_cliente, 0) AS contactado_cliente,
+        ISNULL(p.delivery_actual_id, 0) AS delivery_actual_id,
+        ISNULL(u_deli.nombres + ' ' + u_deli.apellidos, '') AS delivery_nombre
+    FROM FLORERIA_Pedido p
+    LEFT JOIN FLORERIA_Zona z ON z.zona_id = p.zona_id
+    LEFT JOIN FLORERIA_Slot_Horario s ON s.slot_id = p.slot_id
+    LEFT JOIN FLORERIA_Usuario u_deli ON u_deli.usuario_id = p.delivery_actual_id
+    WHERE 
+        (@buscar IS NULL OR @buscar = '' OR
+            p.codigo LIKE '%' + @buscar + '%' OR
+            p.wc_order_number LIKE '%' + @buscar + '%' OR
+            p.receptor_nombre LIKE '%' + @buscar + '%' OR
+            p.receptor_celular LIKE '%' + @buscar + '%' OR
+            p.direccion LIKE '%' + @buscar + '%'
+        )
+        AND (
+            @solo_hoy = 0 
+            OR CAST(p.fecha_entrega AS DATE) = @hoy
+        )
+        AND (
+            @solo_hoy = 1 
+            OR (@fecha_desde IS NULL OR CAST(p.fecha_entrega AS DATE) >= @fecha_desde)
+        )
+        AND (
+            @solo_hoy = 1 
+            OR (@fecha_hasta IS NULL OR CAST(p.fecha_entrega AS DATE) <= @fecha_hasta)
+        )
+        AND (@creado_desde IS NULL OR CAST(p.creado_en AS DATE) >= @creado_desde)
+        AND (@creado_hasta IS NULL OR CAST(p.creado_en AS DATE) <= @creado_hasta)
+        AND (@estado_pago IS NULL OR @estado_pago = '' OR p.estado_pago = @estado_pago)
+        AND (@estado_operativo IS NULL OR @estado_operativo = '' OR p.estado_operativo = @estado_operativo)
+        AND (@zona_id IS NULL OR p.zona_id = @zona_id)
+        AND (
+            @delivery_id IS NULL 
+            OR (@delivery_id = -1 AND (p.delivery_actual_id IS NULL OR p.delivery_actual_id = 0))
+            OR p.delivery_actual_id = @delivery_id
+        )
+        AND (@solo_express = 0 OR p.es_express = 1)
+        AND (@solo_sin_contactar = 0 OR ISNULL(p.contactado_cliente, 0) = 0)
+        AND (@solo_sin_delivery = 0 OR p.delivery_actual_id IS NULL OR p.delivery_actual_id = 0)
+        AND ISNULL(p.estado_pago, '') NOT IN ('CANCELADO')
+        -- OPCION C: Excluir WC pendientes SOLO si NO son urgentes (entrega > manana)
+        AND NOT (
+            ISNULL(p.wc_order_number, '') <> '' 
+            AND p.estado_pago = 'PENDIENTE'
+            AND CAST(p.fecha_entrega AS DATE) > @manana
+        )
+    ORDER BY 
+        p.es_express DESC,
+        ISNULL(s.hora_inicio, '23:59:59') ASC,
+        p.fecha_entrega ASC,
+        p.pedido_id DESC
+    OFFSET @offset ROWS
+    FETCH NEXT @por_pagina ROWS ONLY;
+
+END
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Pedido_ListarPendientesWC]    Script Date: 26/05/2026 21:40:33 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[FLORERIA_sp_Pedido_ListarPendientesWC]
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    SELECT
+        p.pedido_id,
+        p.codigo,
+        p.wc_order_id,
+        p.wc_order_number,
+        p.wc_order_status,
+        p.wc_payment_method,
+        p.wc_payment_method_title,
+        p.wc_date_modified,
+        p.receptor_nombre,
+        p.receptor_celular,
+        p.total_bs,
+        p.contactado_cliente,
+        p.contactado_en,
+        p.creado_en
+    FROM FLORERIA_Pedido p
+    WHERE p.wc_order_id IS NOT NULL
+      AND p.estado_pago = 'PENDIENTE'
+      AND p.wc_order_status IN ('pending', 'on-hold')
+    ORDER BY p.creado_en DESC;
+END;
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Pedido_MarcarContactado]    Script Date: 26/05/2026 21:40:33 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[FLORERIA_sp_Pedido_MarcarContactado]
+    @pedido_id   INT,
+    @contactado  BIT,
+    @usuario_id  INT,
+    @ip          VARCHAR(50) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    IF NOT EXISTS (SELECT 1 FROM FLORERIA_Pedido WHERE pedido_id = @pedido_id)
+    BEGIN
+        SELECT 0 AS ok, 'Pedido no encontrado.' AS mensaje;
+        RETURN;
+    END
+    
+    UPDATE FLORERIA_Pedido
+    SET contactado_cliente = @contactado,
+        contactado_en = CASE WHEN @contactado = 1 THEN GETDATE() ELSE NULL END,
+        contactado_por = CASE WHEN @contactado = 1 THEN @usuario_id ELSE NULL END,
+        modificado_por = @usuario_id,
+        modificado_en = GETDATE()
+    WHERE pedido_id = @pedido_id;
+    
+    -- Log
+    INSERT INTO FLORERIA_Pedido_Estado_Log
+        (pedido_id, estado_anterior, estado_nuevo, observaciones, usuario_id, fecha_hora)
+    VALUES
+        (@pedido_id, NULL, 
+         CASE WHEN @contactado = 1 THEN 'CONTACTADO' ELSE 'DES_CONTACTADO' END,
+         NULL, @usuario_id, GETDATE());
+    
+    -- Auditoria
+    INSERT INTO FLORERIA_Auditoria
+        (usuario_id, ip, tabla, registro_id, accion, valor_nuevo)
+    VALUES
+        (@usuario_id, @ip, 'FLORERIA_Pedido', CAST(@pedido_id AS VARCHAR),
+         'MODIFICAR',
+         '{"contactado_cliente":"' + CAST(@contactado AS VARCHAR) + '"}');
+    
+    SELECT 1 AS ok, 'Estado de contacto actualizado.' AS mensaje;
+END;
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Pedido_MarcarImpreso]    Script Date: 26/05/2026 21:40:33 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[FLORERIA_sp_Pedido_MarcarImpreso]
+    @pedido_id   INT,
+    @usuario_id  INT,
+    @ip          VARCHAR(50) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    DECLARE @estado_actual VARCHAR(20);
+    SELECT @estado_actual = estado_operativo
+    FROM FLORERIA_Pedido WHERE pedido_id = @pedido_id;
+    
+    IF @estado_actual IS NULL
+    BEGIN
+        SELECT 0 AS ok, 'Pedido no encontrado.' AS mensaje;
+        RETURN;
+    END
+    
+    -- Solo cambiar si estaba en PENDIENTE (no retroceder estados)
+    IF @estado_actual = 'PENDIENTE'
+    BEGIN
+        UPDATE FLORERIA_Pedido
+        SET estado_operativo = 'IMPRESO',
+            modificado_por = @usuario_id,
+            modificado_en = GETDATE()
+        WHERE pedido_id = @pedido_id;
+        
+        INSERT INTO FLORERIA_Pedido_Estado_Log
+            (pedido_id, estado_anterior, estado_nuevo, observaciones, usuario_id, fecha_hora)
+        VALUES
+            (@pedido_id, 'PENDIENTE', 'IMPRESO', 'Ticket impreso', @usuario_id, GETDATE());
+    END
+    ELSE
+    BEGIN
+        -- Solo registrar el evento sin cambiar estado
+        INSERT INTO FLORERIA_Pedido_Estado_Log
+            (pedido_id, estado_anterior, estado_nuevo, observaciones, usuario_id, fecha_hora)
+        VALUES
+            (@pedido_id, @estado_actual, @estado_actual, 'Re-impresion de ticket', @usuario_id, GETDATE());
+    END
+    
+    SELECT 1 AS ok, 'OK' AS mensaje;
+END;
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Pedido_ObtenerDetalle]    Script Date: 26/05/2026 21:40:33 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[FLORERIA_sp_Pedido_ObtenerDetalle]
+    @pedido_id INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    -- 1. Datos del pedido
+    SELECT
+        p.pedido_id,
+        p.prepedido_id,
+        p.codigo,
+        pp.codigo AS prepedido_codigo,
+        -- Receptor
+        p.receptor_nombre,
+        p.receptor_celular,
+        p.direccion,
+        p.referencia,
+        p.latitud,
+        p.longitud,
+        p.gps,
+        -- Ubicacion
+        p.ciudad_id,
+        c.nombre AS ciudad_nombre,
+        p.zona_id,
+        z.nombre AS zona_nombre,
+        p.sucursal_id,
+        p.sucursal_prepara_id,
+        p.tipo_entrega,
+        -- Fecha y slot
+        p.fecha_entrega,
+        p.slot_id,
+        sh.etiqueta AS slot_etiqueta,
+        sh.hora_inicio AS slot_hora_inicio,
+        sh.hora_fin AS slot_hora_fin,
+        p.es_express,
+        -- Tarjeta
+        p.dedicatoria,
+        p.firma_tarjeta,
+        p.tipo_ocacion,
+        p.nota_floreria,
+        -- Montos
+        p.subtotal_productos_bs,
+        p.subtotal_productos_usd,
+        p.envio_bs,
+        p.envio_usd,
+        p.recargo_express_bs,
+        p.recargo_horario_bs,
+        p.descuento_bs,
+        p.total_bs,
+        p.total_usd,
+        p.anticipo_bs,
+        p.saldo_bs,
+        -- Estados
+        p.estado_pago,
+        p.estado_operativo,
+        p.contactado_cliente,
+        p.contactado_en,
+        uct.nombres + ' ' + uct.apellidos AS contactado_por_nombre,
+        -- WooCommerce
+        p.wc_order_id,
+        p.wc_order_number,
+        p.wc_order_url,
+        p.wc_order_status,
+        p.wc_payment_method,
+        p.wc_payment_method_title,
+        p.wc_date_paid,
+        p.wc_date_modified,
+        -- Delivery actual
+        p.delivery_actual_id,
+        ud.nombres + ' ' + ud.apellidos AS delivery_nombre,
+        ud.celular AS delivery_celular,
+        -- Observaciones
+        p.observaciones,
+        -- Auditoria
+        p.creado_en,
+        p.modificado_en,
+        uc.nombres + ' ' + uc.apellidos AS creado_por_nombre,
+        um.nombres + ' ' + um.apellidos AS modificado_por_nombre
+    FROM FLORERIA_Pedido p
+    LEFT JOIN FLORERIA_PrePedido pp ON p.prepedido_id = pp.prepedido_id
+    LEFT JOIN FLORERIA_Ciudad c ON p.ciudad_id = c.ciudad_id
+    LEFT JOIN FLORERIA_Zona z ON p.zona_id = z.zona_id
+    LEFT JOIN FLORERIA_Slot_Horario sh ON p.slot_id = sh.slot_id
+    LEFT JOIN FLORERIA_Usuario ud ON p.delivery_actual_id = ud.usuario_id
+    LEFT JOIN FLORERIA_Usuario uc ON p.creado_por = uc.usuario_id
+    LEFT JOIN FLORERIA_Usuario um ON p.modificado_por = um.usuario_id
+    LEFT JOIN FLORERIA_Usuario uct ON p.contactado_por = uct.usuario_id
+    WHERE p.pedido_id = @pedido_id;
+    
+    -- 2. Productos
+    SELECT
+        pd.detalle_id,
+        pd.producto_id,
+        pd.variacion_id,
+        pd.es_personalizado,
+        pd.nombre_producto,
+        pd.descripcion,
+        pd.cantidad,
+        pd.precio_unitario_bs,
+        pd.precio_unitario_usd,
+        pd.subtotal_bs,
+        pd.subtotal_usd,
+        pd.personalizacion
+    FROM FLORERIA_Pedido_Detalle pd
+    WHERE pd.pedido_id = @pedido_id
+    ORDER BY pd.detalle_id ASC;
+    
+    -- 3. Historial de estados
+    SELECT
+        l.log_id,
+        l.estado_anterior,
+        l.estado_nuevo,
+        l.observaciones,
+        l.usuario_id,
+        u.nombres + ' ' + u.apellidos AS usuario_nombre,
+        l.fecha_hora
+    FROM FLORERIA_Pedido_Estado_Log l
+    LEFT JOIN FLORERIA_Usuario u ON l.usuario_id = u.usuario_id
+    WHERE l.pedido_id = @pedido_id
+    ORDER BY l.fecha_hora ASC;
+    
+    -- 4. Pagos registrados
+    SELECT
+        pg.pago_id,
+        pg.tipo_pago,
+        pg.metodo_pago,
+        pg.monto_bs,
+        pg.monto_usd,
+        pg.referencia,
+        pg.estado,
+        pg.observaciones,
+        pg.verificado_por,
+        uv.nombres + ' ' + uv.apellidos AS verificado_por_nombre,
+        pg.verificado_en,
+        pg.creado_por,
+        ucp.nombres + ' ' + ucp.apellidos AS creado_por_nombre,
+        pg.creado_en
+    FROM FLORERIA_Pedido_Pago pg
+    LEFT JOIN FLORERIA_Usuario uv ON pg.verificado_por = uv.usuario_id
+    LEFT JOIN FLORERIA_Usuario ucp ON pg.creado_por = ucp.usuario_id
+    WHERE pg.pedido_id = @pedido_id
+    ORDER BY pg.creado_en ASC;
+END;
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Pedido_ObtenerParaTicket]    Script Date: 26/05/2026 21:40:33 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[FLORERIA_sp_Pedido_ObtenerParaTicket]
+    @pedido_id INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    -- 1. Cabecera
+    SELECT
+        p.pedido_id,
+        p.codigo AS codigo_pedido,
+        pp.codigo AS codigo_prepedido,
+        p.wc_order_number,
+        p.wc_order_id,
+        -- Receptor
+        p.receptor_nombre,
+        p.receptor_celular,
+        p.direccion,
+        p.referencia,
+        p.gps,
+        -- Zona / ciudad
+        z.nombre AS zona_nombre,
+        c.nombre AS ciudad_nombre,
+        -- Fecha
+        p.fecha_entrega,
+        sh.etiqueta AS slot_etiqueta,
+        sh.hora_inicio AS slot_hora_inicio,
+        sh.hora_fin AS slot_hora_fin,
+        p.es_express,
+        -- Tarjeta
+        p.dedicatoria,
+        p.firma_tarjeta,
+        p.tipo_ocacion,
+        p.nota_floreria,
+        -- Montos
+        p.subtotal_productos_bs,
+        p.envio_bs,
+        p.recargo_express_bs,
+        p.recargo_horario_bs,
+        p.descuento_bs,
+        p.total_bs,
+        -- Estados
+        p.estado_pago,
+        p.estado_operativo,
+        -- Delivery
+        ud.nombres + ' ' + ud.apellidos AS delivery_nombre,
+        -- Observaciones
+        p.observaciones
+    FROM FLORERIA_Pedido p
+    LEFT JOIN FLORERIA_PrePedido pp ON p.prepedido_id = pp.prepedido_id
+    LEFT JOIN FLORERIA_Zona z ON p.zona_id = z.zona_id
+    LEFT JOIN FLORERIA_Ciudad c ON p.ciudad_id = c.ciudad_id
+    LEFT JOIN FLORERIA_Slot_Horario sh ON p.slot_id = sh.slot_id
+    LEFT JOIN FLORERIA_Usuario ud ON p.delivery_actual_id = ud.usuario_id
+    WHERE p.pedido_id = @pedido_id;
+    
+    -- 2. Productos
+    SELECT
+        pd.nombre_producto,
+        pd.descripcion,
+        pd.cantidad,
+        pd.precio_unitario_bs,
+        pd.subtotal_bs,
+        pd.personalizacion
+    FROM FLORERIA_Pedido_Detalle pd
+    WHERE pd.pedido_id = @pedido_id
+    ORDER BY pd.detalle_id ASC;
+END;
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Pedido_Pago_UpsertWC]    Script Date: 26/05/2026 21:40:33 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[FLORERIA_sp_Pedido_Pago_UpsertWC]
+    @pedido_id       INT,
+    @metodo_pago     VARCHAR(30),
+    @monto_bs        DECIMAL(10,2),
+    @monto_usd       DECIMAL(10,2) = 0,
+    @referencia      VARCHAR(100) = NULL,
+    @estado          VARCHAR(20)  = 'PENDIENTE',
+    @observaciones   NVARCHAR(500) = NULL,
+    @creado_por      INT          = NULL,
+    @accion          VARCHAR(10)  OUTPUT,
+    @mensaje_error   NVARCHAR(500) OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    SET @accion = 'ERROR';
+    SET @mensaje_error = NULL;
+
+    BEGIN TRY
+        -- Validar metodo_pago contra CHECK constraint
+        -- Valores permitidos: PIX, YAPE, CRIPTO, PAYPAL, PAGOMOVIL, TRANSFERENCIA, QR, TARJETA, EFECTIVO
+        IF @metodo_pago NOT IN ('PIX','YAPE','CRIPTO','PAYPAL','PAGOMOVIL','TRANSFERENCIA','QR','TARJETA','EFECTIVO')
+            SET @metodo_pago = 'TRANSFERENCIA';
+
+        -- Validar estado
+        IF @estado NOT IN ('PENDIENTE','VERIFICADO','RECHAZADO')
+            SET @estado = 'PENDIENTE';
+
+        IF @monto_bs  IS NULL OR @monto_bs  < 0 SET @monto_bs  = 0;
+        IF @monto_usd IS NULL OR @monto_usd < 0 SET @monto_usd = 0;
+
+        -- Validar que el pedido exista
+        IF NOT EXISTS (SELECT 1 FROM FLORERIA_Pedido WHERE pedido_id = @pedido_id)
+        BEGIN
+            SET @accion = 'ERROR';
+            SET @mensaje_error = 'pedido_id=' + CAST(@pedido_id AS VARCHAR) + ' no existe';
+            RETURN;
+        END
+
+        -- ¿Ya hay pago para este pedido?
+        IF EXISTS (SELECT 1 FROM FLORERIA_Pedido_Pago WHERE pedido_id = @pedido_id)
+        BEGIN
+            -- UPDATE solo si el nuevo estado mejora (PENDIENTE → VERIFICADO)
+            UPDATE FLORERIA_Pedido_Pago
+            SET metodo_pago = @metodo_pago,
+                monto_bs    = @monto_bs,
+                monto_usd   = @monto_usd,
+                referencia  = ISNULL(@referencia, referencia),
+                estado      = CASE
+                                WHEN @estado = 'VERIFICADO' THEN 'VERIFICADO'
+                                ELSE estado  -- mantener estado actual si no mejora
+                              END,
+                observaciones = ISNULL(@observaciones, observaciones)
+            WHERE pedido_id = @pedido_id;
+
+            SET @accion = 'UPDATE';
+        END
+        ELSE
+        BEGIN
+            INSERT INTO FLORERIA_Pedido_Pago (
+                pedido_id, tipo_pago, metodo_pago,
+                monto_bs, monto_usd, referencia,
+                estado, observaciones, creado_por, creado_en
+            )
+            VALUES (
+                @pedido_id, 'TOTAL', @metodo_pago,
+                @monto_bs, @monto_usd, @referencia,
+                @estado, @observaciones, @creado_por, GETDATE()
+            );
+
+            SET @accion = 'INSERT';
+        END
+
+        SET @mensaje_error = NULL;
+    END TRY
+    BEGIN CATCH
+        SET @accion = 'ERROR';
+        SET @mensaje_error = LEFT(
+            'Pago pedido_id=' + CAST(@pedido_id AS VARCHAR) + ' - ' + ERROR_MESSAGE(),
+            500
+        );
+    END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Pedido_UpsertWC]    Script Date: 26/05/2026 21:40:33 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- ============================================================
+-- ALTER sp_Pedido_UpsertWC v2
+-- 
+-- CAMBIOS RESPECTO A v1:
+-- 1. @fecha_entrega ahora es opcional (NULL permitido)
+-- 2. En UPDATE: si @fecha_entrega es NULL, NO pisa la fecha en BD
+-- 3. En UPDATE: si @slot_id es NULL, NO pisa el slot en BD
+-- 4. En UPDATE: si @direccion viene "Sin direccion" o "Recojo en sucursal", solo se pisa si lo de BD es similar
+-- 5. En INSERT: si @fecha_entrega es NULL, usa la fecha de hoy como ultimo recurso
+-- 
+-- Logica clave: en UPDATE solo se actualizan campos que WC realmente envio.
+-- Asi las correcciones manuales en SISCONBOL se preservan.
+-- ============================================================
+
+CREATE PROCEDURE [dbo].[FLORERIA_sp_Pedido_UpsertWC]
+    @wc_order_id              INT,
+    @wc_order_number          VARCHAR(50)  = NULL,
+    @wc_order_key             VARCHAR(100) = NULL,
+    @wc_order_status          VARCHAR(30)  = NULL,
+    @wc_date_paid             DATETIME     = NULL,
+    @wc_date_modified         DATETIME     = NULL,
+    @wc_payment_method        VARCHAR(50)  = NULL,
+    @wc_payment_method_title  VARCHAR(100) = NULL,
+    @receptor_nombre          VARCHAR(200),
+    @receptor_celular         VARCHAR(20),
+    @ciudad_id                SMALLINT     = 1,
+    @zona_id                  INT          = NULL,
+    @slot_id                  SMALLINT     = NULL,
+    @sucursal_id              SMALLINT     = NULL,
+    @tipo_entrega             VARCHAR(20)  = 'DOMICILIO',
+    @direccion                VARCHAR(300) = NULL,
+    @referencia               VARCHAR(300) = NULL,
+    @fecha_entrega            DATE         = NULL,   -- ahora NULL permitido
+    @es_express               BIT          = 0,
+    @dedicatoria              NVARCHAR(500) = NULL,
+    @firma_tarjeta            VARCHAR(100) = NULL,
+    @tipo_ocacion             VARCHAR(30)  = 'OTRO',
+    @nota_floreria            NVARCHAR(500) = NULL,
+    @gps                      VARCHAR(200) = NULL,
+    @observaciones            NVARCHAR(1000) = NULL,
+    @total_bs                 DECIMAL(10,2) = 0,
+    @total_usd                DECIMAL(10,2) = 0,
+    @envio_bs                 DECIMAL(10,2) = 0,
+    @envio_usd                DECIMAL(10,2) = 0,
+    @descuento_bs             DECIMAL(10,2) = 0,
+    @descuento_usd            DECIMAL(10,2) = 0,
+    @estado_pago              VARCHAR(20)  = 'PENDIENTE',
+    @estado_operativo         VARCHAR(20)  = 'PENDIENTE',
+    @creado_por               INT          = NULL,
+    @ip                       VARCHAR(50)  = NULL,
+    @pedido_id                INT          OUTPUT,
+    @codigo                   VARCHAR(20)  OUTPUT,
+    @accion                   VARCHAR(10)  OUTPUT,
+    @mensaje_error            NVARCHAR(500) OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    SET @accion = 'ERROR';
+    SET @mensaje_error = NULL;
+    SET @pedido_id = 0;
+    SET @codigo = NULL;
+
+    BEGIN TRY
+        -- Validaciones de CHECK constraints
+        IF @estado_pago NOT IN ('PENDIENTE','PAGADO','ANTICIPO','REEMBOLSADO')
+            SET @estado_pago = 'PENDIENTE';
+        IF @estado_operativo NOT IN ('PENDIENTE','PREPARANDO','EN_CAMINO','ENTREGADO','FALLIDO')
+            SET @estado_operativo = 'PENDIENTE';
+        IF @tipo_entrega NOT IN ('DOMICILIO','RECOJO_SUCURSAL')
+            SET @tipo_entrega = 'DOMICILIO';
+        IF @tipo_ocacion NOT IN ('CUMPLEANOS','ANIVERSARIO','AMOR','AGRADECIMIENTO','CONDOLENCIAS','GRADUACION','NACIMIENTO','OTRO')
+            SET @tipo_ocacion = 'OTRO';
+
+        -- Defaults
+        IF @receptor_nombre  IS NULL OR LTRIM(RTRIM(@receptor_nombre))  = '' SET @receptor_nombre  = 'Sin nombre';
+        IF @receptor_celular IS NULL OR LTRIM(RTRIM(@receptor_celular)) = '' SET @receptor_celular = '00000000';
+
+        -- Validar zona y slot
+        IF @zona_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM FLORERIA_Zona WHERE zona_id = @zona_id)
+            SET @zona_id = NULL;
+        IF @slot_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM FLORERIA_Slot_Horario WHERE slot_id = @slot_id)
+            SET @slot_id = NULL;
+
+        -- Buscar pedido existente
+        SELECT @pedido_id = pedido_id
+        FROM FLORERIA_Pedido
+        WHERE wc_order_id = @wc_order_id;
+
+        IF @pedido_id IS NOT NULL AND @pedido_id > 0
+        BEGIN
+            -- =====================================================
+            -- UPDATE: actualizar SOLO campos que WC realmente envio
+            -- Si un campo viene NULL = WC no lo mando = NO pisar lo de BD
+            -- Esto preserva correcciones manuales hechas en SISCONBOL
+            -- =====================================================
+            UPDATE FLORERIA_Pedido
+            SET wc_order_number         = @wc_order_number,
+                wc_order_url            = @wc_order_key,
+                wc_order_status         = @wc_order_status,
+                wc_date_paid            = @wc_date_paid,
+                wc_date_modified        = @wc_date_modified,
+                wc_payment_method       = @wc_payment_method,
+                wc_payment_method_title = @wc_payment_method_title,
+                wc_sync_estado          = 'SINCRONIZADO',
+                wc_sync_fecha           = GETDATE(),
+                estado_pago             = @estado_pago,
+                estado_operativo        = @estado_operativo,
+                -- Campos que SOLO se actualizan si WC mando un valor real:
+                fecha_entrega           = ISNULL(@fecha_entrega, fecha_entrega),
+                slot_id                 = ISNULL(@slot_id,       slot_id),
+                zona_id                 = ISNULL(@zona_id,       zona_id),
+                tipo_entrega            = ISNULL(@tipo_entrega,  tipo_entrega),
+                direccion               = CASE
+                                            WHEN @direccion IS NULL OR @direccion = '' THEN direccion
+                                            WHEN @direccion IN ('Sin direccion','Recojo en sucursal') THEN direccion
+                                            ELSE @direccion
+                                          END,
+                total_bs                = @total_bs,
+                total_usd               = @total_usd,
+                envio_bs                = @envio_bs,
+                envio_usd               = @envio_usd,
+                descuento_bs            = @descuento_bs,
+                descuento_usd           = @descuento_usd,
+                observaciones           = ISNULL(@observaciones, observaciones),
+                gps                     = ISNULL(gps, @gps),
+                modificado_por          = @creado_por,
+                modificado_en           = GETDATE()
+            WHERE pedido_id = @pedido_id;
+
+            SELECT @codigo = codigo FROM FLORERIA_Pedido WHERE pedido_id = @pedido_id;
+            SET @accion = 'UPDATE';
+        END
+        ELSE
+        BEGIN
+            -- =====================================================
+            -- INSERT: pedido nuevo
+            -- Si @fecha_entrega es NULL aqui (no llego ninguna fecha), 
+            -- usamos GETDATE() como ultimo recurso pero marcamos el sync_estado
+            -- para que sea facil de identificar
+            -- =====================================================
+            DECLARE @fechaInsert DATE = ISNULL(@fecha_entrega, CAST(GETDATE() AS DATE));
+            DECLARE @direccionInsert VARCHAR(300) = ISNULL(@direccion, 'Sin direccion');
+            DECLARE @receptorNombreInsert VARCHAR(200) = ISNULL(@receptor_nombre, 'Sin nombre');
+            DECLARE @receptorCelInsert VARCHAR(20) = ISNULL(@receptor_celular, '00000000');
+
+            INSERT INTO FLORERIA_Pedido (
+                codigo, wc_order_id, wc_order_number, wc_order_url,
+                wc_order_status, wc_date_paid, wc_date_modified,
+                wc_payment_method, wc_payment_method_title,
+                receptor_nombre, receptor_celular,
+                ciudad_id, zona_id, sucursal_id, tipo_entrega,
+                direccion, referencia, fecha_entrega, slot_id, es_express,
+                dedicatoria, firma_tarjeta, tipo_ocacion, nota_floreria,
+                gps, observaciones,
+                total_bs, total_usd, envio_bs, envio_usd, descuento_bs, descuento_usd,
+                estado_pago, estado_operativo,
+                wc_sync_estado, wc_sync_fecha,
+                creado_por, creado_en
+            )
+            VALUES (
+                'TEMP', @wc_order_id, @wc_order_number, @wc_order_key,
+                @wc_order_status, @wc_date_paid, @wc_date_modified,
+                @wc_payment_method, @wc_payment_method_title,
+                @receptorNombreInsert, @receptorCelInsert,
+                @ciudad_id, @zona_id, @sucursal_id, @tipo_entrega,
+                @direccionInsert, @referencia, @fechaInsert, @slot_id, @es_express,
+                @dedicatoria, @firma_tarjeta, @tipo_ocacion, @nota_floreria,
+                @gps, @observaciones,
+                @total_bs, @total_usd, @envio_bs, @envio_usd, @descuento_bs, @descuento_usd,
+                @estado_pago, @estado_operativo,
+                'SINCRONIZADO', GETDATE(),
+                @creado_por, GETDATE()
+            );
+
+            SET @pedido_id = SCOPE_IDENTITY();
+            SET @codigo    = 'PED-' + RIGHT('000000' + CAST(@pedido_id AS VARCHAR), 6);
+
+            UPDATE FLORERIA_Pedido SET codigo = @codigo WHERE pedido_id = @pedido_id;
+
+            SET @accion = 'INSERT';
+        END
+
+        SET @mensaje_error = NULL;
+    END TRY
+    BEGIN CATCH
+        SET @accion = 'ERROR';
+        SET @mensaje_error = LEFT(
+            'WC#' + CAST(@wc_order_id AS VARCHAR) + ' - ' +
+            ERROR_MESSAGE() + ' (linea ' + CAST(ERROR_LINE() AS VARCHAR) + ')',
+            500
+        );
+        SET @pedido_id = 0;
+    END CATCH
+END
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PrePedido_ActualizarCliente]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -1573,7 +2902,7 @@ BEGIN
             'MODIFICAR', '{"campo":"cliente_datos","detalle":"Actualización de datos del cliente"}');
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PrePedido_Crear]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PrePedido_Crear]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -1700,7 +3029,7 @@ BEGIN
     END CATCH;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PrePedido_GenerarLink]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PrePedido_GenerarLink]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -1774,45 +3103,92 @@ BEGIN
     SELECT @token AS token, @url_completa AS url;
 END
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PrePedido_Listar]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PrePedido_Listar]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
-
--- =============================================
--- SP 5: FLORERIA_sp_PrePedido_Listar
--- Descripción: Listar pre-pedidos con filtros
--- =============================================
-CREATE   PROCEDURE [dbo].[FLORERIA_sp_PrePedido_Listar]
-    @agente_id           INT = NULL,
-    @estado              VARCHAR(30) = NULL,
-    @buscar              VARCHAR(100) = NULL,
-    @pagina              INT = 1,
-    @por_pagina          INT = 20,
-    @total_registros     INT OUTPUT
+-- =============================================================
+-- ALTER: FLORERIA_sp_PrePedido_Listar  v7
+-- Novedades vs v6:
+--   + estado_operativo_principal (estado_operativo del primer pedido hijo)
+--   + pedidos_entregados         (cuántos pedidos hijos ya están ENTREGADOS)
+--   + @fecha_entrega_desde / @fecha_entrega_hasta (filtro de fecha entrega)
+--   + @estado_operativo_filtro   (PENDIENTE / ENTREGADO / NO_ENTREGADO / NULL=todos)
+--   + receptor_nombre, receptor_celular (del primer pedido hijo)
+--   + wc_numeros_lista   ("#4518 · #4519")
+--   + total_entregas_bs  (SUM real de total_bs de pedidos hijos)
+-- =============================================================
+CREATE PROCEDURE [dbo].[FLORERIA_sp_PrePedido_Listar]
+    @agente_actual_id          INT          = NULL,
+    @creado_por_id             INT          = NULL,
+    @estado                    VARCHAR(30)  = NULL,
+    @tipo_registro             VARCHAR(20)  = NULL,
+    @buscar                    VARCHAR(100) = NULL,
+    @fecha_entrega_desde       DATE         = NULL,
+    @fecha_entrega_hasta       DATE         = NULL,
+    @estado_operativo_filtro   VARCHAR(20)  = NULL,
+    @pagina                    INT          = 1,
+    @por_pagina                INT          = 20,
+    @total_registros           INT          OUTPUT
 AS
 BEGIN
     SET NOCOUNT ON;
-    
-    -- Calcular offset
+
     DECLARE @offset INT = (@pagina - 1) * @por_pagina;
-    
-    -- Contar total
+
+    -- ---- Contar total (aplicando todos los filtros) ----
     SELECT @total_registros = COUNT(*)
     FROM FLORERIA_PrePedido pp
-    WHERE (@agente_id IS NULL OR pp.agente_actual_id = @agente_id)
-      AND (@estado IS NULL OR pp.estado = @estado)
+    WHERE (@agente_actual_id IS NULL OR pp.agente_actual_id = @agente_actual_id)
+      AND (@creado_por_id    IS NULL OR pp.creado_por       = @creado_por_id)
+      AND (@estado           IS NULL OR pp.estado           = @estado)
+      AND (@tipo_registro    IS NULL OR pp.tipo_registro    = @tipo_registro)
       AND (
-          @buscar IS NULL 
-          OR pp.codigo LIKE '%' + @buscar + '%'
-          OR pp.cliente_celular LIKE '%' + @buscar + '%'
-          OR pp.cliente_nombre LIKE '%' + @buscar + '%'
+          @buscar IS NULL
+          OR pp.codigo            LIKE '%' + @buscar + '%'
+          OR pp.cliente_celular   LIKE '%' + @buscar + '%'
+          OR pp.cliente_nombre    LIKE '%' + @buscar + '%'
           OR pp.cliente_apellidos LIKE '%' + @buscar + '%'
+      )
+      -- Filtro fecha entrega: existe al menos 1 pedido hijo con fecha en rango
+      AND (
+          @fecha_entrega_desde IS NULL AND @fecha_entrega_hasta IS NULL
+          OR EXISTS (
+              SELECT 1 FROM FLORERIA_Pedido p
+              WHERE p.prepedido_id = pp.prepedido_id
+                AND (@fecha_entrega_desde IS NULL OR p.fecha_entrega >= @fecha_entrega_desde)
+                AND (@fecha_entrega_hasta IS NULL OR p.fecha_entrega <= @fecha_entrega_hasta)
+          )
+      )
+      -- Filtro estado operativo
+      AND (
+          @estado_operativo_filtro IS NULL
+          OR (
+              @estado_operativo_filtro = 'PENDIENTE' AND EXISTS (
+                  SELECT 1 FROM FLORERIA_Pedido p
+                  WHERE p.prepedido_id = pp.prepedido_id
+                    AND p.estado_operativo NOT IN ('ENTREGADO','NO_ENTREGADO')
+              )
+          )
+          OR (
+              @estado_operativo_filtro = 'ENTREGADO' AND EXISTS (
+                  SELECT 1 FROM FLORERIA_Pedido p
+                  WHERE p.prepedido_id = pp.prepedido_id
+                    AND p.estado_operativo = 'ENTREGADO'
+              )
+          )
+          OR (
+              @estado_operativo_filtro = 'NO_ENTREGADO' AND EXISTS (
+                  SELECT 1 FROM FLORERIA_Pedido p
+                  WHERE p.prepedido_id = pp.prepedido_id
+                    AND p.estado_operativo = 'NO_ENTREGADO'
+              )
+          )
       );
-    
-    -- Retornar página
-    SELECT 
+
+    -- ---- Página ----
+    SELECT
         pp.prepedido_id,
         pp.codigo,
         pp.tipo_registro,
@@ -1824,41 +3200,148 @@ BEGIN
         pp.total_general_bs,
         pp.total_general_usd,
         pp.moneda_formulario,
+        pp.token_web,
+        pp.token_expira,
         pp.creado_en,
         pp.modificado_en,
-        -- Agente actual
         ua.nombres + ' ' + ua.apellidos AS agente_nombre,
-        -- Agente creador
         uc.nombres + ' ' + uc.apellidos AS creador_nombre,
-        -- Primer pedido (preview)
-        (SELECT TOP 1 p.receptor_nombre + ' - ' + CONVERT(VARCHAR, p.fecha_entrega, 103)
-         FROM FLORERIA_Pedido p 
-         WHERE p.prepedido_id = pp.prepedido_id 
-         ORDER BY p.pedido_id) AS primer_pedido_preview,
-        -- Cantidad de pedidos
-        (SELECT COUNT(*) FROM FLORERIA_Pedido p WHERE p.prepedido_id = pp.prepedido_id) AS cantidad_pedidos,
-        -- WC sincronizado
-        (SELECT COUNT(*) FROM FLORERIA_Pedido p 
-         WHERE p.prepedido_id = pp.prepedido_id AND p.wc_order_id IS NOT NULL) AS pedidos_wc_sync
+
+        ISNULL(
+            (SELECT TOP 1 fpag.estado
+             FROM FLORERIA_Pedido_Pago fpag
+             WHERE fpag.prepedido_id = pp.prepedido_id
+             ORDER BY fpag.pago_id DESC),
+            'SIN_PAGO'
+        ) AS estado_pago,
+
+        ISNULL(
+            (SELECT TOP 1 uv.nombres + ' ' + uv.apellidos
+             FROM FLORERIA_Pedido_Pago fpag2
+             INNER JOIN FLORERIA_Usuario uv ON fpag2.verificado_por = uv.usuario_id
+             WHERE fpag2.prepedido_id = pp.prepedido_id
+               AND fpag2.estado = 'VERIFICADO'
+             ORDER BY fpag2.pago_id DESC),
+            NULL
+        ) AS pago_verificado_por,
+
+        (SELECT MIN(p.fecha_entrega)
+         FROM FLORERIA_Pedido p
+         WHERE p.prepedido_id = pp.prepedido_id) AS fecha_entrega_min,
+
+        (SELECT COUNT(*)
+         FROM FLORERIA_Pedido p
+         WHERE p.prepedido_id = pp.prepedido_id) AS cantidad_pedidos,
+
+        (SELECT TOP 1 p.pedido_id
+         FROM FLORERIA_Pedido p
+         WHERE p.prepedido_id = pp.prepedido_id
+         ORDER BY p.pedido_id) AS pedido_id_principal,
+
+        (SELECT TOP 1 p.wc_order_id
+         FROM FLORERIA_Pedido p
+         WHERE p.prepedido_id = pp.prepedido_id
+         ORDER BY p.pedido_id) AS wc_order_id_principal,
+
+        (SELECT TOP 1 p.wc_order_number
+         FROM FLORERIA_Pedido p
+         WHERE p.prepedido_id = pp.prepedido_id
+         ORDER BY p.pedido_id) AS wc_order_number_principal,
+
+        (SELECT COUNT(*)
+         FROM FLORERIA_Pedido p
+         WHERE p.prepedido_id = pp.prepedido_id
+           AND p.wc_order_id IS NOT NULL) AS pedidos_wc_sync,
+
+        -- *** v6 ***
+        (SELECT TOP 1 p.receptor_nombre
+         FROM FLORERIA_Pedido p
+         WHERE p.prepedido_id = pp.prepedido_id
+         ORDER BY p.pedido_id) AS receptor_nombre,
+
+        (SELECT TOP 1 p.receptor_celular
+         FROM FLORERIA_Pedido p
+         WHERE p.prepedido_id = pp.prepedido_id
+         ORDER BY p.pedido_id) AS receptor_celular,
+
+        (SELECT STRING_AGG('#' + p.wc_order_number, ' · ')
+             WITHIN GROUP (ORDER BY p.pedido_id)
+         FROM FLORERIA_Pedido p
+         WHERE p.prepedido_id = pp.prepedido_id
+           AND p.wc_order_number IS NOT NULL) AS wc_numeros_lista,
+
+        ISNULL(
+            (SELECT SUM(p.total_bs)
+             FROM FLORERIA_Pedido p
+             WHERE p.prepedido_id = pp.prepedido_id),
+            0
+        ) AS total_entregas_bs,
+
+        -- *** v7 ***
+        (SELECT TOP 1 p.estado_operativo
+         FROM FLORERIA_Pedido p
+         WHERE p.prepedido_id = pp.prepedido_id
+         ORDER BY p.pedido_id) AS estado_operativo_principal,
+
+        (SELECT COUNT(*)
+         FROM FLORERIA_Pedido p
+         WHERE p.prepedido_id = pp.prepedido_id
+           AND p.estado_operativo = 'ENTREGADO') AS pedidos_entregados
+
     FROM FLORERIA_PrePedido pp
     INNER JOIN FLORERIA_Usuario ua ON pp.agente_actual_id = ua.usuario_id
-    INNER JOIN FLORERIA_Usuario uc ON pp.creado_por = uc.usuario_id
-    WHERE (@agente_id IS NULL OR pp.agente_actual_id = @agente_id)
-      AND (@estado IS NULL OR pp.estado = @estado)
+    INNER JOIN FLORERIA_Usuario uc ON pp.creado_por       = uc.usuario_id
+    WHERE (@agente_actual_id IS NULL OR pp.agente_actual_id = @agente_actual_id)
+      AND (@creado_por_id    IS NULL OR pp.creado_por       = @creado_por_id)
+      AND (@estado           IS NULL OR pp.estado           = @estado)
+      AND (@tipo_registro    IS NULL OR pp.tipo_registro    = @tipo_registro)
       AND (
-          @buscar IS NULL 
-          OR pp.codigo LIKE '%' + @buscar + '%'
-          OR pp.cliente_celular LIKE '%' + @buscar + '%'
-          OR pp.cliente_nombre LIKE '%' + @buscar + '%'
+          @buscar IS NULL
+          OR pp.codigo            LIKE '%' + @buscar + '%'
+          OR pp.cliente_celular   LIKE '%' + @buscar + '%'
+          OR pp.cliente_nombre    LIKE '%' + @buscar + '%'
           OR pp.cliente_apellidos LIKE '%' + @buscar + '%'
+      )
+      AND (
+          @fecha_entrega_desde IS NULL AND @fecha_entrega_hasta IS NULL
+          OR EXISTS (
+              SELECT 1 FROM FLORERIA_Pedido p
+              WHERE p.prepedido_id = pp.prepedido_id
+                AND (@fecha_entrega_desde IS NULL OR p.fecha_entrega >= @fecha_entrega_desde)
+                AND (@fecha_entrega_hasta IS NULL OR p.fecha_entrega <= @fecha_entrega_hasta)
+          )
+      )
+      AND (
+          @estado_operativo_filtro IS NULL
+          OR (
+              @estado_operativo_filtro = 'PENDIENTE' AND EXISTS (
+                  SELECT 1 FROM FLORERIA_Pedido p
+                  WHERE p.prepedido_id = pp.prepedido_id
+                    AND p.estado_operativo NOT IN ('ENTREGADO','NO_ENTREGADO')
+              )
+          )
+          OR (
+              @estado_operativo_filtro = 'ENTREGADO' AND EXISTS (
+                  SELECT 1 FROM FLORERIA_Pedido p
+                  WHERE p.prepedido_id = pp.prepedido_id
+                    AND p.estado_operativo = 'ENTREGADO'
+              )
+          )
+          OR (
+              @estado_operativo_filtro = 'NO_ENTREGADO' AND EXISTS (
+                  SELECT 1 FROM FLORERIA_Pedido p
+                  WHERE p.prepedido_id = pp.prepedido_id
+                    AND p.estado_operativo = 'NO_ENTREGADO'
+              )
+          )
       )
     ORDER BY pp.prepedido_id DESC
     OFFSET @offset ROWS
     FETCH NEXT @por_pagina ROWS ONLY;
-    
+
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PrePedido_ListarRecientes]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PrePedido_ListarRecientes]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -1890,7 +3373,7 @@ BEGIN
     
 END
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PrePedido_ObtenerPorToken]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PrePedido_ObtenerPorToken]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -2019,7 +3502,466 @@ BEGIN
     
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Producto_Actualizar]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PrePedido_RecalcularEstado]    Script Date: 26/05/2026 21:40:33 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================================
+-- SP: FLORERIA_sp_PrePedido_RecalcularEstado  v2
+-- Calcula y actualiza el estado del PrePedido automáticamente
+-- según los datos reales en BD.
+--
+-- Considera AMBOS flujos del sistema:
+--   - Flujo borrador: FLORERIA_PrePedido_Entrega + ..._Entrega_Pago
+--   - Flujo final:    FLORERIA_Pedido + FLORERIA_Pedido_Pago
+--
+-- Lógica (en orden de prioridad):
+--   1. Si está CANCELADO o EXPIRADO → no tocar
+--   2. CONVERTIDO    → algún pedido hijo tiene wc_order_id
+--   3. PAGADO        → pago VERIFICADO (en cualquiera de las 2 tablas de pago)
+--   4. ESPERANDO_PAGO→ pago PENDIENTE (en cualquiera de las 2 tablas de pago)
+--   5. COMPLETADO    → existe pedido o entrega con receptor + fecha_entrega
+--   6. FORM_ENVIADO  → tiene token_web activo
+--   7. BORRADOR      → ninguna condición anterior
+-- =============================================================
+CREATE   PROCEDURE [dbo].[FLORERIA_sp_PrePedido_RecalcularEstado]
+    @prepedido_id   INT,
+    @modificado_por INT = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM FLORERIA_PrePedido WHERE prepedido_id = @prepedido_id)
+    BEGIN
+        RAISERROR('PrePedido no encontrado: %d', 16, 1, @prepedido_id);
+        RETURN;
+    END
+
+    -- No recalcular si está CANCELADO o EXPIRADO
+    IF EXISTS (
+        SELECT 1 FROM FLORERIA_PrePedido
+        WHERE prepedido_id = @prepedido_id
+          AND estado IN ('CANCELADO','EXPIRADO')
+    ) RETURN;
+
+    DECLARE @nuevo_estado VARCHAR(30);
+
+    SELECT @nuevo_estado =
+        CASE
+            -- 1. Algún pedido hijo (final) tiene WC → CONVERTIDO
+            WHEN EXISTS (
+                SELECT 1 FROM FLORERIA_Pedido p
+                WHERE p.prepedido_id = @prepedido_id
+                  AND p.wc_order_id IS NOT NULL
+            ) THEN 'CONVERTIDO'
+
+            -- 2. Pago verificado en cualquiera de las 2 tablas → PAGADO
+            WHEN EXISTS (
+                SELECT 1 FROM FLORERIA_Pedido_Pago pp
+                WHERE pp.prepedido_id = @prepedido_id
+                  AND pp.estado = 'VERIFICADO'
+            )
+              OR EXISTS (
+                SELECT 1
+                FROM FLORERIA_PrePedido_Entrega_Pago pep
+                INNER JOIN FLORERIA_PrePedido_Entrega pe
+                        ON pep.prepedido_entrega_id = pe.prepedido_entrega_id
+                WHERE pe.prepedido_id = @prepedido_id
+                  AND pep.estado = 'VERIFICADO'
+            ) THEN 'PAGADO'
+
+            -- 3. Pago pendiente de verificar → ESPERANDO_PAGO
+            WHEN EXISTS (
+                SELECT 1 FROM FLORERIA_Pedido_Pago pp
+                WHERE pp.prepedido_id = @prepedido_id
+                  AND pp.estado = 'PENDIENTE'
+            )
+              OR EXISTS (
+                SELECT 1
+                FROM FLORERIA_PrePedido_Entrega_Pago pep
+                INNER JOIN FLORERIA_PrePedido_Entrega pe
+                        ON pep.prepedido_entrega_id = pe.prepedido_entrega_id
+                WHERE pe.prepedido_id = @prepedido_id
+                  AND pep.estado = 'PENDIENTE'
+            ) THEN 'ESPERANDO_PAGO'
+
+            -- 4. Existe pedido final o entrega borrador con receptor + fecha → COMPLETADO
+            WHEN EXISTS (
+                SELECT 1 FROM FLORERIA_Pedido p
+                WHERE p.prepedido_id = @prepedido_id
+                  AND p.receptor_nombre IS NOT NULL
+                  AND p.receptor_nombre <> ''
+                  AND p.receptor_nombre <> 'Sin nombre'
+                  AND p.fecha_entrega IS NOT NULL
+            )
+              OR EXISTS (
+                SELECT 1 FROM FLORERIA_PrePedido_Entrega pe
+                WHERE pe.prepedido_id = @prepedido_id
+                  AND pe.receptor_nombre IS NOT NULL
+                  AND pe.receptor_nombre <> ''
+                  AND pe.fecha_entrega IS NOT NULL
+            ) THEN 'COMPLETADO'
+
+            -- 5. Token web vigente → FORM_ENVIADO
+            WHEN EXISTS (
+                SELECT 1 FROM FLORERIA_PrePedido
+                WHERE prepedido_id = @prepedido_id
+                  AND token_web IS NOT NULL
+                  AND token_expira > GETDATE()
+            ) THEN 'FORM_ENVIADO'
+
+            -- 6. Nada → BORRADOR
+            ELSE 'BORRADOR'
+        END;
+
+    UPDATE FLORERIA_PrePedido
+    SET estado         = @nuevo_estado,
+        modificado_por = ISNULL(@modificado_por, modificado_por),
+        modificado_en  = GETDATE()
+    WHERE prepedido_id = @prepedido_id
+      AND estado <> @nuevo_estado;
+
+    SELECT @nuevo_estado AS estado_nuevo,
+           @prepedido_id AS prepedido_id;
+END;
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PrePedidoEntrega_Confirmar]    Script Date: 26/05/2026 21:40:33 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- ============================================================
+-- FIX: FLORERIA_sp_PrePedidoEntrega_Confirmar
+-- Cambios respecto a la versión anterior:
+--
+--   1. Bug CHECK constraint (CRÍTICO - rompía la confirmación):
+--      Antes: estado_pago = 'PARCIAL' (no permitido)
+--      Ahora: estado_pago = 'ANTICIPO' (permitido por CK_FLORERIA_Pedido_EstadoPago)
+--
+--   2. Total real (CRÍTICO - guardaba menos que el frontend mostraba):
+--      Antes: total = subtotal - descuento
+--      Ahora: total = subtotal + envio + recargo_horario - descuento
+--      (NOTA: recargo_express ya no se suma porque el recargo express
+--       ya viene incluido dentro del recargo_horario del slot)
+--
+--   3. Recargos reales (antes se guardaban en cero):
+--      Lee envío desde FLORERIA_Zona_Tarifa (último vigente)
+--      Lee recargo_horario desde FLORERIA_Slot_Horario
+--      Los guarda en envio_bs y recargo_horario_bs respectivamente
+--      recargo_express_bs se deja en 0 (ya está en el slot)
+--
+-- EJECUTAR EN SSMS sobre la base de datos SISCONBOL.
+-- Es un ALTER PROCEDURE: reemplaza el SP existente sin tocar permisos.
+-- ============================================================
+
+CREATE PROCEDURE [dbo].[FLORERIA_sp_PrePedidoEntrega_Confirmar]
+    @prepedido_entrega_id   INT,
+    @usuario_id             INT,
+    @pedido_id              INT OUTPUT,
+    @codigo                 VARCHAR(20) OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Validar borrador
+    IF NOT EXISTS (SELECT 1 FROM FLORERIA_PrePedido_Entrega
+                   WHERE prepedido_entrega_id = @prepedido_entrega_id
+                     AND estado = 'BORRADOR')
+    BEGIN
+        RAISERROR('El borrador no existe o ya fue confirmado', 16, 1);
+        RETURN;
+    END
+
+    -- Leer datos del borrador
+    DECLARE
+        @prepedido_id        INT,
+        @receptor_nombre     VARCHAR(200),
+        @receptor_celular    VARCHAR(20),
+        @ciudad_id           SMALLINT,
+        @zona_id             INT,
+        @sucursal_id         SMALLINT,
+        @tipo_entrega        VARCHAR(20),
+        @direccion           VARCHAR(300),
+        @referencia          VARCHAR(300),
+        @gps                 VARCHAR(300),
+        @fecha_entrega       DATE,
+        @slot_id             SMALLINT,
+        @es_express          BIT,
+        @dedicatoria         NVARCHAR(500),
+        @firma_tarjeta       VARCHAR(100),
+        @tipo_ocacion        VARCHAR(30),
+        @sucursal_prepara_id SMALLINT,
+        @descuento_valor     DECIMAL(10,2),
+        @descuento_moneda    CHAR(3),
+        @nota_floreria       NVARCHAR(500);
+
+    SELECT
+        @prepedido_id        = prepedido_id,
+        @receptor_nombre     = ISNULL(receptor_nombre, ''),
+        @receptor_celular    = ISNULL(receptor_celular, ''),
+        @ciudad_id           = ciudad_id,
+        @zona_id             = zona_id,
+        @sucursal_id         = sucursal_id,
+        @tipo_entrega        = tipo_entrega,
+        @direccion           = direccion,
+        @referencia          = referencia,
+        @gps                 = gps,
+        @fecha_entrega       = fecha_entrega,
+        @slot_id             = slot_id,
+        @es_express          = es_express,
+        @dedicatoria         = dedicatoria,
+        @firma_tarjeta       = firma_tarjeta,
+        @tipo_ocacion        = tipo_ocacion,
+        @sucursal_prepara_id = sucursal_prepara_id,
+        @descuento_valor     = descuento_valor,
+        @descuento_moneda    = descuento_moneda,
+        @nota_floreria       = nota_floreria
+    FROM FLORERIA_PrePedido_Entrega
+    WHERE prepedido_entrega_id = @prepedido_entrega_id;
+
+    -- Validaciones minimas
+    IF @receptor_nombre = '' OR @receptor_celular = ''
+    BEGIN
+        RAISERROR('Faltan datos del destinatario (nombre o celular)', 16, 1);
+        RETURN;
+    END
+    IF @ciudad_id IS NULL
+    BEGIN
+        RAISERROR('Falta seleccionar ciudad', 16, 1);
+        RETURN;
+    END
+    IF @tipo_entrega = 'DOMICILIO' AND @zona_id IS NULL
+    BEGIN
+        RAISERROR('Para entrega a domicilio debe especificar la zona', 16, 1);
+        RETURN;
+    END
+    IF @tipo_entrega = 'RECOJO_SUCURSAL' AND @sucursal_id IS NULL
+    BEGIN
+        RAISERROR('Para recojo en sucursal debe especificar la sucursal', 16, 1);
+        RETURN;
+    END
+    IF @fecha_entrega IS NULL OR @fecha_entrega < CAST(GETDATE() AS DATE)
+    BEGIN
+        RAISERROR('La fecha de entrega es invalida', 16, 1);
+        RETURN;
+    END
+    IF NOT EXISTS (SELECT 1 FROM FLORERIA_PrePedido_Entrega_Detalle
+                   WHERE prepedido_entrega_id = @prepedido_entrega_id)
+    BEGIN
+        RAISERROR('La entrega no tiene productos', 16, 1);
+        RETURN;
+    END
+
+    -- Descuento -> separar en BS / USD segun moneda
+    DECLARE @desc_bs DECIMAL(10,2) = 0;
+    DECLARE @desc_usd DECIMAL(10,2) = 0;
+    IF @descuento_valor > 0
+    BEGIN
+        IF @descuento_moneda = 'USD'
+            SET @desc_usd = @descuento_valor;
+        ELSE
+            SET @desc_bs = @descuento_valor;
+    END
+
+    -- ============================================================
+    -- *** FIX #2 y #3: Calcular envío y recargo horario reales ***
+    -- ============================================================
+
+    -- Envío en BS (último precio vigente para la zona)
+    DECLARE @envio_bs DECIMAL(10,2) = 0;
+    IF @tipo_entrega = 'DOMICILIO' AND @zona_id IS NOT NULL
+    BEGIN
+        SELECT TOP 1 @envio_bs = ISNULL(precio_bs, 0)
+        FROM FLORERIA_Zona_Tarifa
+        WHERE zona_id = @zona_id
+        ORDER BY vigente_desde DESC;
+        SET @envio_bs = ISNULL(@envio_bs, 0);
+    END
+
+    -- Recargo horario en BS (recargo_bs del slot, ya incluye express)
+    DECLARE @recargo_horario_bs DECIMAL(10,2) = 0;
+    IF @slot_id IS NOT NULL AND @slot_id > 0
+    BEGIN
+        SELECT @recargo_horario_bs = ISNULL(recargo_bs, 0)
+        FROM FLORERIA_Slot_Horario
+        WHERE slot_id = @slot_id;
+        SET @recargo_horario_bs = ISNULL(@recargo_horario_bs, 0);
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        -- Generar codigo PED-XXXXXX
+        DECLARE @ultimo_numero INT;
+        SELECT @ultimo_numero = ISNULL(MAX(CAST(SUBSTRING(codigo, 5, 6) AS INT)), 0)
+        FROM FLORERIA_Pedido
+        WHERE codigo LIKE 'PED-%';
+
+        SET @codigo = 'PED-' + RIGHT('000000' + CAST(@ultimo_numero + 1 AS VARCHAR), 6);
+
+        -- Calcular subtotales del detalle
+        DECLARE
+            @subtotal_bs   DECIMAL(10,2) = 0,
+            @subtotal_usd  DECIMAL(10,2) = 0;
+
+        SELECT
+            @subtotal_bs  = ISNULL(SUM(subtotal_bs),  0),
+            @subtotal_usd = ISNULL(SUM(subtotal_usd), 0)
+        FROM FLORERIA_PrePedido_Entrega_Detalle
+        WHERE prepedido_entrega_id = @prepedido_entrega_id;
+
+        -- Calcular anticipo (suma de pagos VERIFICADOS en borrador, solo BS)
+        DECLARE @anticipo_bs DECIMAL(10,2) = 0;
+        SELECT @anticipo_bs = ISNULL(SUM(monto_bs), 0)
+        FROM FLORERIA_PrePedido_Entrega_Pago
+        WHERE prepedido_entrega_id = @prepedido_entrega_id
+          AND estado = 'VERIFICADO';
+
+        -- ============================================================
+        -- *** FIX #2: Total REAL incluyendo envío y horario ***
+        -- ============================================================
+        DECLARE @total_bs DECIMAL(10,2) = @subtotal_bs + @envio_bs + @recargo_horario_bs - @desc_bs;
+        IF @total_bs < 0 SET @total_bs = 0;
+
+        DECLARE @total_usd DECIMAL(10,2) = @subtotal_usd - @desc_usd;
+        IF @total_usd < 0 SET @total_usd = 0;
+
+        DECLARE @saldo_bs DECIMAL(10,2) = @total_bs - @anticipo_bs;
+        IF @saldo_bs < 0 SET @saldo_bs = 0;
+
+        -- INSERT FLORERIA_Pedido
+        INSERT INTO FLORERIA_Pedido (
+            prepedido_id, codigo, receptor_nombre, receptor_celular,
+            ciudad_id, zona_id, sucursal_id, tipo_entrega,
+            direccion, referencia, gps,
+            fecha_entrega, slot_id, es_express,
+            dedicatoria, firma_tarjeta, tipo_ocacion,
+            sucursal_prepara_id, nota_floreria,
+            subtotal_productos_bs, subtotal_productos_usd,
+            envio_bs, envio_usd,
+            recargo_express_bs, recargo_express_usd,
+            recargo_horario_bs, recargo_horario_usd,
+            descuento_bs, descuento_usd, descuento_moneda,
+            total_bs, total_usd,
+            anticipo_bs, saldo_bs, estado_pago,
+            wc_sync_estado, creado_por, creado_en
+        )
+        VALUES (
+            @prepedido_id, @codigo, @receptor_nombre, @receptor_celular,
+            @ciudad_id, @zona_id, @sucursal_id, @tipo_entrega,
+            @direccion, @referencia, @gps,
+            @fecha_entrega, @slot_id, @es_express,
+            @dedicatoria, @firma_tarjeta, @tipo_ocacion,
+            @sucursal_prepara_id, @nota_floreria,
+            @subtotal_bs, @subtotal_usd,
+            @envio_bs, 0,                                  -- *** FIX #3: envío real (era 0) ***
+            0, 0,                                          -- recargo_express queda 0 (incluido en horario)
+            @recargo_horario_bs, 0,                        -- *** FIX #3: recargo horario real (era 0) ***
+            @desc_bs, @desc_usd, @descuento_moneda,
+            @total_bs, @total_usd,                         -- *** FIX #2: total real ***
+            @anticipo_bs, @saldo_bs,
+            CASE
+                WHEN @anticipo_bs >= @total_bs THEN 'PAGADO'
+                WHEN @anticipo_bs > 0 THEN 'ANTICIPO'       -- *** FIX #1: era 'PARCIAL' (rompía CHECK) ***
+                ELSE 'PENDIENTE'
+            END,
+            'PENDIENTE', @usuario_id, GETDATE()
+        );
+
+        SET @pedido_id = SCOPE_IDENTITY();
+
+        -- Copiar detalle
+        INSERT INTO FLORERIA_Pedido_Detalle (
+            pedido_id, producto_id, variacion_id, es_personalizado,
+            nombre_producto, descripcion, cantidad,
+            precio_unitario_bs, precio_unitario_usd,
+            subtotal_bs, subtotal_usd, personalizacion, creado_en
+        )
+        SELECT
+            @pedido_id, producto_id, variacion_id, es_personalizado,
+            nombre_producto, descripcion, cantidad,
+            precio_unitario_bs, precio_unitario_usd,
+            subtotal_bs, subtotal_usd, personalizacion, GETDATE()
+        FROM FLORERIA_PrePedido_Entrega_Detalle
+        WHERE prepedido_entrega_id = @prepedido_entrega_id;
+
+        -- Copiar pagos (estructura real: monto_bs/monto_usd/estado/tipo_pago)
+        INSERT INTO FLORERIA_Pedido_Pago (
+            pedido_id, prepedido_id, tipo_pago, metodo_pago,
+            monto_bs, monto_usd,
+            referencia, comprobante_url,
+            estado, verificado_por, verificado_en,
+            observaciones, creado_por, creado_en
+        )
+        SELECT
+            @pedido_id, @prepedido_id, tipo_pago, metodo_pago,
+            monto_bs, monto_usd,
+            referencia, comprobante_url,
+            estado, verificado_por, verificado_en,
+            observaciones, creado_por, creado_en
+        FROM FLORERIA_PrePedido_Entrega_Pago
+        WHERE prepedido_entrega_id = @prepedido_entrega_id;
+
+        -- Marcar borrador como CONFIRMADO
+        UPDATE FLORERIA_PrePedido_Entrega
+        SET estado          = 'CONFIRMADO',
+            pedido_id       = @pedido_id,
+            confirmado_en   = GETDATE(),
+            modificado_por  = @usuario_id,
+            modificado_en   = GETDATE()
+        WHERE prepedido_entrega_id = @prepedido_entrega_id;
+
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK;
+        DECLARE @err VARCHAR(4000);
+        SET @err = ERROR_MESSAGE();
+        RAISERROR(@err, 16, 1);
+    END CATCH;
+END;
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_PrePedidoEntrega_CrearBorrador]    Script Date: 26/05/2026 21:40:33 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- ============================================================
+-- PASO 6: CREAR SP FLORERIA_sp_PrePedidoEntrega_CrearBorrador
+-- ============================================================
+CREATE PROCEDURE [dbo].[FLORERIA_sp_PrePedidoEntrega_CrearBorrador]
+    @prepedido_id           INT,
+    @creado_por             INT,
+    @prepedido_entrega_id   INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM FLORERIA_PrePedido WHERE prepedido_id = @prepedido_id)
+    BEGIN
+        RAISERROR('El pre-pedido no existe', 16, 1);
+        RETURN;
+    END
+
+    DECLARE @fecha_default DATE = DATEADD(DAY, 2, CAST(GETDATE() AS DATE));
+
+    INSERT INTO FLORERIA_PrePedido_Entrega (
+        prepedido_id, estado, tipo_entrega, fecha_entrega,
+        moneda, descuento_valor, descuento_moneda,
+        creado_por, creado_en
+    )
+    VALUES (
+        @prepedido_id, 'BORRADOR', 'DOMICILIO', @fecha_default,
+        'BOB', 0, 'BOB',
+        @creado_por, GETDATE()
+    );
+
+    SET @prepedido_entrega_id = SCOPE_IDENTITY();
+END;
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Producto_Actualizar]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -2100,7 +4042,7 @@ BEGIN
     SELECT 1 AS ok, 'Producto actualizado correctamente.' AS mensaje;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Producto_CambiarEstado]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Producto_CambiarEstado]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -2142,7 +4084,7 @@ BEGIN
     SELECT 1 AS ok, @msg AS mensaje;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Producto_Crear]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Producto_Crear]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -2215,7 +4157,7 @@ BEGIN
     SELECT 1 AS ok, 'Producto creado correctamente.' AS mensaje, @nuevo_id AS producto_id;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Producto_GuardarCategorias]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Producto_GuardarCategorias]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -2271,7 +4213,7 @@ BEGIN
     SELECT 1 AS ok, 'Categorias guardadas.' AS mensaje;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Producto_GuardarVariaciones]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Producto_GuardarVariaciones]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -2296,7 +4238,7 @@ BEGIN
     SELECT 1 AS ok, 'Variaciones actualizadas.' AS mensaje;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Producto_Listar]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Producto_Listar]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -2353,7 +4295,7 @@ BEGIN
     OFFSET @offset ROWS FETCH NEXT @por_pagina ROWS ONLY;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Producto_ObtenerPorId]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Producto_ObtenerPorId]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -2401,7 +4343,63 @@ BEGIN
     WHERE pc.producto_id = @producto_id;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Usuario_Actualizar]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_TipoMenu_Guardar]    Script Date: 26/05/2026 21:40:33 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[FLORERIA_sp_TipoMenu_Guardar]
+    @tipo_id        SMALLINT,
+    @menu_id        SMALLINT,
+    @puede_ver      BIT,
+    @puede_crear    BIT,
+    @puede_editar   BIT,
+    @puede_eliminar BIT,
+    @modificado_por INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (
+        SELECT 1 FROM FLORERIA_TipoUsuario_Menu
+        WHERE tipo_id = @tipo_id AND menu_id = @menu_id
+    )
+    BEGIN
+        UPDATE FLORERIA_TipoUsuario_Menu
+        SET puede_ver      = @puede_ver,
+            puede_crear    = @puede_crear,
+            puede_editar   = @puede_editar,
+            puede_eliminar = @puede_eliminar
+        WHERE tipo_id = @tipo_id AND menu_id = @menu_id;
+    END
+    ELSE
+    BEGIN
+        INSERT INTO FLORERIA_TipoUsuario_Menu
+            (tipo_id, menu_id, puede_ver, puede_crear, puede_editar, puede_eliminar)
+        VALUES
+            (@tipo_id, @menu_id, @puede_ver, @puede_crear, @puede_editar, @puede_eliminar);
+    END
+
+    -- Auditoría
+    INSERT INTO FLORERIA_Auditoria
+        (usuario_id, tabla, registro_id, accion, valor_nuevo, motivo)
+    VALUES (
+        @modificado_por,
+        'FLORERIA_TipoUsuario_Menu',
+        CAST(@tipo_id AS VARCHAR) + '_' + CAST(@menu_id AS VARCHAR),
+        'MODIFICAR',
+        '{"tipo_id":' + CAST(@tipo_id AS VARCHAR) +
+        ',"menu_id":' + CAST(@menu_id AS VARCHAR) +
+        ',"ver":'     + CAST(@puede_ver AS VARCHAR) +
+        ',"crear":'   + CAST(@puede_crear AS VARCHAR) +
+        ',"editar":'  + CAST(@puede_editar AS VARCHAR) +
+        ',"eliminar":' + CAST(@puede_eliminar AS VARCHAR) + '}',
+        'Cambio de permisos de menu'
+    );
+END;
+GO
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Usuario_Actualizar]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -2468,7 +4466,7 @@ BEGIN
     SELECT 1 AS ok, 'Usuario actualizado correctamente.' AS mensaje;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Usuario_CambiarBloqueo]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Usuario_CambiarBloqueo]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -2510,7 +4508,7 @@ BEGIN
     SELECT 1 AS ok, @msg AS mensaje;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Usuario_CambiarPassword]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Usuario_CambiarPassword]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -2563,7 +4561,7 @@ BEGIN
     SELECT 1 AS ok, 'Contrasena actualizada correctamente.' AS mensaje;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Usuario_Crear]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Usuario_Crear]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -2631,7 +4629,7 @@ BEGIN
     SELECT 1 AS ok, 'Usuario creado correctamente.' AS mensaje, @nuevo_id AS usuario_id;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Usuario_Listar]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Usuario_Listar]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -2692,7 +4690,7 @@ BEGIN
     ORDER BY u.apellidos, u.nombres;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Usuario_ObtenerPorId]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Usuario_ObtenerPorId]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -2716,7 +4714,7 @@ BEGIN
     WHERE u.usuario_id = @usuario_id;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Usuario_ResetearPassword]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Usuario_ResetearPassword]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -2768,7 +4766,7 @@ BEGIN
     SELECT 1 AS ok, 'Contrasena reseteada. El usuario debera cambiarla al ingresar.' AS mensaje;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_ValidarSesion]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_ValidarSesion]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -2839,7 +4837,7 @@ BEGIN
     WHERE u.usuario_id = @usuario_id
 END
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Variacion_Eliminar]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Variacion_Eliminar]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
@@ -2861,7 +4859,7 @@ BEGIN
     SELECT 1 AS ok, 'Variacion eliminada.' AS mensaje;
 END;
 GO
-/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Variacion_Guardar]    Script Date: 25/05/2026 0:36:38 ******/
+/****** Object:  StoredProcedure [dbo].[FLORERIA_sp_Variacion_Guardar]    Script Date: 26/05/2026 21:40:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
