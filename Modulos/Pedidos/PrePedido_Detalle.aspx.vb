@@ -136,7 +136,9 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
     End Sub
 
     ' ============================================================
-    ' AJAX — Generar cotización WhatsApp (borradores + confirmados)
+    ' AJAX — Generar cotización WhatsApp
+    ' SOLO incluye BORRADORES (FLORERIA_PrePedido_Entrega estado='BORRADOR')
+    ' Los pedidos confirmados NO se incluyen en la cotización.
     ' ============================================================
     Private Sub GenerarCotizacion()
         Response.ContentType = "application/json"
@@ -149,8 +151,6 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
         Try
             Dim sb As New System.Text.StringBuilder()
             Dim sumProds As Decimal = 0D
-            Dim sumEnvios As Decimal = 0D
-            Dim sumRecargos As Decimal = 0D
             Dim sumDesc As Decimal = 0D
             Dim sumTotal As Decimal = 0D
             Dim contEntregas As Integer = 0
@@ -171,60 +171,10 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
                 End Using
 
                 sb.AppendLine(If(nombreCliente <> "", "Hola " & nombreCliente & "! 🌸", "Hola! 🌸"))
-                sb.AppendLine("Te paso la cotización de Miss Flores:")
+                sb.AppendLine("Te paso la cotización referencial de Miss Flores:")
                 sb.AppendLine("")
 
-                ' ---- Pedidos confirmados ----
-                Dim sqlConf As String =
-                    "SELECT p.receptor_nombre, p.receptor_celular, p.fecha_entrega, " &
-                    "       p.subtotal_productos_bs, p.envio_bs, " &
-                    "       p.recargo_express_bs, p.recargo_horario_bs, " &
-                    "       p.descuento_bs, p.total_bs, " &
-                    "       z.nombre AS zona_nombre, sh.hora_inicio, sh.hora_fin " &
-                    "FROM   FLORERIA_Pedido p " &
-                    "LEFT JOIN FLORERIA_Zona         z  ON p.zona_id = z.zona_id " &
-                    "LEFT JOIN FLORERIA_Slot_Horario sh ON p.slot_id = sh.slot_id " &
-                    "WHERE  p.prepedido_id = @id ORDER BY p.pedido_id"
-
-                Using cmd As New SqlCommand(sqlConf, conn)
-                    cmd.Parameters.AddWithValue("@id", ppId)
-                    Using dr As SqlDataReader = cmd.ExecuteReader()
-                        While dr.Read()
-                            contEntregas += 1
-                            Dim rec As String = If(IsDBNull(dr("receptor_nombre")), "", dr("receptor_nombre").ToString())
-                            Dim cel As String = If(IsDBNull(dr("receptor_celular")), "", dr("receptor_celular").ToString())
-                            Dim fStr As String = ""
-                            If Not IsDBNull(dr("fecha_entrega")) Then fStr = CDate(dr("fecha_entrega")).ToString("dd MMM")
-                            Dim hi As String = If(IsDBNull(dr("hora_inicio")), "", dr("hora_inicio").ToString())
-                            Dim hf As String = If(IsDBNull(dr("hora_fin")), "", dr("hora_fin").ToString())
-                            If hi.Length >= 5 Then hi = hi.Substring(0, 5)
-                            If hf.Length >= 5 Then hf = hf.Substring(0, 5)
-                            Dim zona As String = If(IsDBNull(dr("zona_nombre")), "", dr("zona_nombre").ToString())
-                            Dim subP As Decimal = If(IsDBNull(dr("subtotal_productos_bs")), 0D, CDec(dr("subtotal_productos_bs")))
-                            Dim env As Decimal = If(IsDBNull(dr("envio_bs")), 0D, CDec(dr("envio_bs")))
-                            Dim rExp As Decimal = If(IsDBNull(dr("recargo_express_bs")), 0D, CDec(dr("recargo_express_bs")))
-                            Dim rHor As Decimal = If(IsDBNull(dr("recargo_horario_bs")), 0D, CDec(dr("recargo_horario_bs")))
-                            Dim desc As Decimal = If(IsDBNull(dr("descuento_bs")), 0D, CDec(dr("descuento_bs")))
-                            Dim tot As Decimal = If(IsDBNull(dr("total_bs")), 0D, CDec(dr("total_bs")))
-
-                            sb.AppendLine("📦 *Entrega " & contEntregas & "*")
-                            If rec <> "" Then sb.AppendLine("• Para: " & rec & If(cel <> "", " (" & cel & ")", ""))
-                            If fStr <> "" Then sb.AppendLine("• Fecha: " & fStr & If(hi <> "" AndAlso hf <> "", " · " & hi & " a " & hf, ""))
-                            If zona <> "" Then sb.AppendLine("• Zona: " & zona)
-                            If subP > 0 Then sb.AppendLine("• Productos: " & subP.ToString("N2") & " Bs")
-                            If env > 0 Then sb.AppendLine("• Envío: " & env.ToString("N2") & " Bs")
-                            If rExp > 0 Then sb.AppendLine("• Recargo express: +" & rExp.ToString("N2") & " Bs")
-                            If rHor > 0 Then sb.AppendLine("• Recargo horario: +" & rHor.ToString("N2") & " Bs")
-                            If desc > 0 Then sb.AppendLine("• Descuento: -" & desc.ToString("N2") & " Bs")
-                            sb.AppendLine("• *Subtotal: " & tot.ToString("N2") & " Bs*")
-                            sb.AppendLine("")
-                            sumProds += subP : sumEnvios += env
-                            sumRecargos += rExp + rHor : sumDesc += desc : sumTotal += tot
-                        End While
-                    End Using
-                End Using
-
-                ' ---- Borradores (sin pedido_id aún) ----
+                ' ---- Solo BORRADORES (entregas en proceso, sin pedido_id) ----
                 Dim sqlBor As String =
                     "SELECT e.receptor_nombre, e.receptor_celular, e.fecha_entrega, " &
                     "       e.descuento_valor, " &
@@ -257,14 +207,13 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
                             Dim desc As Decimal = If(IsDBNull(dr("descuento_valor")), 0D, CDec(dr("descuento_valor")))
                             Dim tot As Decimal = subP - desc
 
-                            sb.AppendLine("📦 *Entrega " & contEntregas & "* _(referencial)_")
+                            sb.AppendLine("📦 *Entrega " & contEntregas & "*")
                             If rec <> "" Then sb.AppendLine("• Para: " & rec & If(cel <> "", " (" & cel & ")", ""))
                             If fStr <> "" Then sb.AppendLine("• Fecha: " & fStr & If(hi <> "" AndAlso hf <> "", " · " & hi & " a " & hf, ""))
                             If zona <> "" Then sb.AppendLine("• Zona: " & zona)
                             If subP > 0 Then sb.AppendLine("• Productos: " & subP.ToString("N2") & " Bs")
                             If desc > 0 Then sb.AppendLine("• Descuento: -" & desc.ToString("N2") & " Bs")
                             sb.AppendLine("• *Subtotal: " & tot.ToString("N2") & " Bs*")
-                            sb.AppendLine("  _(sin envío ni recargos aún)_")
                             sb.AppendLine("")
                             sumProds += subP : sumDesc += desc : sumTotal += tot
                         End While
@@ -273,19 +222,19 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
             End Using
 
             If contEntregas = 0 Then
-                Response.Write("{""ok"":false,""msg"":""No hay entregas con productos para cotizar""}") : Return
+                Response.Write("{""ok"":false,""msg"":""No hay borradores con productos para cotizar""}") : Return
             End If
 
             sb.AppendLine("━━━━━━━━━━━━━━━━━")
             If contEntregas > 1 Then
                 sb.AppendLine("Productos: " & sumProds.ToString("N2") & " Bs")
-                If sumEnvios > 0 Then sb.AppendLine("Envíos: " & sumEnvios.ToString("N2") & " Bs")
-                If sumRecargos > 0 Then sb.AppendLine("Recargos: +" & sumRecargos.ToString("N2") & " Bs")
                 If sumDesc > 0 Then sb.AppendLine("Descuentos: -" & sumDesc.ToString("N2") & " Bs")
             End If
-            sb.AppendLine("*TOTAL GENERAL: " & sumTotal.ToString("N2") & " Bs*")
+            sb.AppendLine("*TOTAL REFERENCIAL: " & sumTotal.ToString("N2") & " Bs*")
             sb.AppendLine("")
-            sb.AppendLine("Cualquier consulta avísanos 💐")
+            sb.AppendLine("_Sin envio ni recargos aun. Te confirmaremos el total final al cerrar el pedido._")
+            sb.AppendLine("")
+            sb.AppendLine("Cualquier consulta avisanos 💐")
 
             Dim msg As String = sb.ToString()
             Dim msgJson As String = msg.Replace("\", "\\").Replace("""", "\""").

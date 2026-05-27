@@ -159,6 +159,15 @@ Partial Public Class Modulos_Pedidos_GestionPedidos
         Try
             If accion = "ACEPTAR_PAGO" Then
                 EjecutarAceptarPago(pedidoId, usuarioId, ip)
+            ElseIf accion = "ASIGNAR_DELIVERY" Then
+                Dim deliveryIdStr As String = Request.Form("hdEstadoNuevo")  ' reutilizamos este campo
+                Dim deliveryId As Integer = 0
+                Integer.TryParse(deliveryIdStr, deliveryId)
+                If deliveryId <= 0 Then
+                    RedirectConMsg("Delivery invalido", "error")
+                    Return
+                End If
+                EjecutarAsignarDelivery(pedidoId, deliveryId, usuarioId, ip)
             ElseIf accion = "MARCAR_CONTACTADO" Then
                 EjecutarMarcarContactado(pedidoId, usuarioId, ip)
             ElseIf accion = "CAMBIAR_ESTADO" Then
@@ -239,6 +248,29 @@ Partial Public Class Modulos_Pedidos_GestionPedidos
                         Dim mensaje As String = LeerStr(dr, "mensaje")
                         dr.Close()
                         RedirectConMsg(mensaje, If(ok, "success", "warning"))
+                        Return
+                    End If
+                End Using
+            End Using
+        End Using
+    End Sub
+
+    Private Sub EjecutarAsignarDelivery(pedidoId As Integer, deliveryId As Integer, usuarioId As Integer, ip As String)
+        Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
+            conn.Open()
+            Using cmd As New SqlCommand("FLORERIA_sp_Asignacion_Crear", conn)
+                cmd.CommandType = CommandType.StoredProcedure
+                cmd.Parameters.AddWithValue("@pedido_id", pedidoId)
+                cmd.Parameters.AddWithValue("@delivery_id", deliveryId)
+                cmd.Parameters.AddWithValue("@asignado_por", usuarioId)
+                cmd.Parameters.AddWithValue("@observaciones", DBNull.Value)
+                cmd.Parameters.AddWithValue("@ip", ip)
+                Using dr As SqlDataReader = cmd.ExecuteReader()
+                    If dr.Read() Then
+                        Dim ok As Boolean = LeerBool(dr, "ok")
+                        Dim mensaje As String = LeerStr(dr, "mensaje")
+                        dr.Close()
+                        RedirectConMsg(mensaje, If(ok, "success", "error"))
                         Return
                     End If
                 End Using

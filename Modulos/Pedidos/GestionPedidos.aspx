@@ -101,6 +101,17 @@
                 </div>
             </div>
 
+            <div class="filter-fecha-bloque">
+                <div class="filter-fecha-titulo estado"><i class="ti ti-flag"></i> Estado de entrega</div>
+                <div style="display:flex;flex-wrap:wrap;gap:5px" id="pillsEstado">
+                    <span class="pill-filter active" data-val="">Todos</span>
+                    <span class="pill-filter" data-val="en_curso">En curso</span>
+                    <span class="pill-filter" data-val="en_ruta">En ruta</span>
+                    <span class="pill-filter" data-val="entregados">Entregados</span>
+                    <span class="pill-filter" data-val="problemas">Problemas</span>
+                </div>
+            </div>
+
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px">
                 <select id="ddPago" class="form-control" style="font-size:11px;height:32px;padding:5px 8px">
                     <option value="">Pago: Todos</option>
@@ -248,6 +259,40 @@
     </div>
 </div>
 
+<!-- MODAL ASIGNAR DELIVERY -->
+<div class="modal-overlay hidden" id="modalAsignar">
+    <div class="modal-asignar">
+        <div class="modal-asignar-header">
+            <div>
+                <div class="modal-asignar-titulo">Asignar delivery</div>
+                <div class="modal-asignar-subtitulo" id="mAsignContexto">-</div>
+            </div>
+            <button type="button" class="btn-icon-only" onclick="cerrarModalAsignar()" title="Cerrar"><i class="ti ti-x"></i></button>
+        </div>
+
+        <div class="modal-asignar-buscar">
+            <i class="ti ti-search"></i>
+            <input type="text" id="mAsignBuscar" placeholder="Buscar por nombre..."/>
+        </div>
+
+        <div class="modal-asignar-lista" id="mAsignLista">
+            <div class="md-loading"><i class="ti ti-loader"></i><br>Cargando deliverys...</div>
+        </div>
+
+        <div class="modal-asignar-aviso hidden" id="mAsignAviso">
+            <i class="ti ti-alert-triangle"></i>
+            <span id="mAsignAvisoMsg"></span>
+        </div>
+
+        <div class="modal-asignar-footer">
+            <button type="button" class="btn" onclick="cerrarModalAsignar()">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="mAsignBtnConfirmar" onclick="confirmarAsignacion()" disabled>
+                <i class="ti ti-motorbike"></i> Asignar
+            </button>
+        </div>
+    </div>
+</div>
+
 </asp:Content>
 
 <asp:Content ID="Content4" ContentPlaceHolderID="ScriptsContent" runat="server">
@@ -325,6 +370,12 @@ function construirQuery() {
         var pillCreacion = document.querySelector('#pillsCreacion .pill-filter.active');
         if (pillCreacion) {
             qs += construirFiltroFechaCreacion(pillCreacion.dataset.val);
+        }
+
+        // Grupo de estados operativos
+        var pillEstado = document.querySelector('#pillsEstado .pill-filter.active');
+        if (pillEstado && pillEstado.dataset.val) {
+            qs += 'es=' + encodeURIComponent(pillEstado.dataset.val) + '&';
         }
 
         var p = document.getElementById('ddPago').value; if (p) qs += 'p=' + p + '&';
@@ -473,6 +524,10 @@ function limpiarFiltros() {
     var pillsC = document.querySelectorAll('#pillsCreacion .pill-filter');
     for (var i = 0; i < pillsC.length; i++) pillsC[i].classList.remove('active');
     document.querySelector('#pillsCreacion .pill-filter[data-val="cualquiera"]').classList.add('active');
+    // Reset pills estado
+    var pillsE = document.querySelectorAll('#pillsEstado .pill-filter');
+    for (var i = 0; i < pillsE.length; i++) pillsE[i].classList.remove('active');
+    document.querySelector('#pillsEstado .pill-filter[data-val=""]').classList.add('active');
     document.getElementById('ddPago').value = '';
     document.getElementById('ddOperativo').value = '';
     document.getElementById('ddZona').value = '';
@@ -517,6 +572,17 @@ function setupEventos() {
                 rango.classList.remove('show');
                 cargarPedidos();
             }
+        });
+    }
+
+    // Pills grupo de estados
+    var pes = document.querySelectorAll('#pillsEstado .pill-filter');
+    for (var i = 0; i < pes.length; i++) {
+        pes[i].addEventListener('click', function() {
+            var all = document.querySelectorAll('#pillsEstado .pill-filter');
+            for (var j = 0; j < all.length; j++) all[j].classList.remove('active');
+            this.classList.add('active');
+            cargarPedidos();
         });
     }
 
@@ -598,6 +664,7 @@ function abrirDetalleModal(pid) {
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         cerrarModalAceptar();
+        cerrarModalAsignar();
         cerrarTodosDropdowns();
     }
 });
@@ -649,10 +716,220 @@ function marcarContactado(pid) {
     document.getElementById(_btnPostbackId).click();
 }
 
+// ============================================================
+// MODAL ASIGNAR DELIVERY
+// ============================================================
+var _asignPedidoId = 0;
+var _asignDeliverySel = 0;
+var _asignDeliveryNombre = '';
+var _asignDeliverys = [];
+
 function asignarDelivery(pid) {
     cerrarTodosDropdowns();
-    alert('Asignar delivery - en proxima entrega');
+    if (!pid) return;
+    _asignPedidoId = pid;
+    _asignDeliverySel = 0;
+    _asignDeliveryNombre = '';
+
+    // Mostrar contexto: codigo + receptor + zona desde la fila
+    var fila = document.querySelector('tr[data-pid="' + pid + '"]');
+    var contexto = 'Pedido #' + pid;
+    var deliveryActualNombre = '';
+    if (fila) {
+        var pedEl = fila.querySelector('.ped-main, .ped-small');
+        var recEl = fila.querySelectorAll('td')[1];
+        var zEl = fila.querySelector('.zona-deli .z');
+        var partes = [];
+        if (pedEl) partes.push(pedEl.textContent.trim());
+        if (recEl) {
+            var divs = recEl.querySelectorAll('div');
+            for (var i = 0; i < divs.length; i++) {
+                var t = divs[i].textContent.trim();
+                if (t && t.length < 60 && !t.startsWith('Compr')) {
+                    partes.push(t);
+                    break;
+                }
+            }
+        }
+        if (zEl) partes.push(zEl.textContent.trim());
+        contexto = partes.join(' · ');
+
+        // Detectar si ya tiene delivery asignado
+        var deliEl = fila.querySelector('.deli-asignado');
+        if (deliEl) {
+            deliveryActualNombre = deliEl.textContent.trim();
+        }
+    }
+
+    document.getElementById('mAsignContexto').textContent = contexto;
+    document.getElementById('mAsignBtnConfirmar').disabled = true;
+    document.getElementById('mAsignBtnConfirmar').innerHTML = '<i class="ti ti-motorbike"></i> Asignar';
+    document.getElementById('mAsignBuscar').value = '';
+
+    // Aviso si ya tiene delivery
+    var aviso = document.getElementById('mAsignAviso');
+    var avisoMsg = document.getElementById('mAsignAvisoMsg');
+    if (deliveryActualNombre) {
+        aviso.classList.remove('hidden');
+        avisoMsg.textContent = 'Este pedido ya tiene delivery (' + deliveryActualNombre + '). Asignar a otro lo reasignara.';
+    } else {
+        aviso.classList.add('hidden');
+    }
+
+    document.getElementById('modalAsignar').classList.remove('hidden');
+
+    // Cargar deliverys
+    document.getElementById('mAsignLista').innerHTML = '<div class="md-loading"><i class="ti ti-loader"></i><br>Cargando deliverys...</div>';
+    fetch('Pedidos_Handler.ashx?action=deliverys&_=' + Date.now(), { credentials: 'same-origin' })
+        .then(function(r) {
+            if (r.status === 401) {
+                window.location.href = '../../Login.aspx';
+                return null;
+            }
+            return r.json();
+        })
+        .then(function(data) {
+            if (data === null) return;
+            _asignDeliverys = data;
+            pintarListaDeliverys('');
+        })
+        .catch(function(err) {
+            document.getElementById('mAsignLista').innerHTML = '<div class="md-loading"><i class="ti ti-alert-triangle"></i><br>Error: ' + err.message + '</div>';
+        });
 }
+
+function pintarListaDeliverys(filtro) {
+    var lista = document.getElementById('mAsignLista');
+    if (!_asignDeliverys || _asignDeliverys.length === 0) {
+        lista.innerHTML = '<div class="md-loading"><i class="ti ti-user-off"></i><br>No hay usuarios disponibles.</div>';
+        return;
+    }
+
+    filtro = (filtro || '').toLowerCase().trim();
+    var html = '';
+    var ultimoOrden = -1;
+    var seccionTitulos = { 1: 'Deliverys', 2: 'Vendedores', 3: 'Gerentes', 4: 'Administradores' };
+    var encontrados = 0;
+
+    for (var i = 0; i < _asignDeliverys.length; i++) {
+        var d = _asignDeliverys[i];
+
+        // Aplicar filtro
+        if (filtro && d.nombre.toLowerCase().indexOf(filtro) === -1) {
+            continue;
+        }
+        encontrados++;
+
+        // Header de seccion
+        if (d.orden !== ultimoOrden) {
+            var titulo = seccionTitulos[d.orden] || 'Otros';
+            html += '<div class="asign-seccion">' + titulo + '</div>';
+            ultimoOrden = d.orden;
+        }
+
+        // Iniciales
+        var iniciales = obtenerInicialesJs(d.nombre);
+        var colorAvatar = colorPorTipo(d.tipo_id);
+
+        // Badge carga
+        var badgeCarga = '';
+        if (d.pedidos_hoy === 0) {
+            badgeCarga = '<span class="asign-carga asign-libre">libre</span>';
+        } else if (d.pedidos_hoy >= 7) {
+            badgeCarga = '<span class="asign-carga asign-cargado">' + d.pedidos_hoy + ' hoy</span>';
+        } else {
+            badgeCarga = '<span class="asign-carga">' + d.pedidos_hoy + ' hoy</span>';
+        }
+
+        // Badge tipo
+        var badgeTipo = '<span class="asign-tipo asign-tipo-' + d.tipo_id + '">' + d.tipo_corto + '</span>';
+
+        var seleccionado = (d.id === _asignDeliverySel) ? ' selected' : '';
+        html += '<div class="asign-item' + seleccionado + '" data-uid="' + d.id + '" data-nombre="' + escapeHtmlJs(d.nombre) + '" onclick="seleccionarDelivery(' + d.id + ')">';
+        html += '<div class="asign-avatar" style="background:' + colorAvatar + '">' + iniciales + '</div>';
+        html += '<div class="asign-info">';
+        html += '<div class="asign-nombre">' + escapeHtmlJs(d.nombre) + ' ' + badgeTipo + '</div>';
+        if (d.celular) html += '<div class="asign-cel">' + escapeHtmlJs(d.celular) + '</div>';
+        html += '</div>';
+        html += badgeCarga;
+        html += '</div>';
+    }
+
+    if (encontrados === 0) {
+        html = '<div class="md-loading"><i class="ti ti-search-off"></i><br>No hay resultados.</div>';
+    }
+
+    lista.innerHTML = html;
+}
+
+function seleccionarDelivery(uid) {
+    _asignDeliverySel = uid;
+    // Encontrar nombre
+    for (var i = 0; i < _asignDeliverys.length; i++) {
+        if (_asignDeliverys[i].id === uid) {
+            _asignDeliveryNombre = _asignDeliverys[i].nombre;
+            break;
+        }
+    }
+    // Repintar para marcar el seleccionado
+    pintarListaDeliverys(document.getElementById('mAsignBuscar').value);
+    // Habilitar boton y actualizar texto
+    var btn = document.getElementById('mAsignBtnConfirmar');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-motorbike"></i> Asignar a ' + escapeHtmlJs(_asignDeliveryNombre);
+}
+
+function cerrarModalAsignar() {
+    document.getElementById('modalAsignar').classList.add('hidden');
+    _asignPedidoId = 0;
+    _asignDeliverySel = 0;
+    _asignDeliveryNombre = '';
+    _asignDeliverys = [];
+}
+
+function confirmarAsignacion() {
+    if (_asignPedidoId <= 0 || _asignDeliverySel <= 0) return;
+    document.getElementById('hdAccion').value = 'ASIGNAR_DELIVERY';
+    document.getElementById('hdPedidoId').value = _asignPedidoId;
+    document.getElementById('hdEstadoNuevo').value = _asignDeliverySel; // reusamos este campo
+    cerrarModalAsignar();
+    document.getElementById(_btnPostbackId).click();
+}
+
+// Helpers JS
+function obtenerInicialesJs(nombre) {
+    if (!nombre) return '??';
+    var partes = nombre.trim().split(/\s+/);
+    if (partes.length === 1) return (partes[0].substring(0, 2)).toUpperCase();
+    return (partes[0].charAt(0) + partes[1].charAt(0)).toUpperCase();
+}
+
+function colorPorTipo(tipoId) {
+    switch (tipoId) {
+        case 1: return '#757575';  // Admin gris
+        case 2: return '#9C27B0';  // Gerente morado
+        case 3: return '#03A9F4';  // Vendedor celeste
+        case 4: return '#FF9800';  // Delivery naranja
+        default: return '#666';
+    }
+}
+
+function escapeHtmlJs(s) {
+    if (!s) return '';
+    var div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+}
+
+// Setup buscador del modal
+document.addEventListener('DOMContentLoaded', function() {
+    var inp = document.getElementById('mAsignBuscar');
+    if (inp) {
+        inp.addEventListener('input', function() {
+            pintarListaDeliverys(this.value);
+        });
+    }
+});
 
 function editarPedido(pid) {
     cerrarTodosDropdowns();

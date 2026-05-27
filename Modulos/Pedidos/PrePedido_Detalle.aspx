@@ -60,8 +60,14 @@
 .btn-edit-save{background:#4caf50;color:#fff}
 .btn-edit-cancel{background:rgba(255,255,255,.25);color:#fff}
 .edit-error{font-size:11px;color:#ffcdd2;background:rgba(198,40,40,.4);padding:4px 8px;border-radius:4px}
-.btn-cotiz{background:#E8F5E9 !important;border:1px solid #A5D6A7 !important;color:#1B5E20 !important;font-weight:500}
-.btn-cotiz:hover{background:#C8E6C9 !important}
+
+.btn-wsp-link{background:#25D366 !important;border:none !important;color:#fff !important;font-weight:500}
+.btn-wsp-link:hover{background:#1FB855 !important}
+.btn-wsp-cotiz{background:#E8F5E9 !important;border:1px solid #A5D6A7 !important;color:#1B5E20 !important;font-weight:500}
+.btn-wsp-cotiz:hover{background:#C8E6C9 !important}
+.btn-wsp-contacto{background:#FFFFFF !important;border:1px solid #d0d0d0 !important;color:#424242 !important;font-weight:500}
+.btn-wsp-contacto:hover{background:#f5f5f5 !important}
+
 .pedidos-section {
     margin-bottom: 1.5rem;
 }
@@ -223,10 +229,6 @@
     color: #667eea;
 }
 
-/* ============================================================
-   CARDS COMPACTAS — entregas borrador y pedidos confirmados
-   3 líneas: header, receptor, info+total. Toda la card es clickeable.
-   ============================================================ */
 .card-compact{
     background:#fff;
     border:0.5px solid #e0e0e0;
@@ -431,7 +433,7 @@
     </div>
 </div>
 
-<!-- ESTADO DEL LINK PARA EL CLIENTE -->
+<!-- LINK PARA EL CLIENTE -->
 <div class="panel">
     <div class="panel-head">
         <div class="panel-title">
@@ -444,7 +446,7 @@
             <% ElseIf EstadoLink = 1 Then %>
                 <span style="background:#FFF3CD;color:#856404;padding:2px 8px;border-radius:4px;font-size:11px;margin-left:8px">Esperando cliente</span>
             <% Else %>
-                <span style="background:#E8F5E9;color:#2E7D32;padding:2px 8px;border-radius:4px;font-size:11px;margin-left:8px">Cliente confirmó</span>
+                <span style="background:#E8F5E9;color:#2E7D32;padding:2px 8px;border-radius:4px;font-size:11px;margin-left:8px">Cliente confirmo</span>
             <% End If %>
         </div>
     </div>
@@ -454,19 +456,11 @@
             <p style="margin:0 0 12px;font-size:13px;color:#666">
                 Genera y envia al cliente un link para que confirme sus datos, direccion, fecha y metodo de pago.
             </p>
-            <button type="button" onclick="enviarLinkCliente()" style="width:100%;max-width:320px;padding:11px;font-size:13px;background:#25D366;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:500">
-                <i class="ti ti-brand-whatsapp" style="font-size:15px;vertical-align:-2px;margin-right:5px"></i> Enviar link por WhatsApp
-            </button>
-
         <% ElseIf EstadoLink = 1 AndAlso LinkExpirado Then %>
-            <div style="background:#FFEBEE;padding:10px 12px;border-radius:6px;margin-bottom:10px;font-size:12px;color:#C62828">
+            <div style="background:#FFEBEE;padding:10px 12px;border-radius:6px;margin-bottom:12px;font-size:12px;color:#C62828">
                 <i class="ti ti-alert-triangle" style="font-size:14px;vertical-align:-2px;margin-right:4px"></i>
-                El link expiro el <%=FechaExpiracion%>. Genera uno nuevo.
+                El link expiro el <%=FechaExpiracion%>. Al reenviar se generara uno nuevo.
             </div>
-            <button type="button" onclick="enviarLinkCliente()" style="padding:9px 16px;font-size:12px;background:#25D366;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:500">
-                <i class="ti ti-refresh" style="font-size:14px;vertical-align:-2px"></i> Regenerar y reenviar
-            </button>
-
         <% ElseIf EstadoLink = 1 Then %>
             <% If TokenAbiertoEn > DateTime.MinValue Then %>
                 <div style="background:#E3F2FD;padding:8px 12px;border-radius:6px;margin-bottom:8px;font-size:12px;color:#1565C0">
@@ -478,39 +472,30 @@
                 </div>
             <% End If %>
             <div style="font-size:11px;color:#666;margin-bottom:10px">Expira en <%=HorasParaExpirar%>h &middot; <%=FechaExpiracion%></div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <button type="button" onclick="location.reload()" class="btn btn-sm">
-                    <i class="ti ti-refresh"></i> Verificar
-                </button>
-                <button type="button" onclick="copiarLink()" class="btn btn-sm">
-                    <i class="ti ti-copy"></i> Copiar link
-                </button>
-                <% If CantidadPedidos > 0 OrElse CantidadBorradores > 0 Then %>
-                <button type="button" onclick="enviarCotizacion()" class="btn btn-sm btn-cotiz">
-                    <i class="ti ti-brand-whatsapp" style="color:#25D366"></i> Cotización
-                </button>
-                <% End If %>
-                <button type="button" onclick="enviarLinkCliente()" class="btn btn-sm">
-                    <i class="ti ti-brand-whatsapp" style="color:#25D366"></i> Reenviar WhatsApp
-                </button>
-            </div>
-
         <% Else %>
             <div style="background:#E8F5E9;padding:10px 12px;border-radius:6px;margin-bottom:10px;font-size:12px;color:#1B5E20">
                 <p style="margin:0;font-weight:500"><i class="ti ti-check" style="font-size:14px;vertical-align:-2px"></i> Cliente confirmo el <%=TokenConfirmadoEn.ToString("dd/MM HH:mm")%></p>
                 <p style="margin:4px 0 0;font-size:11px;color:#2E7D32">Revisa los datos abajo y confirma el pedido cuando estes listo</p>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <button type="button" onclick="copiarLink()" class="btn btn-sm">
-                    <i class="ti ti-copy"></i> Copiar link
-                </button>
-                <% If CantidadPedidos > 0 OrElse CantidadBorradores > 0 Then %>
-                <button type="button" onclick="enviarCotizacion()" class="btn btn-sm btn-cotiz">
-                    <i class="ti ti-brand-whatsapp" style="color:#25D366"></i> Cotización
-                </button>
-                <% End If %>
-            </div>
         <% End If %>
+
+        <!-- LOS 3 BOTONES SIEMPRE VISIBLES -->
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button type="button" onclick="enviarLinkCliente()" class="btn btn-sm btn-wsp-link">
+                <i class="ti ti-brand-whatsapp"></i> <% If EstadoLink = 0 Then %>Enviar link<% Else %>Reenviar link<% End If %>
+            </button>
+            <button type="button" onclick="enviarCotizacion()" class="btn btn-sm btn-wsp-cotiz">
+                <i class="ti ti-brand-whatsapp" style="color:#25D366"></i> Enviar cotizacion
+            </button>
+            <button type="button" onclick="contactarCliente()" class="btn btn-sm btn-wsp-contacto">
+                <i class="ti ti-brand-whatsapp" style="color:#25D366"></i> Contactar al cliente
+            </button>
+            <% If EstadoLink >= 1 AndAlso Not LinkExpirado Then %>
+            <button type="button" onclick="copiarLink()" class="btn btn-sm">
+                <i class="ti ti-copy"></i> Copiar link
+            </button>
+            <% End If %>
+        </div>
 
     </div>
 </div>
@@ -610,7 +595,7 @@
                 <span class="total-value"><%=TotalGeneral%> Bs</span>
             </div>
             <div style="text-align: right; margin-top: 0.5rem; font-size: 12px; color: #757575;">
-                <%=CantidadPedidos%> entregas • <%=CantidadProductos%> productos
+                <%=CantidadPedidos%> entregas &bull; <%=CantidadProductos%> productos
             </div>
         </div>
     </div>
@@ -647,6 +632,7 @@
 <!-- Hidden fields -->
 <input type="hidden" id="hdPrePedidoId" value="<%=PrePedidoId%>" />
 <input type="hidden" id="hdCelular" value="<%=ClienteCelular%>" />
+<input type="hidden" id="hdCantBorradores" value="<%=CantidadBorradores%>" />
 
 </asp:Content>
 
@@ -655,7 +641,33 @@
 // @ts-nocheck
 
 // ============================================================
-// LINK PUBLICO CLIENTE
+// Helpers comunes
+// ============================================================
+function _limpiarCelularBolivia(cel) {
+    var s = (cel || '').toString().replace(/[^0-9]/g, '');
+    if (s.length === 8 && (s.charAt(0) === '6' || s.charAt(0) === '7')) {
+        s = '591' + s;
+    }
+    return s;
+}
+
+function _abrirWhatsApp(celular, mensaje) {
+    var celLimpio = _limpiarCelularBolivia(celular);
+    var url;
+    if (celLimpio && mensaje) {
+        url = 'whatsapp://send?phone=' + celLimpio + '&text=' + encodeURIComponent(mensaje);
+    } else if (celLimpio) {
+        url = 'whatsapp://send?phone=' + celLimpio;
+    } else if (mensaje) {
+        url = 'whatsapp://send?text=' + encodeURIComponent(mensaje);
+    } else {
+        url = 'whatsapp://send';
+    }
+    window.location.href = url;
+}
+
+// ============================================================
+// BOTON 1: ENVIAR / REENVIAR LINK
 // ============================================================
 function enviarLinkCliente() {
     var prepedidoId = parseInt(document.getElementById('hdPrePedidoId').value) || 0;
@@ -672,7 +684,6 @@ function enviarLinkCliente() {
         .then(function (r) { return r.json(); })
         .then(function (data) {
             if (!data.ok) {
-                // Si el handler devolvió entregas_incompletas, mostrar modal detallado
                 if (data.entregas_incompletas && data.entregas_incompletas.length > 0) {
                     mostrarModalEntregasIncompletas(data.entregas_incompletas);
                     return;
@@ -682,18 +693,8 @@ function enviarLinkCliente() {
             }
 
             var mensaje = 'Hola! Aqui esta el link para confirmar tu pedido en Miss Flores:\n' + data.url;
+            _abrirWhatsApp(data.celular_cliente, mensaje);
 
-            // MODIFICACIÓN A OPCIÓN 2: Usar el esquema nativo de WhatsApp
-            var url = data.celular_cliente
-                ? ('whatsapp://send?phone=' + data.celular_cliente + '&text=' + encodeURIComponent(mensaje))
-                : ('whatsapp://send?text=' + encodeURIComponent(mensaje));
-
-            // Usar window.location.href en lugar de window.open('_blank')
-            // Esto dispara la aplicación externa sin abrir ninguna pestaña huérfana
-            window.location.href = url;
-
-            // Aumentamos ligeramente el tiempo de espera a 1.5 seg (1500ms) antes de recargar
-            // para darle tiempo al navegador de ejecutar la llamada a la app de escritorio o móvil
             setTimeout(function () {
                 location.reload();
             }, 1500);
@@ -703,6 +704,58 @@ function enviarLinkCliente() {
         });
 }
 
+// ============================================================
+// BOTON 2: ENVIAR COTIZACION (solo borradores)
+// ============================================================
+function enviarCotizacion() {
+    var ppId = parseInt(document.getElementById('hdPrePedidoId').value) || 0;
+    var celular = document.getElementById('hdCelular').value || '';
+    var cantBor = parseInt(document.getElementById('hdCantBorradores').value) || 0;
+
+    if (ppId <= 0) return;
+
+    if (cantBor === 0) {
+        alert('No hay borradores para cotizar.\n\nLa cotizacion solo incluye entregas en borrador con productos. Agrega al menos una entrega antes de enviar la cotizacion.');
+        return;
+    }
+
+    var fd = new FormData();
+    fd.append('accion', 'GENERAR_COTIZACION');
+    fd.append('prepedido_id', ppId);
+
+    fetch('PrePedido_Detalle.aspx?id=' + ppId, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: fd
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (!data.ok) {
+            alert(data.msg || 'No se pudo generar la cotizacion');
+            return;
+        }
+        _abrirWhatsApp(celular, data.mensaje);
+    })
+    .catch(function() {
+        alert('Error de conexion al generar cotizacion');
+    });
+}
+
+// ============================================================
+// BOTON 3: CONTACTAR AL CLIENTE (whatsapp sin mensaje)
+// ============================================================
+function contactarCliente() {
+    var celular = document.getElementById('hdCelular').value || '';
+    if (!celular || celular.replace(/[^0-9]/g, '').length === 0) {
+        alert('El cliente no tiene celular registrado.');
+        return;
+    }
+    _abrirWhatsApp(celular, '');
+}
+
+// ============================================================
+// COPIAR LINK (solo si ya hay token vigente)
+// ============================================================
 function copiarLink() {
     var prepedidoId = parseInt(document.getElementById('hdPrePedidoId').value) || 0;
     if (prepedidoId === 0) return;
@@ -715,7 +768,6 @@ function copiarLink() {
     .then(function(r) { return r.json(); })
     .then(function(data) {
         if (!data.ok) {
-            // Mismo manejo: si hay entregas incompletas, modal detallado
             if (data.entregas_incompletas && data.entregas_incompletas.length > 0) {
                 mostrarModalEntregasIncompletas(data.entregas_incompletas);
                 return;
@@ -734,10 +786,9 @@ function copiarLink() {
 }
 
 // ============================================================
-// MODAL: entregas incompletas (bloquea envío del link)
+// MODAL: entregas incompletas (bloquea envio del link)
 // ============================================================
 function mostrarModalEntregasIncompletas(lista) {
-    // Crear overlay si no existe
     var overlay = document.getElementById('modalValidacionLink');
     if (overlay) overlay.parentNode.removeChild(overlay);
 
@@ -745,21 +796,15 @@ function mostrarModalEntregasIncompletas(lista) {
     overlay.id = 'modalValidacionLink';
     overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;overflow-y:auto;padding:20px;display:flex;align-items:flex-start;justify-content:center';
 
-    var prepedidoId = parseInt(document.getElementById('hdPrePedidoId').value) || 0;
-
     var html = '<div style="background:white;border-radius:12px;max-width:560px;width:100%;margin-top:40px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,0.2)">';
-
-    // Header rojo de alerta
     html += '<div style="background:#FFEBEE;color:#B71C1C;padding:16px 22px;display:flex;align-items:center;gap:12px;border-bottom:2px solid #FFCDD2">';
     html += '<i class="ti ti-alert-triangle" style="font-size:28px;color:#C62828"></i>';
     html += '<div style="flex:1">';
     html += '<p style="margin:0;font-size:16px;font-weight:600">No se puede enviar el link</p>';
-    html += '<p style="margin:2px 0 0;font-size:13px;color:#7F1D1D">Faltan datos en ' + lista.length + ' entrega' + (lista.length === 1 ? '' : 's') + '. El cliente vería un link inválido.</p>';
+    html += '<p style="margin:2px 0 0;font-size:13px;color:#7F1D1D">Faltan datos en ' + lista.length + ' entrega' + (lista.length === 1 ? '' : 's') + '. El cliente veria un link invalido.</p>';
     html += '</div>';
     html += '<button type="button" onclick="cerrarModalValidacion()" style="border:none;background:none;cursor:pointer;font-size:22px;color:#999"><i class="ti ti-x"></i></button>';
     html += '</div>';
-
-    // Lista de entregas con campos faltantes
     html += '<div style="padding:18px 22px;max-height:55vh;overflow-y:auto">';
     lista.forEach(function(item) {
         html += '<div style="border:1px solid #FFCDD2;background:#FFF5F5;border-radius:10px;padding:12px 14px;margin-bottom:10px">';
@@ -780,17 +825,13 @@ function mostrarModalEntregasIncompletas(lista) {
         html += '</div>';
     });
     html += '</div>';
-
-    // Footer
     html += '<div style="padding:12px 22px;background:#FAFAFA;border-top:1px solid #f0f0f0;display:flex;justify-content:flex-end;gap:8px">';
     html += '<button type="button" onclick="cerrarModalValidacion()" style="padding:8px 18px;font-size:13px;background:white;color:#555;border:1px solid #d0d0d0;border-radius:6px;cursor:pointer;font-weight:500">Cerrar</button>';
     html += '</div>';
-
     html += '</div>';
     overlay.innerHTML = html;
     document.body.appendChild(overlay);
 
-    // Cerrar al hacer click fuera del modal
     overlay.addEventListener('click', function(ev) {
         if (ev.target === overlay) cerrarModalValidacion();
     });
@@ -819,15 +860,13 @@ function agregarEntrega() {
 }
 
 function eliminarPedido(pedidoId) {
-    if (confirm('¿Estas seguro de eliminar este pedido?')) {
-        // TODO: Implementar eliminacion
+    if (confirm('Estas seguro de eliminar este pedido?')) {
         alert('Funcionalidad en desarrollo');
     }
 }
 
 function cancelarPrePedido() {
-    if (confirm('¿Cancelar este pre-pedido?')) {
-        // TODO: Implementar cancelacion
+    if (confirm('Cancelar este pre-pedido?')) {
         alert('Funcionalidad en desarrollo');
     }
 }
@@ -837,25 +876,23 @@ function guardarBorrador() {
 }
 
 function finalizarYEnviar() {
-    if (confirm('¿Finalizar y enviar link al cliente?')) {
+    if (confirm('Finalizar y enviar link al cliente?')) {
         var id = document.getElementById('hdPrePedidoId').value;
         window.location.href = 'PrePedido_Finalizar.aspx?id=' + id;
     }
 }
 
 // ============================================================
-// Menú "Acciones" desplegable en cada pedido confirmado
+// Menu Acciones desplegable en cada pedido confirmado
 // ============================================================
 function toggleMenuPedido(btnEl, ev) {
     if (ev) ev.stopPropagation();
     var menu = btnEl.parentNode.querySelector('.menu-dropdown-pedido');
     if (!menu) return;
     var abierto = (menu.style.display === 'block');
-    // Cerrar todos primero
     cerrarMenusPedido();
     if (!abierto) {
         menu.style.display = 'block';
-        // Rotar chevron
         var ic = btnEl.querySelector('i.ti-chevron-down, i.ti-chevron-up');
         if (ic) ic.classList.replace('ti-chevron-down', 'ti-chevron-up');
     }
@@ -870,27 +907,15 @@ function cerrarMenusPedido() {
     });
 }
 
-// Cerrar al hacer click fuera
 document.addEventListener('click', function(e) {
     if (!e.target.closest('.menu-wrap')) {
         cerrarMenusPedido();
     }
 });
 
-// ============================================================
-// Sincronizar un pedido ya creado con WooCommerce
-// Llama Entrega_Handler.ashx con accion=SINCRONIZAR_PEDIDO_WC
-// Al recibir wc_order_id, transforma el botón en "Ver en WC"
-// ============================================================
-// ============================================================
-// Sincronizar un pedido ya creado con WooCommerce
-// Llama Entrega_Handler.ashx con accion=SINCRONIZAR_PEDIDO_WC
-// Recarga la página para refrescar el menú con "Ver en WC"
-// ============================================================
 function sincronizarConWC(pedidoId, btn) {
-    if (!confirm('¿Crear este pedido en WooCommerce?')) return;
+    if (!confirm('Crear este pedido en WooCommerce?')) return;
 
-    // Buscar el botón Acciones del menú padre
     var menuWrap = btn.closest('.menu-wrap');
     var btnAcciones = menuWrap ? menuWrap.querySelector('.btn-acciones-menu') : null;
     if (btnAcciones) {
@@ -906,7 +931,6 @@ function sincronizarConWC(pedidoId, btn) {
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.ok && data.wc_order_id > 0) {
-                // Recargar para mostrar el nuevo estado del menú
                 location.reload();
             } else {
                 alert('No se pudo crear en WooCommerce:\n' + (data.msg || 'Error desconocido'));
@@ -917,7 +941,7 @@ function sincronizarConWC(pedidoId, btn) {
             }
         })
         .catch(function() {
-            alert('Error de conexión. Intente nuevamente.');
+            alert('Error de conexion. Intente nuevamente.');
             if (btnAcciones) {
                 btnAcciones.disabled = false;
                 btnAcciones.innerHTML = 'Acciones <i class="ti ti-chevron-down" style="font-size:13px"></i>';
@@ -926,7 +950,7 @@ function sincronizarConWC(pedidoId, btn) {
 }
 
 // ============================================================
-// Edición inline del nombre del cliente
+// Edicion inline del nombre del cliente
 // ============================================================
 function iniciarEdicionNombre() {
     document.getElementById('vistaNombre').style.display = 'none';
@@ -967,33 +991,7 @@ function guardarNombreCliente() {
             errBox.style.display = 'block';
         }
     })
-    .catch(function() { errBox.textContent = 'Error de conexión'; errBox.style.display = 'block'; });
-}
-
-// ============================================================
-// Enviar cotización por WhatsApp
-// ============================================================
-function enviarCotizacion() {
-    var ppId = parseInt(document.getElementById('hdPrePedidoId').value) || 0;
-    var celular = document.getElementById('hdCelular').value || '';
-    if (ppId <= 0) return;
-    var fd = new FormData();
-    fd.append('accion', 'GENERAR_COTIZACION');
-    fd.append('prepedido_id', ppId);
-    fetch('PrePedido_Detalle.aspx?id=' + ppId, {
-        method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: fd
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-        if (!data.ok) { alert(data.msg || 'No se pudo generar la cotización'); return; }
-        var celLimpio = celular.replace(/[^0-9]/g, '');
-        if (celLimpio.length === 8) celLimpio = '591' + celLimpio;
-        var url = celLimpio
-            ? 'whatsapp://send?phone=' + celLimpio + '&text=' + encodeURIComponent(data.mensaje)
-            : 'whatsapp://send?text=' + encodeURIComponent(data.mensaje);
-        window.location.href = url;
-    })
-    .catch(function() { alert('Error de conexión al generar cotización'); });
+    .catch(function() { errBox.textContent = 'Error de conexion'; errBox.style.display = 'block'; });
 }
 </script>
 </asp:Content>

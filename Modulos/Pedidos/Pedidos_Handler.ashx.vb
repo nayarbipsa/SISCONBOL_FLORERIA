@@ -22,6 +22,23 @@ Public Class Pedidos_Handler
             Return
         End If
 
+        ' ============================================================
+        ' ROUTING: endpoint para listar deliverys (modal asignacion)
+        ' ============================================================
+        Dim action As String = LeerQS(context, "action")
+        If action = "deliverys" Then
+            ListarDeliverysJson(context)
+            Return
+        End If
+
+        ' ============================================================
+        ' ROUTING: endpoint para refrescar UNA fila despues de asignar
+        ' ============================================================
+        If action = "fila" Then
+            RenderUnaFila(context)
+            Return
+        End If
+
         Try
             ' Leer permisos (1=Admin, 2=Gerente, 3=Cajero/Vendedor)
             Dim tipoId As Integer = 3
@@ -50,6 +67,7 @@ Public Class Pedidos_Handler
             Dim soloSinDelivery As String = LeerQS(context, "sd")
             Dim vistaCompacta As String = LeerQS(context, "cp")
             Dim sucPreparaStr As String = LeerQS(context, "sp")
+            Dim estadoGrupo As String = LeerQS(context, "es")  ' NUEVO: grupo de estados
 
             ' Flag tab WC
             Dim esTabWC As Boolean = (tab = "wc_pendiente")
@@ -76,6 +94,7 @@ Public Class Pedidos_Handler
                     cmd.Parameters.AddWithValue("@solo_sin_delivery", If(soloSinDelivery = "1", 1, 0))
                     cmd.Parameters.AddWithValue("@sucursal_prepara_id", IfInt(sucPreparaStr))
                     cmd.Parameters.AddWithValue("@solo_wc_pendiente", If(esTabWC, 1, 0))
+                    cmd.Parameters.AddWithValue("@estado_grupo", IfBlanco(estadoGrupo))
                     cmd.Parameters.AddWithValue("@pagina", 1)
                     cmd.Parameters.AddWithValue("@por_pagina", 200)
 
@@ -376,6 +395,21 @@ Public Class Pedidos_Handler
         Dim accionVolver As String = ObtenerAccionVolver(pid, estadoOp)
         If accionSiguiente <> "" Then sb.Append(accionSiguiente)
         If accionVolver <> "" Then sb.Append(accionVolver)
+
+        ' ============================================================
+        ' Sección "Cambiar estado" - los 8 estados siempre disponibles
+        ' El estado actual aparece con un check
+        ' ============================================================
+        sb.Append("<div class=""dropdown-divider""></div>")
+        sb.Append("<div class=""dropdown-section-label"">Cambiar estado</div>")
+        sb.Append(RenderEstadoItem(pid, "PENDIENTE", "ti-clock", "Pendiente", estadoOp))
+        sb.Append(RenderEstadoItem(pid, "IMPRESO", "ti-printer", "Impreso", estadoOp))
+        sb.Append(RenderEstadoItem(pid, "EN_PREPARACION", "ti-flower", "En preparación", estadoOp))
+        sb.Append(RenderEstadoItem(pid, "LISTO", "ti-package", "Listo", estadoOp))
+        sb.Append(RenderEstadoItem(pid, "EN_RUTA", "ti-truck-delivery", "Enviado (en ruta)", estadoOp))
+        sb.Append(RenderEstadoItem(pid, "ENTREGADO", "ti-circle-check", "Entregado", estadoOp))
+        sb.Append(RenderEstadoItem(pid, "NO_ENTREGADO", "ti-circle-x", "No entregado", estadoOp))
+        sb.Append(RenderEstadoItem(pid, "REPROGRAMADO", "ti-refresh", "Reprogramado", estadoOp))
 
         sb.Append("<div class=""dropdown-divider""></div>")
         sb.Append("<div class=""dropdown-section-label"">Gestión</div>")
@@ -678,6 +712,156 @@ Public Class Pedidos_Handler
             Case "REPROGRAMADO" : Return "Reprogramado"
             Case Else : Return e
         End Select
+    End Function
+
+    ' ============================================================
+    ' ENDPOINT: ?action=deliverys
+    ' Devuelve JSON con lista de usuarios para modal de asignacion
+    ' ============================================================
+    Private Sub ListarDeliverysJson(context As HttpContext)
+        context.Response.ContentType = "application/json"
+        Dim sb As New StringBuilder()
+        sb.Append("[")
+        Dim primero As Boolean = True
+
+        Try
+            Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
+                conn.Open()
+                Using cmd As New SqlCommand("FLORERIA_sp_Asignacion_ListarDeliverysActivos", conn)
+                    cmd.CommandType = CommandType.StoredProcedure
+                    Using dr As SqlDataReader = cmd.ExecuteReader()
+                        While dr.Read()
+                            If Not primero Then sb.Append(",")
+                            primero = False
+
+                            Dim uid As Integer = LeerInt(dr, "usuario_id")
+                            Dim nombreCompleto As String = LeerStr(dr, "nombre_completo")
+                            Dim celular As String = LeerStr(dr, "celular")
+                            Dim tipoId As Integer = LeerInt(dr, "tipo_id")
+                            Dim tipoNombre As String = LeerStr(dr, "tipo_nombre")
+                            Dim tipoCorto As String = LeerStr(dr, "tipo_corto")
+                            Dim ordenSeccion As Integer = LeerInt(dr, "orden_seccion")
+                            Dim pedidosHoy As Integer = LeerInt(dr, "pedidos_activos_hoy")
+
+                            sb.Append("{")
+                            sb.Append("""id"":" & uid & ",")
+                            sb.Append("""nombre"":""" & JsonEscape(nombreCompleto) & """,")
+                            sb.Append("""celular"":""" & JsonEscape(celular) & """,")
+                            sb.Append("""tipo_id"":" & tipoId & ",")
+                            sb.Append("""tipo_nombre"":""" & JsonEscape(tipoNombre) & """,")
+                            sb.Append("""tipo_corto"":""" & JsonEscape(tipoCorto) & """,")
+                            sb.Append("""orden"":" & ordenSeccion & ",")
+                            sb.Append("""pedidos_hoy"":" & pedidosHoy)
+                            sb.Append("}")
+                        End While
+                    End Using
+                End Using
+            End Using
+            sb.Append("]")
+            context.Response.Write(sb.ToString())
+        Catch ex As Exception
+            System.Diagnostics.Debug.WriteLine("ERROR ListarDeliverysJson: " & ex.Message)
+            context.Response.StatusCode = 500
+            context.Response.Write("{""error"":""" & JsonEscape(ex.Message) & """}")
+        End Try
+    End Sub
+
+    ' ============================================================
+    ' ENDPOINT: ?action=fila&id=X
+    ' Devuelve el HTML de UNA fila para refrescar despues de asignar
+    ' ============================================================
+    Private Sub RenderUnaFila(context As HttpContext)
+        Dim pedidoIdStr As String = LeerQS(context, "id")
+        Dim pedidoId As Integer = 0
+        Integer.TryParse(pedidoIdStr, pedidoId)
+        If pedidoId <= 0 Then
+            context.Response.Write("")
+            Return
+        End If
+
+        ' Verificar permisos
+        Dim tipoId As Integer = 3
+        If context.Session("tipo_id") IsNot Nothing Then
+            Integer.TryParse(context.Session("tipo_id").ToString(), tipoId)
+        End If
+        Dim esAdmin As Boolean = (tipoId = 1 OrElse tipoId = 2)
+
+        Try
+            Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
+                conn.Open()
+                ' Usar el mismo SP de listar pero filtrando por buscar=codigo del pedido
+                ' Truco: pasamos el pedido_id como filtro buscar (codigo PED)
+                Using cmd As New SqlCommand("SELECT codigo FROM FLORERIA_Pedido WHERE pedido_id = @pid", conn)
+                    cmd.Parameters.AddWithValue("@pid", pedidoId)
+                    Dim codigo As Object = cmd.ExecuteScalar()
+                    If codigo Is Nothing OrElse codigo Is DBNull.Value Then
+                        context.Response.Write("")
+                        Return
+                    End If
+
+                    ' Llamar al SP de listar con buscar = codigo
+                    Using cmd2 As New SqlCommand("FLORERIA_sp_Pedido_Listar", conn)
+                        cmd2.CommandType = CommandType.StoredProcedure
+                        cmd2.Parameters.AddWithValue("@buscar", codigo.ToString())
+                        cmd2.Parameters.AddWithValue("@fecha_desde", DBNull.Value)
+                        cmd2.Parameters.AddWithValue("@fecha_hasta", DBNull.Value)
+                        cmd2.Parameters.AddWithValue("@solo_hoy", 0)
+                        cmd2.Parameters.AddWithValue("@creado_desde", DBNull.Value)
+                        cmd2.Parameters.AddWithValue("@creado_hasta", DBNull.Value)
+                        cmd2.Parameters.AddWithValue("@estado_pago", DBNull.Value)
+                        cmd2.Parameters.AddWithValue("@estado_operativo", DBNull.Value)
+                        cmd2.Parameters.AddWithValue("@zona_id", DBNull.Value)
+                        cmd2.Parameters.AddWithValue("@delivery_id", DBNull.Value)
+                        cmd2.Parameters.AddWithValue("@solo_express", 0)
+                        cmd2.Parameters.AddWithValue("@solo_sin_contactar", 0)
+                        cmd2.Parameters.AddWithValue("@solo_sin_delivery", 0)
+                        cmd2.Parameters.AddWithValue("@sucursal_prepara_id", DBNull.Value)
+                        cmd2.Parameters.AddWithValue("@solo_wc_pendiente", 0)
+                        cmd2.Parameters.AddWithValue("@estado_grupo", DBNull.Value)
+                        cmd2.Parameters.AddWithValue("@pagina", 1)
+                        cmd2.Parameters.AddWithValue("@por_pagina", 1)
+
+                        Using dr As SqlDataReader = cmd2.ExecuteReader()
+                            If dr.Read() Then
+                                context.Response.Write(RenderFilaTodos(dr, esAdmin, False))
+                            End If
+                        End Using
+                    End Using
+                End Using
+            End Using
+        Catch ex As Exception
+            System.Diagnostics.Debug.WriteLine("ERROR RenderUnaFila: " & ex.Message)
+            context.Response.StatusCode = 500
+            context.Response.Write("")
+        End Try
+    End Sub
+
+    ' Helper para escapar JSON
+    Private Function JsonEscape(s As String) As String
+        If s Is Nothing Then Return ""
+        Return s.Replace("\", "\\").Replace("""", "\""").Replace(vbCrLf, " ").Replace(vbLf, " ").Replace(vbCr, " ").Replace(Chr(9), " ")
+    End Function
+
+    ' ============================================================
+    ' Helper: renderiza un item del dropdown "Cambiar estado"
+    ' Si es el estado actual, muestra check y queda deshabilitado
+    ' ============================================================
+    Private Function RenderEstadoItem(pid As Integer, estado As String, icono As String, etiqueta As String, estadoActual As String) As String
+        Dim esActual As Boolean = (estado = estadoActual)
+        Dim sb As New StringBuilder()
+
+        If esActual Then
+            sb.Append("<button type=""button"" class=""dropdown-item estado-item estado-actual"" disabled>")
+            sb.Append("<i class=""ti " & icono & """></i> " & etiqueta)
+            sb.Append("<i class=""ti ti-check estado-check""></i>")
+            sb.Append("</button>")
+        Else
+            sb.Append("<button type=""button"" class=""dropdown-item estado-item"" onclick=""cambiarEstado(" & pid & ",'" & estado & "')"">")
+            sb.Append("<i class=""ti " & icono & """></i> " & etiqueta)
+            sb.Append("</button>")
+        End If
+
+        Return sb.ToString()
     End Function
 
     Public ReadOnly Property IsReusable As Boolean Implements IHttpHandler.IsReusable

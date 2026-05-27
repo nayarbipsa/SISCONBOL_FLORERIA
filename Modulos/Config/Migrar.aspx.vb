@@ -686,6 +686,8 @@ Partial Public Class Modulos_Config_Migrar
             End Using
 
             ' --- 2. Detectar pickup vs delivery y calcular fecha/slot ---
+            ' REGLA DE NEGOCIO: pickup = entrega express. Se trata como DOMICILIO normal,
+            '                   pero la fecha/horario vienen de pickup_date/pickup_time.
             Dim esPickup As Boolean = (p.DeliveryType.ToLower().Trim() = "pickup")
             Dim horarioStr As String = If(esPickup, p.PickupTime, p.DeliveryTime)
             Dim fechaParam As Object = DBNull.Value
@@ -715,13 +717,48 @@ Partial Public Class Modulos_Config_Migrar
             ' --- 5. INSERT o UPDATE ---
             If pedidoId > 0 Then
                 ' ============================================================
-                ' UPDATE — SOLO fecha, slot, datos WC de pago, estado_pago
-                ' NO TOCA: direccion, receptor, dedicatoria, nota, tipo_entrega
+                ' UPDATE — REFRESCA TODO desde WC (politica decidida con Bryan)
+                ' Pisa cualquier edicion manual hecha en SISCONBOL.
+                ' Pickup se trata como DOMICILIO normal.
                 ' ============================================================
+                Dim tipoEntrega As String = "DOMICILIO"
+                Dim direccion   As String = If(p.Direccion <> "", p.Direccion, "Sin direccion")
+                Dim receptor    As String = If(p.ShippingNombre <> "", p.ShippingNombre, If(p.BillingNombre <> "", (p.BillingNombre & " " & p.BillingApellidos).Trim(), "Sin nombre"))
+                Dim celular     As String = If(p.ShippingPhone <> "", p.ShippingPhone, If(p.TelefonoRecibe <> "", p.TelefonoRecibe, If(p.BillingPhone <> "", p.BillingPhone, "00000000")))
+
+                ' Resolver zona desde shipping.state SIEMPRE
+                Dim zonaIdUpd As Object = DBNull.Value
+                If p.ShippingState <> "" Then
+                    zonaIdUpd = M2_ObtenerOCrearZona(conn, tx, p.ShippingState)
+                End If
+
+                ' Totales y USD (recalcular)
+                Dim tasaUpd As Decimal = If(p.WoocsRate > 0, p.WoocsRate, 0D)
+                Dim totalUsdUpd As Decimal = If(tasaUpd > 0, Math.Round(p.TotalBs * tasaUpd, 2), 0D)
+                Dim envioUsdUpd As Decimal = If(tasaUpd > 0, Math.Round(p.EnvioBs * tasaUpd, 2), 0D)
+                Dim descUsdUpd  As Decimal = If(tasaUpd > 0, Math.Round(p.DescuentoBs * tasaUpd, 2), 0D)
+
                 Using upd As New SqlCommand(
                     "UPDATE FLORERIA_Pedido SET " &
+                    "  receptor_nombre         = @rn, " &
+                    "  receptor_celular        = @rc, " &
+                    "  zona_id                 = @zid, " &
+                    "  tipo_entrega            = @te, " &
+                    "  direccion               = @dir, " &
                     "  fecha_entrega           = ISNULL(@fe, fecha_entrega), " &
                     "  slot_id                 = ISNULL(@sid, slot_id), " &
+                    "  dedicatoria             = @ded, " &
+                    "  firma_tarjeta           = @fir, " &
+                    "  tipo_ocacion            = @toc, " &
+                    "  nota_floreria           = @nf, " &
+                    "  gps                     = @gps, " &
+                    "  observaciones           = @obs, " &
+                    "  total_bs                = @tbs, " &
+                    "  total_usd               = @tusd, " &
+                    "  envio_bs                = @ebs, " &
+                    "  envio_usd               = @eusd, " &
+                    "  descuento_bs            = @dbs, " &
+                    "  descuento_usd           = @dusd, " &
                     "  wc_order_status         = @wst, " &
                     "  wc_date_paid            = @wdp, " &
                     "  wc_date_modified        = @wdm, " &
@@ -734,8 +771,25 @@ Partial Public Class Modulos_Config_Migrar
                     "  modificado_en           = GETDATE() " &
                     "WHERE pedido_id = @pid", conn, tx)
                     upd.CommandTimeout = 30
+                    upd.Parameters.AddWithValue("@rn",   receptor.Substring(0, Math.Min(200, receptor.Length)))
+                    upd.Parameters.AddWithValue("@rc",   celular.Substring(0, Math.Min(20, celular.Length)))
+                    upd.Parameters.AddWithValue("@zid",  zonaIdUpd)
+                    upd.Parameters.AddWithValue("@te",   tipoEntrega)
+                    upd.Parameters.AddWithValue("@dir",  direccion.Substring(0, Math.Min(300, direccion.Length)))
                     upd.Parameters.AddWithValue("@fe",   fechaParam)
                     upd.Parameters.AddWithValue("@sid",  slotId)
+                    upd.Parameters.AddWithValue("@ded",  If(p.MensajeTarjeta <> "",   CObj(p.MensajeTarjeta),     DBNull.Value))
+                    upd.Parameters.AddWithValue("@fir",  If(p.FirmaTarjeta <> "",     CObj(p.FirmaTarjeta),       DBNull.Value))
+                    upd.Parameters.AddWithValue("@toc",  MapearTipoOcacion(p.TipoOcacion))
+                    upd.Parameters.AddWithValue("@nf",   If(p.NotaFloreria <> "",     CObj(p.NotaFloreria),       DBNull.Value))
+                    upd.Parameters.AddWithValue("@gps",  If(p.Gps <> "",              CObj(p.Gps),                DBNull.Value))
+                    upd.Parameters.AddWithValue("@obs",  If(p.Observaciones <> "",    CObj(p.Observaciones),      DBNull.Value))
+                    upd.Parameters.AddWithValue("@tbs",  p.TotalBs)
+                    upd.Parameters.AddWithValue("@tusd", totalUsdUpd)
+                    upd.Parameters.AddWithValue("@ebs",  p.EnvioBs)
+                    upd.Parameters.AddWithValue("@eusd", envioUsdUpd)
+                    upd.Parameters.AddWithValue("@dbs",  p.DescuentoBs)
+                    upd.Parameters.AddWithValue("@dusd", descUsdUpd)
                     upd.Parameters.AddWithValue("@wst",  If(p.WcOrderStatus <> "",     CObj(p.WcOrderStatus),       DBNull.Value))
                     upd.Parameters.AddWithValue("@wdp",  If(p.WcDatePaid.HasValue,     CObj(p.WcDatePaid.Value),    DBNull.Value))
                     upd.Parameters.AddWithValue("@wdm",  If(p.WcDateModified.HasValue, CObj(p.WcDateModified.Value),DBNull.Value))
@@ -756,13 +810,16 @@ Partial Public Class Modulos_Config_Migrar
                 res.Accion = "UPDATE"
                 res.Mensaje = "fecha=" & If(fechaParam Is DBNull.Value, "(no tocada)", DirectCast(fechaParam, DateTime).ToString("yyyy-MM-dd")) &
                               ", slot_id=" & If(slotId Is DBNull.Value, "(no tocado)", slotId.ToString()) &
+                              ", zona_id=" & If(zonaIdUpd Is DBNull.Value, "(NULL)", zonaIdUpd.ToString()) &
                               ", estado_pago=" & estadoPago
             Else
                 ' ============================================================
                 ' INSERT — pedido nuevo
+                ' REGLA: pickup = entrega express, NO recojo en sucursal.
+                '         Siempre se guarda la direccion y zona reales de shipping.
                 ' ============================================================
-                Dim tipoEntrega As String = If(esPickup, "RECOJO_SUCURSAL", "DOMICILIO")
-                Dim direccion   As String = If(esPickup, "Recojo en sucursal", If(p.Direccion <> "", p.Direccion, "Sin direccion"))
+                Dim tipoEntrega As String = "DOMICILIO"
+                Dim direccion   As String = If(p.Direccion <> "", p.Direccion, "Sin direccion")
                 Dim receptor    As String = If(p.ShippingNombre <> "", p.ShippingNombre, If(p.BillingNombre <> "", (p.BillingNombre & " " & p.BillingApellidos).Trim(), "Sin nombre"))
                 Dim celular     As String = If(p.ShippingPhone <> "", p.ShippingPhone, If(p.TelefonoRecibe <> "", p.TelefonoRecibe, If(p.BillingPhone <> "", p.BillingPhone, "00000000")))
                 Dim fechaInsert As DateTime
@@ -772,8 +829,9 @@ Partial Public Class Modulos_Config_Migrar
                     fechaInsert = DirectCast(fechaParam, DateTime)
                 End If
 
+                ' Resolver zona desde shipping.state SIEMPRE (incluso si es pickup)
                 Dim zonaId As Object = DBNull.Value
-                If Not esPickup AndAlso p.ShippingState <> "" Then
+                If p.ShippingState <> "" Then
                     zonaId = M2_ObtenerOCrearZona(conn, tx, p.ShippingState)
                 End If
 
@@ -1822,7 +1880,8 @@ Partial Public Class Modulos_Config_Migrar
                 Decimal.TryParse(descStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, ped.DescuentoBs)
 
                 ' --- Billing (quien compra) ---
-                Dim posBilling As Integer = obj.IndexOf("""billing""")
+                ' Usar M2_BuscarObjetoClave para NO matchear "billing_*" si los hubiera
+                Dim posBilling As Integer = M2_BuscarObjetoClave(obj, "billing")
                 If posBilling >= 0 Then
                     Dim billingObj As String = ExtraerObjeto(obj, posBilling)
                     If billingObj <> "" Then
@@ -1834,7 +1893,9 @@ Partial Public Class Modulos_Config_Migrar
                 End If
 
                 ' --- Shipping (quien recibe) ---
-                Dim posShipping As Integer = obj.IndexOf("""shipping""")
+                ' OJO: NO usar IndexOf("""shipping""") porque matchea "shipping_total", "shipping_lines", etc.
+                ' M2_BuscarObjetoClave busca exactamente "shipping":{ ignorando los campos con prefijo
+                Dim posShipping As Integer = M2_BuscarObjetoClave(obj, "shipping")
                 If posShipping >= 0 Then
                     Dim shippingObj As String = ExtraerObjeto(obj, posShipping)
                     If shippingObj <> "" Then
@@ -1994,6 +2055,41 @@ Partial Public Class Modulos_Config_Migrar
         Catch
         End Try
         Return ""
+    End Function
+
+    ' ============================================================
+    ' M2_BuscarObjetoClave - busca la posicion de una CLAVE de objeto
+    ' Ej: M2_BuscarObjetoClave(json, "shipping") devuelve la pos de "shipping":{
+    '     ignorando "shipping_total", "shipping_lines", "shipping_tax", etc.
+    ' Retorna -1 si no encuentra.
+    ' ============================================================
+    Private Function M2_BuscarObjetoClave(json As String, clave As String) As Integer
+        Try
+            Dim patron As String = """" & clave & """"
+            Dim desde As Integer = 0
+            While desde < json.Length
+                Dim idx As Integer = json.IndexOf(patron, desde)
+                If idx < 0 Then Return -1
+                Dim after As Integer = idx + patron.Length
+                ' Saltar espacios/tabs
+                While after < json.Length AndAlso (json(after) = " "c OrElse json(after) = ChrW(9))
+                    after += 1
+                End While
+                ' Debe venir ":" seguido (opcional espacios) de "{"
+                If after < json.Length AndAlso json(after) = ":"c Then
+                    after += 1
+                    While after < json.Length AndAlso (json(after) = " "c OrElse json(after) = ChrW(9))
+                        after += 1
+                    End While
+                    If after < json.Length AndAlso json(after) = "{"c Then
+                        Return idx ' encontrado: "clave":{
+                    End If
+                End If
+                desde = idx + 1
+            End While
+        Catch
+        End Try
+        Return -1
     End Function
 
     Private Function ExtraerArray(json As String, campo As String) As String
