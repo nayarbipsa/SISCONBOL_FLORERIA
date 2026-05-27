@@ -985,9 +985,20 @@ Partial Public Class Modulos_Config_Migrar
 
     ' ============================================================
     ' M2_ObtenerOCrearSlot - usa la conexion/transaccion actual
+    '
+    ' Estrategia en cascada para NO duplicar slots:
+    '   1) Por wc_slot_value exacto
+    '   2) Por hora_inicio + hora_fin + ciudad_id=1
+    '        (mata slots con wc_slot_value=NULL como los originales 1-5)
+    '   3) Si no existe -> crear con activo=0
+    '
+    ' Si encuentra en (2), intenta POBLAR wc_slot_value del existente, pero
+    ' RESPETA el indice unico UQ_FLORERIA_Slot_wc_slot_value: solo lo puebla
+    ' si nadie mas lo tiene tomado. Si esta tomado, simplemente devuelve el
+    ' slot_id encontrado sin tocar nada (sin romper el flujo).
     ' ============================================================
     Private Function M2_ObtenerOCrearSlot(conn As SqlConnection, tx As SqlTransaction, horario As String) As Object
-        ' Buscar existente
+        ' ----- ESTRATEGIA 1: wc_slot_value exacto -----
         Using cmd As New SqlCommand("SELECT slot_id FROM FLORERIA_Slot_Horario WHERE wc_slot_value=@v", conn, tx)
             cmd.CommandTimeout = 10
             cmd.Parameters.AddWithValue("@v", horario)
@@ -995,7 +1006,7 @@ Partial Public Class Modulos_Config_Migrar
             If r IsNot Nothing AndAlso Not IsDBNull(r) Then Return CInt(r)
         End Using
 
-        ' Parsear horas "HH:mm - HH:mm"
+        ' ----- Parsear horas "HH:mm - HH:mm" -----
         Dim partes() As String = horario.Split(New String() {" - "}, StringSplitOptions.RemoveEmptyEntries)
         Dim hi As String = If(partes.Length > 0, partes(0).Trim() & ":00", "00:00:00")
         Dim hf As String = If(partes.Length > 1, partes(1).Trim() & ":00", "00:00:00")
@@ -1008,7 +1019,48 @@ Partial Public Class Modulos_Config_Migrar
         Catch
         End Try
 
-        ' Crear slot activo=0
+        ' ----- ESTRATEGIA 2: por hora_inicio + hora_fin + ciudad_id=1 -----
+        If partes.Length >= 2 Then
+            Dim slotExistenteId As Integer = 0
+            Using cmd2 As New SqlCommand(
+                "SELECT TOP 1 slot_id FROM FLORERIA_Slot_Horario " &
+                "WHERE ciudad_id=1 AND hora_inicio=@hi AND hora_fin=@hf " &
+                "ORDER BY activo DESC, slot_id ASC", conn, tx)
+                cmd2.CommandTimeout = 10
+                cmd2.Parameters.AddWithValue("@hi", hi)
+                cmd2.Parameters.AddWithValue("@hf", hf)
+                Dim r2 As Object = cmd2.ExecuteScalar()
+                If r2 IsNot Nothing AndAlso Not IsDBNull(r2) Then slotExistenteId = CInt(r2)
+            End Using
+
+            If slotExistenteId > 0 Then
+                ' Intentar poblar wc_slot_value SOLO si:
+                '   - El slot encontrado lo tiene vacio
+                '   - Y NINGUN otro slot tiene ese mismo wc_slot_value (proteccion contra UQ)
+                Try
+                    Using upd As New SqlCommand(
+                        "UPDATE FLORERIA_Slot_Horario SET wc_slot_value=@v " &
+                        "WHERE slot_id=@id " &
+                        "  AND (wc_slot_value IS NULL OR wc_slot_value='') " &
+                        "  AND NOT EXISTS (" &
+                        "      SELECT 1 FROM FLORERIA_Slot_Horario s2 " &
+                        "      WHERE s2.wc_slot_value=@v AND s2.slot_id<>@id" &
+                        "  )", conn, tx)
+                        upd.CommandTimeout = 10
+                        upd.Parameters.AddWithValue("@v", horario)
+                        upd.Parameters.AddWithValue("@id", slotExistenteId)
+                        upd.ExecuteNonQuery()
+                    End Using
+                Catch ex As Exception
+                    ' Si el UPDATE fallara por cualquier razon, no rompemos el flujo:
+                    ' lo importante es devolver el slot_id encontrado.
+                    System.Diagnostics.Debug.WriteLine("M2_ObtenerOCrearSlot UPDATE wc_slot_value: " & ex.Message)
+                End Try
+                Return slotExistenteId
+            End If
+        End If
+
+        ' ----- ESTRATEGIA 3: no existe, crear activo=0 -----
         Using ins As New SqlCommand(
             "INSERT INTO FLORERIA_Slot_Horario(ciudad_id, etiqueta, hora_inicio, hora_fin, duracion_minutos, " &
             "recargo_bs, es_express, activo, orden_display, wc_slot_value, creado_en) " &
@@ -1025,8 +1077,21 @@ Partial Public Class Modulos_Config_Migrar
 
     ' ============================================================
     ' M2_ObtenerOCrearZona - usa la conexion/transaccion actual
+    '
+    ' Estrategia en cascada para NO duplicar zonas:
+    '   1) Por wc_zone_code exacto
+    '   2) Por columna codigo exacto
+    '       (por si WC manda "BO157" y existe zona con codigo="BO157" pero
+    '        wc_zone_code=NULL o distinto)
+    '   3) Por nombre normalizado (LOWER + LTRIM + RTRIM)
+    '       (mata el problema de WC mandando "Sopocachi Bajo" en lugar de "BO157")
+    '   4) Si no existe -> crear con activo=0
+    '
+    ' Si encuentra en (2) o (3), POBLA wc_zone_code del existente solo si esta vacio.
+    ' FLORERIA_Zona NO tiene indice unico sobre wc_zone_code (verificado).
     ' ============================================================
     Private Function M2_ObtenerOCrearZona(conn As SqlConnection, tx As SqlTransaction, codigo As String) As Object
+        ' ----- ESTRATEGIA 1: wc_zone_code exacto -----
         Using cmd As New SqlCommand("SELECT zona_id FROM FLORERIA_Zona WHERE wc_zone_code=@c", conn, tx)
             cmd.CommandTimeout = 10
             cmd.Parameters.AddWithValue("@c", codigo)
@@ -1034,7 +1099,65 @@ Partial Public Class Modulos_Config_Migrar
             If r IsNot Nothing AndAlso Not IsDBNull(r) Then Return CInt(r)
         End Using
 
-        Dim cod As String = codigo.Substring(0, Math.Min(20, codigo.Length))
+        Dim codTrunc As String = codigo.Substring(0, Math.Min(20, codigo.Length))
+
+        ' ----- ESTRATEGIA 2: por columna codigo exacto -----
+        Using cmd2 As New SqlCommand(
+            "SELECT TOP 1 zona_id FROM FLORERIA_Zona " &
+            "WHERE codigo=@c " &
+            "ORDER BY activo DESC, zona_id ASC", conn, tx)
+            cmd2.CommandTimeout = 10
+            cmd2.Parameters.AddWithValue("@c", codTrunc)
+            Dim r2 As Object = cmd2.ExecuteScalar()
+            If r2 IsNot Nothing AndAlso Not IsDBNull(r2) Then
+                Dim zid As Integer = CInt(r2)
+                Try
+                    Using upd As New SqlCommand(
+                        "UPDATE FLORERIA_Zona SET wc_zone_code=@v " &
+                        "WHERE zona_id=@id AND (wc_zone_code IS NULL OR wc_zone_code='')", conn, tx)
+                        upd.CommandTimeout = 10
+                        upd.Parameters.AddWithValue("@v", codigo)
+                        upd.Parameters.AddWithValue("@id", zid)
+                        upd.ExecuteNonQuery()
+                    End Using
+                Catch ex As Exception
+                    System.Diagnostics.Debug.WriteLine("M2_ObtenerOCrearZona UPDATE wc_zone_code (E2): " & ex.Message)
+                End Try
+                Return zid
+            End If
+        End Using
+
+        ' ----- ESTRATEGIA 3: por nombre normalizado -----
+        Dim nombreNorm As String = codigo.Trim()
+        If nombreNorm.Length > 0 Then
+            Using cmd3 As New SqlCommand(
+                "SELECT TOP 1 zona_id FROM FLORERIA_Zona " &
+                "WHERE LOWER(LTRIM(RTRIM(nombre))) = LOWER(@n) " &
+                "ORDER BY activo DESC, zona_id ASC", conn, tx)
+                cmd3.CommandTimeout = 10
+                cmd3.Parameters.AddWithValue("@n", nombreNorm)
+                Dim r3 As Object = cmd3.ExecuteScalar()
+                If r3 IsNot Nothing AndAlso Not IsDBNull(r3) Then
+                    Dim zid As Integer = CInt(r3)
+                    Try
+                        Using upd As New SqlCommand(
+                            "UPDATE FLORERIA_Zona SET wc_zone_code=@v " &
+                            "WHERE zona_id=@id AND (wc_zone_code IS NULL OR wc_zone_code='')", conn, tx)
+                            upd.CommandTimeout = 10
+                            upd.Parameters.AddWithValue("@v", codigo)
+                            upd.Parameters.AddWithValue("@id", zid)
+                            upd.ExecuteNonQuery()
+                        End Using
+                    Catch ex As Exception
+                        System.Diagnostics.Debug.WriteLine("M2_ObtenerOCrearZona UPDATE wc_zone_code (E3): " & ex.Message)
+                    End Try
+                    Return zid
+                End If
+            End Using
+        End If
+
+        ' ----- ESTRATEGIA 4: no existe, crear activo=0 -----
+        Dim cod As String = codTrunc
         Using chkCod As New SqlCommand("SELECT COUNT(1) FROM FLORERIA_Zona WHERE codigo=@c AND ciudad_id=1", conn, tx)
             chkCod.CommandTimeout = 10
             chkCod.Parameters.AddWithValue("@c", cod)
@@ -1046,7 +1169,7 @@ Partial Public Class Modulos_Config_Migrar
             "VALUES(1, @nom, @cod, 'DELIVERY', 0, 0, @wc, GETDATE()); SELECT SCOPE_IDENTITY();", conn, tx)
             ins.CommandTimeout = 30
             ins.Parameters.AddWithValue("@nom", codigo.Substring(0, Math.Min(150, codigo.Length)))
-            ins.Parameters.AddWithValue("@cod", cod)
+            ins.Parameters.AddWithValue("@cod", cod.Substring(0, Math.Min(20, cod.Length)))
             ins.Parameters.AddWithValue("@wc",  codigo)
             Return CInt(ins.ExecuteScalar())
         End Using
