@@ -66,18 +66,18 @@
                         <div class="accion-sub">Ver todos (<%=TotalPrePedidos%>)</div>
                     </div>
                 </a>
-                <a href="Modulos/Pedidos/PrePedido_Crear.aspx?tipo=VENTA_TIENDA" class="accion-card">
-                    <i class="ti ti-shopping-cart"></i>
+                <a href="Modulos/Pedidos/GestionPedidos.aspx" class="accion-card">
+                    <i class="ti ti-clipboard-list"></i>
                     <div class="accion-content">
-                        <div class="accion-titulo">Venta Tienda</div>
-                        <div class="accion-sub">Registro directo</div>
+                        <div class="accion-titulo">Gestion de Pedidos</div>
+                        <div class="accion-sub">Administrar pedidos activos</div>
                     </div>
                 </a>
-                <a href="javascript:void(0);" onclick="abrirBusqueda();" class="accion-card">
-                    <i class="ti ti-search"></i>
+                <a href="Modulos/Pedidos/MisEntregas.aspx" class="accion-card">
+                    <i class="ti ti-truck-delivery"></i>
                     <div class="accion-content">
-                        <div class="accion-titulo">Buscar Pedido</div>
-                        <div class="accion-sub">Por código/celular</div>
+                        <div class="accion-titulo">Mis Entregas</div>
+                        <div class="accion-sub">Pedidos asignados a mi</div>
                     </div>
                 </a>
             </div>
@@ -448,11 +448,6 @@ function esc(/** @type {any} */ v) {
         .replace(/"/g,'&quot;');
 }
 
-function abrirBusqueda() {
-    var codigo = prompt('Ingrese el código de pre-pedido o número de celular:');
-    if (codigo && codigo.trim()) {
-        window.location.href = 'Modulos/Pedidos/PrePedidos.aspx?buscar=' + encodeURIComponent(codigo.trim());
-    }
-}
+
 </script>
 </asp:Content>
