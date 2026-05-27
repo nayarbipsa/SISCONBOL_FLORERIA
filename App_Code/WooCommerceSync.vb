@@ -1131,4 +1131,317 @@ Public Class WooCommerceSync
         End Select
     End Function
 
+    ' ============================================================
+    ' SincronizarBorrador - envía un borrador a WooCommerce SIN
+    ' confirmarlo todavía en FLORERIA_Pedido.
+    ' Si WC responde OK, devuelve el wc_order_id para que el handler
+    ' recién entonces ejecute el SP _Confirmar.
+    ' Si WC falla, NO se toca nada en BD - el borrador queda intacto
+    ' y puede reintentarse.
+    '
+    ' Devuelve Dictionary con:
+    '   ok:           Boolean
+    '   mensaje:      String
+    '   wc_order_id:  Integer (0 si falló)
+    '   wc_order_number: String (vacío si falló)
+    ' ============================================================
+    Public Shared Function SincronizarBorrador(prepedidoEntregaId As Integer) As Dictionary(Of String, Object)
+        Dim resultado As New Dictionary(Of String, Object)
+        resultado("ok") = False
+        resultado("mensaje") = ""
+        resultado("wc_order_id") = 0
+        resultado("wc_order_number") = ""
+
+        Try
+            Dim syncActivo As String = ObtenerConfig("SYNC_ACTIVO")
+            If syncActivo <> "1" Then
+                resultado("mensaje") = "Sincronización desactivada"
+                Return resultado
+            End If
+
+            Dim pedido As Dictionary(Of String, Object) = ObtenerBorrador(prepedidoEntregaId)
+            If pedido Is Nothing Then
+                resultado("mensaje") = "Borrador no encontrado"
+                Return resultado
+            End If
+
+            Dim wcData As String = ConstruirJsonPedido(pedido)
+
+            System.Diagnostics.Debug.WriteLine("===========================================")
+            System.Diagnostics.Debug.WriteLine("[WC_SYNC_BORRADOR] Enviando borrador prepedido_entrega_id=" & prepedidoEntregaId)
+            System.Diagnostics.Debug.WriteLine("[WC_SYNC_BORRADOR] Payload (longitud=" & wcData.Length & "):")
+            System.Diagnostics.Debug.WriteLine(wcData)
+            System.Diagnostics.Debug.WriteLine("===========================================")
+
+            ' POST nuevo (los borradores nunca tienen wc_order_id)
+            Dim request As HttpWebRequest = CrearRequest("POST", "/orders")
+            Using sw As New StreamWriter(request.GetRequestStream())
+                sw.Write(wcData)
+            End Using
+
+            Using response As HttpWebResponse = CType(request.GetResponse(), HttpWebResponse)
+                Using sr As New StreamReader(response.GetResponseStream())
+                    Dim respuesta As String = sr.ReadToEnd()
+                    System.Diagnostics.Debug.WriteLine("[WC_SYNC_BORRADOR] Respuesta WC: " & respuesta.Substring(0, Math.Min(500, respuesta.Length)))
+
+                    Dim serializer As New JavaScriptSerializer()
+                    Dim wcRespuesta As Dictionary(Of String, Object) = serializer.Deserialize(Of Dictionary(Of String, Object))(respuesta)
+
+                    If wcRespuesta IsNot Nothing AndAlso wcRespuesta.ContainsKey("id") Then
+                        Dim wcOrderId As Integer = CInt(wcRespuesta("id"))
+                        Dim orderNumber As String = If(wcRespuesta.ContainsKey("number"), wcRespuesta("number").ToString(), wcOrderId.ToString())
+                        resultado("ok") = True
+                        resultado("mensaje") = "Pedido creado en WooCommerce"
+                        resultado("wc_order_id") = wcOrderId
+                        resultado("wc_order_number") = orderNumber
+                    Else
+                        resultado("mensaje") = "Respuesta WC sin id de pedido"
+                    End If
+                End Using
+            End Using
+
+        Catch ex As WebException
+            ' Detalle del error de WC para diagnosticar
+            Dim errorMsg As String = ex.Message
+            Try
+                Using sr As New StreamReader(ex.Response.GetResponseStream())
+                    errorMsg = sr.ReadToEnd()
+                End Using
+            Catch
+            End Try
+            System.Diagnostics.Debug.WriteLine("[WC_SYNC_BORRADOR_ERROR] WebException prepedido_entrega_id=" & prepedidoEntregaId)
+            System.Diagnostics.Debug.WriteLine("[WC_SYNC_BORRADOR_ERROR] Mensaje: " & ex.Message)
+            System.Diagnostics.Debug.WriteLine("[WC_SYNC_BORRADOR_ERROR] Respuesta WC: " & errorMsg)
+            resultado("mensaje") = "Error WC: " & errorMsg.Substring(0, Math.Min(300, errorMsg.Length))
+
+        Catch ex As Exception
+            System.Diagnostics.Debug.WriteLine("[WC_SYNC_BORRADOR_ERROR] Exception prepedido_entrega_id=" & prepedidoEntregaId & ": " & ex.Message)
+            resultado("mensaje") = "Error: " & ex.Message
+        End Try
+
+        Return resultado
+    End Function
+
+    ' ============================================================
+    ' ObtenerBorrador - lee TODO lo necesario para armar JSON WooCommerce
+    ' desde FLORERIA_PrePedido_Entrega + _Detalle + _Pago (NO desde
+    ' FLORERIA_Pedido, ya que el borrador aún no fue confirmado).
+    '
+    ' Devuelve el mismo Dictionary que ObtenerPedido para que
+    ' ConstruirJsonPedido() pueda reutilizarse sin cambios.
+    '
+    ' Cálculos de envio_bs, recargo_horario_bs, total_bs replican la
+    ' misma fórmula del SP FLORERIA_sp_PrePedidoEntrega_Confirmar.
+    ' ============================================================
+    Private Shared Function ObtenerBorrador(prepedidoEntregaId As Integer) As Dictionary(Of String, Object)
+        Try
+            Using conn As New SqlConnection(ConfigurationManager.ConnectionStrings("SISCONBOL").ConnectionString)
+                conn.Open()
+
+                ' --- 1. Datos del borrador + prepedido + ciudad/zona/slot ---
+                Dim sql As String =
+                    "SELECT e.prepedido_entrega_id, e.prepedido_id, e.estado, " &
+                    "       e.receptor_nombre, e.receptor_celular, " &
+                    "       e.ciudad_id, e.zona_id, e.sucursal_id, e.tipo_entrega, " &
+                    "       e.direccion, e.referencia, e.gps, " &
+                    "       e.fecha_entrega, e.slot_id, e.es_express, " &
+                    "       e.dedicatoria, e.firma_tarjeta, e.tipo_ocacion, " &
+                    "       e.nota_floreria, " &
+                    "       e.descuento_valor, e.descuento_moneda, " &
+                    "       c.nombre AS ciudad_nombre, " &
+                    "       z.nombre AS zona_nombre, " &
+                    "       sl.etiqueta AS slot_etiqueta, sl.wc_slot_value, sl.recargo_bs AS slot_recargo_bs, " &
+                    "       pp.cliente_nombre, pp.cliente_apellidos, " &
+                    "       pp.cliente_email, pp.cliente_celular, pp.observaciones AS pp_observaciones " &
+                    "FROM FLORERIA_PrePedido_Entrega e " &
+                    "LEFT JOIN FLORERIA_Ciudad c     ON c.ciudad_id = e.ciudad_id " &
+                    "LEFT JOIN FLORERIA_Zona   z     ON z.zona_id   = e.zona_id " &
+                    "LEFT JOIN FLORERIA_Slot_Horario sl ON sl.slot_id = e.slot_id " &
+                    "LEFT JOIN FLORERIA_PrePedido    pp ON pp.prepedido_id = e.prepedido_id " &
+                    "WHERE e.prepedido_entrega_id = @id"
+
+                Dim p As Dictionary(Of String, Object) = Nothing
+                Dim ppId As Integer = 0
+                Dim zonaId As Integer = 0
+                Dim slotId As Integer = 0
+                Dim tipoEnt As String = ""
+                Dim descuentoValor As Decimal = 0
+                Dim descuentoMoneda As String = "BOB"
+                Dim slotRecargoBs As Decimal = 0
+
+                Using cmd As New SqlCommand(sql, conn)
+                    cmd.Parameters.AddWithValue("@id", prepedidoEntregaId)
+                    Using dr As SqlDataReader = cmd.ExecuteReader()
+                        If dr.Read() Then
+                            p = New Dictionary(Of String, Object)()
+                            ' pedido_id no existe aún -> 0 (los borradores no tienen pedido_id confirmado)
+                            p("pedido_id") = 0
+                            ' codigo aún no existe (lo genera el SP _Confirmar) -> usar el del prepedido como referencia
+                            p("codigo") = ""
+                            p("prepedido_id") = If(IsDBNull(dr("prepedido_id")), 0, CInt(dr("prepedido_id")))
+                            ppId = CInt(p("prepedido_id"))
+                            p("receptor_nombre") = If(IsDBNull(dr("receptor_nombre")), "", dr("receptor_nombre").ToString())
+                            p("receptor_celular") = If(IsDBNull(dr("receptor_celular")), "", dr("receptor_celular").ToString())
+                            p("direccion") = If(IsDBNull(dr("direccion")), "", dr("direccion").ToString())
+                            p("referencia") = If(IsDBNull(dr("referencia")), "", dr("referencia").ToString())
+                            p("gps") = If(IsDBNull(dr("gps")), "", dr("gps").ToString())
+                            If Not IsDBNull(dr("fecha_entrega")) Then
+                                p("fecha_entrega") = CDate(dr("fecha_entrega")).ToString("yyyy-MM-dd")
+                            Else
+                                p("fecha_entrega") = ""
+                            End If
+                            p("es_express") = If(IsDBNull(dr("es_express")), False, CBool(dr("es_express")))
+                            p("dedicatoria") = If(IsDBNull(dr("dedicatoria")), "", dr("dedicatoria").ToString())
+                            p("firma_tarjeta") = If(IsDBNull(dr("firma_tarjeta")), "", dr("firma_tarjeta").ToString())
+                            ' Sanear tipo_ocacion: si viene vacío o inválido, mandar "OTRO"
+                            Dim tipoOca As String = If(IsDBNull(dr("tipo_ocacion")), "", dr("tipo_ocacion").ToString().Trim())
+                            Dim valoresValidos As String() = {"CUMPLEANOS", "ANIVERSARIO", "AMOR", "AGRADECIMIENTO",
+                                                              "CONDOLENCIAS", "GRADUACION", "NACIMIENTO", "OTRO"}
+                            If tipoOca = "" OrElse Array.IndexOf(valoresValidos, tipoOca) < 0 Then
+                                tipoOca = "OTRO"
+                            End If
+                            p("tipo_ocacion") = tipoOca
+                            p("nota_floreria") = If(IsDBNull(dr("nota_floreria")), "", dr("nota_floreria").ToString())
+                            ' observaciones: las del PrePedido (no las del borrador, no existen ahí)
+                            p("observaciones") = If(IsDBNull(dr("pp_observaciones")), "", dr("pp_observaciones").ToString())
+                            p("tipo_entrega") = If(IsDBNull(dr("tipo_entrega")), "DOMICILIO", dr("tipo_entrega").ToString())
+                            tipoEnt = p("tipo_entrega").ToString()
+                            ' wc_order_id siempre 0 en borrador (nunca fue sincronizado antes)
+                            p("wc_order_id") = 0
+                            p("ciudad_nombre") = If(IsDBNull(dr("ciudad_nombre")), "", dr("ciudad_nombre").ToString())
+                            p("zona_nombre") = If(IsDBNull(dr("zona_nombre")), "", dr("zona_nombre").ToString())
+                            p("slot_etiqueta") = If(IsDBNull(dr("slot_etiqueta")), "", dr("slot_etiqueta").ToString())
+                            p("wc_slot_value") = If(IsDBNull(dr("wc_slot_value")), "", dr("wc_slot_value").ToString())
+
+                            zonaId = If(IsDBNull(dr("zona_id")), 0, CInt(dr("zona_id")))
+                            slotId = If(IsDBNull(dr("slot_id")), 0, CInt(dr("slot_id")))
+                            slotRecargoBs = If(IsDBNull(dr("slot_recargo_bs")), 0D, CDec(dr("slot_recargo_bs")))
+
+                            descuentoValor = If(IsDBNull(dr("descuento_valor")), 0D, CDec(dr("descuento_valor")))
+                            descuentoMoneda = If(IsDBNull(dr("descuento_moneda")), "BOB", dr("descuento_moneda").ToString())
+
+                            p("cliente_nombre") = If(IsDBNull(dr("cliente_nombre")), "", dr("cliente_nombre").ToString())
+                            p("cliente_apellidos") = If(IsDBNull(dr("cliente_apellidos")), "", dr("cliente_apellidos").ToString())
+                            p("cliente_email") = If(IsDBNull(dr("cliente_email")), "", dr("cliente_email").ToString())
+                            p("cliente_celular") = If(IsDBNull(dr("cliente_celular")), "", dr("cliente_celular").ToString())
+                        End If
+                    End Using
+                End Using
+
+                If p Is Nothing Then Return Nothing
+
+                ' --- 2. Productos del borrador ---
+                Dim items As New List(Of Dictionary(Of String, Object))
+                Dim subtotalBs As Decimal = 0
+                Dim subtotalUsd As Decimal = 0
+                Dim sqlItems As String =
+                    "SELECT d.detalle_id, d.producto_id, d.es_personalizado, " &
+                    "       d.nombre_producto, d.cantidad, " &
+                    "       d.precio_unitario_bs, d.subtotal_bs, d.subtotal_usd, " &
+                    "       d.personalizacion, " &
+                    "       pr.wc_product_id " &
+                    "FROM FLORERIA_PrePedido_Entrega_Detalle d " &
+                    "LEFT JOIN FLORERIA_Producto pr ON pr.producto_id = d.producto_id " &
+                    "WHERE d.prepedido_entrega_id = @id"
+                Using cmdI As New SqlCommand(sqlItems, conn)
+                    cmdI.Parameters.AddWithValue("@id", prepedidoEntregaId)
+                    Using dr As SqlDataReader = cmdI.ExecuteReader()
+                        While dr.Read()
+                            Dim it As New Dictionary(Of String, Object)
+                            it("detalle_id") = CInt(dr("detalle_id"))
+                            it("es_personalizado") = CBool(dr("es_personalizado"))
+                            it("nombre") = dr("nombre_producto").ToString()
+                            it("cantidad") = CInt(dr("cantidad"))
+                            it("precio_bs") = CDec(dr("precio_unitario_bs"))
+                            it("subtotal_bs") = CDec(dr("subtotal_bs"))
+                            it("personalizacion") = If(IsDBNull(dr("personalizacion")), "", dr("personalizacion").ToString())
+                            it("wc_product_id") = If(IsDBNull(dr("wc_product_id")), 0, CInt(dr("wc_product_id")))
+                            items.Add(it)
+                            subtotalBs += CDec(dr("subtotal_bs"))
+                            subtotalUsd += If(IsDBNull(dr("subtotal_usd")), 0D, CDec(dr("subtotal_usd")))
+                        End While
+                    End Using
+                End Using
+                p("items") = items
+
+                ' --- 3. Envío en BS (último precio vigente para la zona, solo DOMICILIO) ---
+                Dim envioBs As Decimal = 0
+                If tipoEnt = "DOMICILIO" AndAlso zonaId > 0 Then
+                    Dim sqlTarifa As String =
+                        "SELECT TOP 1 ISNULL(precio_bs, 0) FROM FLORERIA_Zona_Tarifa " &
+                        "WHERE zona_id = @zid ORDER BY vigente_desde DESC"
+                    Using cmdT As New SqlCommand(sqlTarifa, conn)
+                        cmdT.Parameters.AddWithValue("@zid", zonaId)
+                        Dim r As Object = cmdT.ExecuteScalar()
+                        If r IsNot Nothing AndAlso Not IsDBNull(r) Then envioBs = CDec(r)
+                    End Using
+                End If
+                p("envio_bs") = envioBs
+
+                ' --- 4. Recargo horario (recargo del slot, ya incluye express) ---
+                p("recargo_horario_bs") = slotRecargoBs
+                ' recargo_express se deja en 0: ya está incluido en el recargo del slot
+                p("recargo_express_bs") = 0D
+
+                ' --- 5. Descuento en BS ---
+                Dim descBs As Decimal = 0
+                If descuentoValor > 0 Then
+                    If descuentoMoneda = "BOB" Then
+                        descBs = descuentoValor
+                    End If
+                    ' (USD se ignora para el cálculo del JSON WC porque WC trabaja en BOB)
+                End If
+                p("descuento_bs") = descBs
+
+                ' --- 6. Subtotal y total (mismo cálculo que el SP _Confirmar) ---
+                p("subtotal_bs") = subtotalBs
+                Dim totalBs As Decimal = subtotalBs + envioBs + slotRecargoBs - descBs
+                If totalBs < 0 Then totalBs = 0
+                p("total_bs") = totalBs
+
+                ' --- 7. Método de pago: último pago verificado del prepedido ---
+                Dim metodoPago As String = ""
+                If ppId > 0 Then
+                    Dim sqlPago As String =
+                        "SELECT TOP 1 metodo_pago " &
+                        "FROM FLORERIA_PrePedido_Entrega_Pago pa " &
+                        "INNER JOIN FLORERIA_PrePedido_Entrega e2 " &
+                        "  ON e2.prepedido_entrega_id = pa.prepedido_entrega_id " &
+                        "WHERE e2.prepedido_id = @pp AND pa.estado = 'VERIFICADO' " &
+                        "ORDER BY pa.creado_en DESC"
+                    Using cmdP As New SqlCommand(sqlPago, conn)
+                        cmdP.Parameters.AddWithValue("@pp", ppId)
+                        Dim r As Object = cmdP.ExecuteScalar()
+                        If r IsNot Nothing AndAlso Not IsDBNull(r) Then
+                            metodoPago = r.ToString()
+                        End If
+                    End Using
+                End If
+                If metodoPago = "" Then metodoPago = "EFECTIVO"
+                p("metodo_pago_sisconbol") = metodoPago
+
+                ' --- 8. Resolver mapeo a WC via SP (mismo que ObtenerPedido) ---
+                Dim wcMethod As String = "bacs"
+                Dim wcTitle As String = metodoPago
+                Using cmdM As New SqlCommand("FLORERIA_sp_PagoMetodo_Map_Obtener", conn)
+                    cmdM.CommandType = CommandType.StoredProcedure
+                    cmdM.Parameters.AddWithValue("@codigo_sisconbol", metodoPago)
+                    Using dr As SqlDataReader = cmdM.ExecuteReader()
+                        If dr.Read() Then
+                            wcMethod = dr("wc_payment_method").ToString()
+                            wcTitle = dr("wc_payment_method_title").ToString()
+                        End If
+                    End Using
+                End Using
+                p("wc_payment_method") = wcMethod
+                p("wc_payment_method_title") = wcTitle
+
+                Return p
+            End Using
+        Catch ex As Exception
+            System.Diagnostics.Debug.WriteLine("ERROR ObtenerBorrador: " & ex.Message)
+        End Try
+        Return Nothing
+    End Function
+
 End Class

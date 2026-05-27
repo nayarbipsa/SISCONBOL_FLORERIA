@@ -287,6 +287,7 @@
     <Content Include="Modulos\Pedidos\PrePedido_Handler.ashx" />
     <Content Include="Modulos\Pedidos\Pedidos_Handler.ashx" />
     <Content Include="Modulos\Pedidos\PrePedidos_WC_Handler.ashx" />
+    <Content Include="Modulos\Pedidos\PedidoEditar_Handler.ashx" />
     <None Include="My Project\Application.myapp">
       <Generator>MyApplicationCodeGenerator</Generator>
       <LastGenOutput>Application.Designer.vb</LastGenOutput>

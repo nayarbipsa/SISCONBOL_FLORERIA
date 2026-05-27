@@ -1,12 +1,13 @@
 Imports System.Data
 Imports System.Data.SqlClient
 Imports System.Text
+Imports System.Web.Script.Serialization
 
 ' ============================================================
-' SISCONBOL - Pedido_Detalle (SOLO LECTURA)
+' SISCONBOL - Pedido_Detalle
 ' Archivo: Modulos/Pedidos/Pedido_Detalle.aspx.vb
 ' Acceso: ?id={pedido_id}
-' MasterPage. Verifica sesión. No edita nada.
+' MasterPage. Verifica sesion. Vista detalle + edicion modal de entrega.
 ' ============================================================
 Partial Public Class Modulos_Pedidos_Pedido_Detalle
     Inherits System.Web.UI.Page
@@ -14,7 +15,7 @@ Partial Public Class Modulos_Pedidos_Pedido_Detalle
     Public Property TienePedido As Boolean = False
     Public Property MensajeError As String = ""
 
-    ' Identificación
+    ' Identificacion
     Public Property PedidoId          As Integer = 0
     Public Property Codigo            As String = ""
     Public Property PrePedidoId       As Integer = 0
@@ -85,14 +86,30 @@ Partial Public Class Modulos_Pedidos_Pedido_Detalle
     Public Property SucursalPrepara As String = ""
 
     ' ============================================================
+    ' [NUEVO] Datos para el modal de edicion de entrega
+    ' ============================================================
+    Public Property TipoEntregaRaw       As String  = "DOMICILIO"
+    Public Property FechaEntregaInput    As String  = ""
+    Public Property FechaMinima          As String  = ""
+    Public Property CiudadIdActual       As Integer = 0
+    Public Property ZonaIdActual         As Integer = 0
+    Public Property ZonaNombreActual     As String  = ""
+    Public Property SlotIdActual         As Integer = 0
+    Public Property SucursalRecojoIdActual As Integer = 0
+    Public Property PuedeEditar          As Boolean = False
+    Public Property HtmlCiudadesEdit     As String  = ""
+    Public Property HtmlSlotsEdit        As String  = ""
+    Public Property HtmlSucursalesEdit   As String  = ""
+    Public Property ZonasJson            As String  = "[]"
+
+    ' ============================================================
     Protected Sub Page_Load(sender As Object, e As EventArgs) Handles Me.Load
         If IsPostBack Then Return
 
-        ' Sesión la verifica el Site.master, pero confirmamos id válido
         Dim idStr As String = Request.QueryString("id")
         If String.IsNullOrEmpty(idStr) OrElse Not Integer.TryParse(idStr, PedidoId) OrElse PedidoId <= 0 Then
             TienePedido = False
-            MensajeError = "ID de pedido inválido"
+            MensajeError = "ID de pedido invalido"
             Return
         End If
 
@@ -105,6 +122,15 @@ Partial Public Class Modulos_Pedidos_Pedido_Detalle
                 End If
                 CargarProductos(conn)
                 CargarPagos(conn)
+
+                ' [NUEVO] Cargar listas para el modal de edicion
+                CargarCiudadesEdit(conn)
+                CargarSlotsEdit(conn)
+                CargarSucursalesEdit(conn)
+                CargarZonasEdit(conn)
+                FechaMinima = DateTime.Now.ToString("yyyy-MM-dd")
+                DeterminarPuedeEditar()
+
                 TienePedido = True
             End Using
         Catch ex As Exception
@@ -114,7 +140,7 @@ Partial Public Class Modulos_Pedidos_Pedido_Detalle
     End Sub
 
     ' ============================================================
-    ' CARGAR CABECERA — datos del pedido + joins a auxiliares
+    ' CARGAR CABECERA
     ' ============================================================
     Private Function CargarCabecera(conn As SqlConnection) As Boolean
         Dim sql As String =
@@ -122,6 +148,7 @@ Partial Public Class Modulos_Pedidos_Pedido_Detalle
             "       p.receptor_nombre, p.receptor_celular, " &
             "       p.fecha_entrega, p.tipo_entrega, p.direccion, p.referencia, " &
             "       p.es_express, p.dedicatoria, p.firma_tarjeta, p.tipo_ocacion, " &
+            "       p.ciudad_id, p.zona_id, p.slot_id, p.sucursal_id, " &
             "       p.subtotal_productos_bs, p.envio_bs, " &
             "       p.recargo_express_bs, p.recargo_horario_bs, p.descuento_bs, " &
             "       p.total_bs, p.total_usd, p.anticipo_bs, p.saldo_bs, " &
@@ -148,7 +175,7 @@ Partial Public Class Modulos_Pedidos_Pedido_Detalle
             cmd.Parameters.AddWithValue("@id", PedidoId)
             Using dr As SqlDataReader = cmd.ExecuteReader()
                 If Not dr.Read() Then
-                    MensajeError = "No se encontró el pedido #" & PedidoId
+                    MensajeError = "No se encontro el pedido #" & PedidoId
                     Return False
                 End If
 
@@ -165,9 +192,9 @@ Partial Public Class Modulos_Pedidos_Pedido_Detalle
 
                 If Not IsDBNull(dr("fecha_entrega")) Then
                     FechaEntrega = CDate(dr("fecha_entrega")).ToString("dd 'de' MMMM yyyy")
+                    FechaEntregaInput = CDate(dr("fecha_entrega")).ToString("yyyy-MM-dd")
                 End If
 
-                ' Horario desde slot
                 Dim hI As String = LeerStr(dr, "hora_inicio")
                 Dim hF As String = LeerStr(dr, "hora_fin")
                 If hI <> "" AndAlso hF <> "" Then
@@ -175,18 +202,26 @@ Partial Public Class Modulos_Pedidos_Pedido_Detalle
                 End If
 
                 TipoEntregaLabel = LabelTipoEntrega(LeerStr(dr, "tipo_entrega"))
+                TipoEntregaRaw   = LeerStr(dr, "tipo_entrega")
+                If TipoEntregaRaw = "" Then TipoEntregaRaw = "DOMICILIO"
+
                 EsExpress        = (Not IsDBNull(dr("es_express")) AndAlso CBool(dr("es_express")))
                 Ciudad           = LeerStr(dr, "ciudad_nombre")
                 Zona             = LeerStr(dr, "zona_nombre")
                 Direccion        = LeerStr(dr, "direccion")
                 Referencia       = LeerStr(dr, "referencia")
 
+                CiudadIdActual         = LeerInt(dr, "ciudad_id")
+                ZonaIdActual           = LeerInt(dr, "zona_id")
+                ZonaNombreActual       = LeerStr(dr, "zona_nombre")
+                SlotIdActual           = LeerInt(dr, "slot_id")
+                SucursalRecojoIdActual = LeerInt(dr, "sucursal_id")
+
                 Dedicatoria   = LeerStr(dr, "dedicatoria")
                 FirmaTarjeta  = LeerStr(dr, "firma_tarjeta")
                 TipoOcacion   = LeerStr(dr, "tipo_ocacion")
                 TipoOcacionLabel = LabelOcasion(TipoOcacion)
 
-                ' Totales
                 SubtotalProductosBs = LeerDecimalFmt(dr, "subtotal_productos_bs")
                 EnvioBs             = LeerDecimalFmt(dr, "envio_bs")
                 RecargoExpressBs    = LeerDecimalFmt(dr, "recargo_express_bs")
@@ -333,6 +368,145 @@ Partial Public Class Modulos_Pedidos_Pedido_Detalle
     End Sub
 
     ' ============================================================
+    ' [NUEVO] Determinar si el usuario puede editar este pedido
+    ' Requiere: tipo_id = 1 (Admin) o 2 (Gerente)
+    '           Estado operativo distinto de ENTREGADO / NO_ENTREGADO
+    ' ============================================================
+    Private Sub DeterminarPuedeEditar()
+        Try
+            Dim tipoId As Integer = 3
+            If Session("tipo_id") IsNot Nothing Then
+                Integer.TryParse(Session("tipo_id").ToString(), tipoId)
+            End If
+
+            Dim esAdminOGerente As Boolean = (tipoId = 1 OrElse tipoId = 2)
+            Dim estadoBloquea As Boolean = (EstadoOperativo = "ENTREGADO" OrElse EstadoOperativo = "NO_ENTREGADO")
+
+            PuedeEditar = esAdminOGerente AndAlso Not estadoBloquea
+        Catch
+            PuedeEditar = False
+        End Try
+    End Sub
+
+    ' ============================================================
+    ' [NUEVO] CargarCiudadesEdit - options para el select del modal
+    ' ============================================================
+    Private Sub CargarCiudadesEdit(conn As SqlConnection)
+        Try
+            Dim sb As New StringBuilder()
+            Using cmd As New SqlCommand("SELECT ciudad_id, nombre FROM FLORERIA_Ciudad WHERE activo = 1 ORDER BY nombre", conn)
+                Using dr As SqlDataReader = cmd.ExecuteReader()
+                    While dr.Read()
+                        Dim cid As Integer = CInt(dr("ciudad_id"))
+                        Dim selAttr As String = If(cid = CiudadIdActual, " selected", "")
+                        sb.AppendLine("<option value='" & cid & "'" & selAttr & ">" & Esc(dr("nombre").ToString()) & "</option>")
+                    End While
+                End Using
+            End Using
+            HtmlCiudadesEdit = sb.ToString()
+        Catch ex As Exception
+            System.Diagnostics.Debug.WriteLine("ERROR CargarCiudadesEdit: " & ex.Message)
+        End Try
+    End Sub
+
+    ' ============================================================
+    ' [NUEVO] CargarSlotsEdit - optgroups normales/express
+    ' ============================================================
+    Private Sub CargarSlotsEdit(conn As SqlConnection)
+        Try
+            Dim sbNormal As New StringBuilder()
+            Dim sbExpress As New StringBuilder()
+            Dim sql As String = "SELECT slot_id, etiqueta, recargo_bs, es_express " &
+                                "FROM   FLORERIA_Slot_Horario " &
+                                "WHERE  activo = 1 " &
+                                "ORDER BY es_express, orden_display, hora_inicio"
+            Using cmd As New SqlCommand(sql, conn)
+                Using dr As SqlDataReader = cmd.ExecuteReader()
+                    While dr.Read()
+                        Dim sid As Integer = CInt(dr("slot_id"))
+                        Dim etiqueta As String = dr("etiqueta").ToString()
+                        Dim recargo As Decimal = If(IsDBNull(dr("recargo_bs")), 0D, CDec(dr("recargo_bs")))
+                        Dim esExp As Boolean = CBool(dr("es_express"))
+                        Dim textoRec As String = If(recargo > 0, " +Bs" & recargo.ToString("N0"), "")
+                        Dim selAttr As String = If(sid = SlotIdActual, " selected", "")
+                        Dim opt As String = "<option value='" & sid & "'" & selAttr & ">" & Esc(etiqueta) & textoRec & "</option>"
+                        If esExp Then
+                            sbExpress.AppendLine(opt)
+                        Else
+                            sbNormal.AppendLine(opt)
+                        End If
+                    End While
+                End Using
+            End Using
+
+            Dim sb As New StringBuilder()
+            If sbNormal.Length > 0 Then
+                sb.AppendLine("<optgroup label='Horarios normales'>")
+                sb.Append(sbNormal.ToString())
+                sb.AppendLine("</optgroup>")
+            End If
+            If sbExpress.Length > 0 Then
+                sb.AppendLine("<optgroup label='Horarios express'>")
+                sb.Append(sbExpress.ToString())
+                sb.AppendLine("</optgroup>")
+            End If
+            HtmlSlotsEdit = sb.ToString()
+        Catch ex As Exception
+            System.Diagnostics.Debug.WriteLine("ERROR CargarSlotsEdit: " & ex.Message)
+        End Try
+    End Sub
+
+    ' ============================================================
+    ' [NUEVO] CargarSucursalesEdit
+    ' ============================================================
+    Private Sub CargarSucursalesEdit(conn As SqlConnection)
+        Try
+            Dim sb As New StringBuilder()
+            Using cmd As New SqlCommand("SELECT sucursal_id, nombre FROM FLORERIA_Sucursal WHERE activo = 1 ORDER BY nombre", conn)
+                Using dr As SqlDataReader = cmd.ExecuteReader()
+                    While dr.Read()
+                        Dim sid As Integer = CInt(dr("sucursal_id"))
+                        Dim selAttr As String = If(sid = SucursalRecojoIdActual, " selected", "")
+                        sb.AppendLine("<option value='" & sid & "'" & selAttr & ">" & Esc(dr("nombre").ToString()) & "</option>")
+                    End While
+                End Using
+            End Using
+            HtmlSucursalesEdit = sb.ToString()
+        Catch ex As Exception
+            System.Diagnostics.Debug.WriteLine("ERROR CargarSucursalesEdit: " & ex.Message)
+        End Try
+    End Sub
+
+    ' ============================================================
+    ' [NUEVO] CargarZonasEdit - JSON con zonas activas para datalist
+    ' ============================================================
+    Private Sub CargarZonasEdit(conn As SqlConnection)
+        Try
+            Dim zonas As New List(Of Object)
+            Dim sql As String = "SELECT zona_id, ciudad_id, nombre " &
+                                "FROM   FLORERIA_Zona " &
+                                "WHERE  activo = 1 " &
+                                "ORDER BY nombre"
+            Using cmd As New SqlCommand(sql, conn)
+                Using dr As SqlDataReader = cmd.ExecuteReader()
+                    While dr.Read()
+                        zonas.Add(New With {
+                            .zona_id   = CInt(dr("zona_id")),
+                            .ciudad_id = CInt(dr("ciudad_id")),
+                            .nombre    = dr("nombre").ToString()
+                        })
+                    End While
+                End Using
+            End Using
+            Dim serializer As New JavaScriptSerializer()
+            ZonasJson = serializer.Serialize(zonas)
+        Catch ex As Exception
+            System.Diagnostics.Debug.WriteLine("ERROR CargarZonasEdit: " & ex.Message)
+            ZonasJson = "[]"
+        End Try
+    End Sub
+
+    ' ============================================================
     ' HELPERS DE LECTURA
     ' ============================================================
     Private Function LeerStr(dr As SqlDataReader, col As String) As String
@@ -371,12 +545,18 @@ Partial Public Class Modulos_Pedidos_Pedido_Detalle
     ' ============================================================
     Private Function LabelEstadoOperativo(v As String) As String
         Select Case v
-            Case "PENDIENTE"   : Return "Pendiente"
-            Case "PREPARANDO"  : Return "Preparando"
-            Case "EN_CAMINO"   : Return "En camino"
-            Case "ENTREGADO"   : Return "Entregado"
-            Case "FALLIDO"     : Return "Fallido"
-            Case Else          : Return If(v = "", "—", v)
+            Case "PENDIENTE"       : Return "Pendiente"
+            Case "IMPRESO"         : Return "Impreso"
+            Case "EN_PREPARACION"  : Return "En preparación"
+            Case "LISTO"           : Return "Listo"
+            Case "EN_RUTA"         : Return "En ruta"
+            Case "ENTREGADO"       : Return "Entregado"
+            Case "NO_ENTREGADO"    : Return "No entregado"
+            Case "REPROGRAMADO"    : Return "Reprogramado"
+            Case "PREPARANDO"      : Return "Preparando"
+            Case "EN_CAMINO"       : Return "En camino"
+            Case "FALLIDO"         : Return "Fallido"
+            Case Else              : Return If(v = "", "—", v)
         End Select
     End Function
 
@@ -392,9 +572,10 @@ Partial Public Class Modulos_Pedidos_Pedido_Detalle
 
     Private Function LabelTipoEntrega(v As String) As String
         Select Case v
-            Case "DOMICILIO"   : Return "Domicilio"
-            Case "RECOJO"      : Return "Recojo en tienda"
-            Case Else          : Return If(v = "", "—", v)
+            Case "DOMICILIO"        : Return "Domicilio"
+            Case "RECOJO"           : Return "Recojo en tienda"
+            Case "RECOJO_SUCURSAL"  : Return "Recojo en tienda"
+            Case Else               : Return If(v = "", "—", v)
         End Select
     End Function
 
@@ -414,23 +595,22 @@ Partial Public Class Modulos_Pedidos_Pedido_Detalle
 
     Private Function LabelMetodoPago(v As String) As String
         Select Case v.ToUpper()
-            Case "EFECTIVO"    : Return "Efectivo"
-            Case "QR"          : Return "QR / Transferencia"
-            Case "TARJETA"     : Return "Tarjeta"
-            Case "DEPOSITO"    : Return "Depósito bancario"
+            Case "EFECTIVO"      : Return "Efectivo"
+            Case "QR"            : Return "QR / Transferencia"
+            Case "TARJETA"       : Return "Tarjeta"
+            Case "DEPOSITO"      : Return "Depósito bancario"
             Case "TRANSFERENCIA" : Return "Transferencia"
-            Case Else          : Return If(v = "", "—", v)
+            Case Else            : Return If(v = "", "—", v)
         End Select
     End Function
 
     Private Function FormatearHora(h As String) As String
-        ' h viene como "09:00:00.0000000" o "09:00:00" — solo HH:mm
         If h Is Nothing OrElse h.Length < 5 Then Return h
         Return h.Substring(0, 5)
     End Function
 
     ' ============================================================
-    ' Escape básico para evitar inyectar HTML desde la BD
+    ' Escape basico
     ' ============================================================
     Private Function Esc(v As String) As String
         If String.IsNullOrEmpty(v) Then Return ""

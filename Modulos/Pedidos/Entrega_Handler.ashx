@@ -588,13 +588,29 @@ Public Class Entrega_Handler
     End Sub
 
     ' ============================================================
-    ' CREAR EN WOOCOMMERCE (flujo de un click)
-    ' 1) Si el borrador todavia esta en BORRADOR -> ejecuta el SP Confirmar
-    '    que copia a FLORERIA_Pedido y devuelve pedido_id.
-    ' 2) Si ya fue confirmado antes (entrega tiene pedido_id) -> reutiliza ese.
-    ' 3) Llama WooCommerceSync.SincronizarPedido(pedido_id) que hace el POST
-    '    a /wp-json/wc/v3/orders y guarda wc_order_id / wc_order_number /
-    '    wc_sync_estado en FLORERIA_Pedido.
+    ' CREAR EN WOOCOMMERCE (Opción B: WC primero, confirmar después)
+    '
+    ' FLUJO NUEVO (anti-bug "WC falla pero igual creas el pedido"):
+    '   1) Validar que el borrador existe y está en estado BORRADOR.
+    '   2) Sanear tipo_ocacion si está vacío/inválido.
+    '   3) Llamar WooCommerceSync.SincronizarBorrador(entregaId) que lee
+    '      el borrador, arma JSON y hace POST a /wp-json/wc/v3/orders
+    '      SIN tocar FLORERIA_Pedido.
+    '   4a) Si WC respondió OK:
+    '       - Ejecutar SP FLORERIA_sp_PrePedidoEntrega_Confirmar
+    '         que copia borrador -> FLORERIA_Pedido y devuelve pedido_id+codigo.
+    '       - UPDATE FLORERIA_Pedido para guardar wc_order_id, wc_order_number
+    '         y wc_sync_estado='SINCRONIZADO' (lo que normalmente hacía
+    '         ActualizarEstadoSyncPedido tras SincronizarPedido).
+    '       - Recalcular estado del prepedido (CONVERTIDO).
+    '   4b) Si WC falló:
+    '       - NO se ejecuta el SP _Confirmar.
+    '       - El borrador queda intacto (estado BORRADOR), reintentable.
+    '       - Se retorna mensaje de error al frontend.
+    '
+    ' Si ya hubiera sido confirmado antes (caso legado: pedido existe pero
+    ' WC nunca se mandó) se reutiliza el pedido y solo se sincroniza.
+    ' Para eso se usa el flujo viejo SincronizarPedido(pedido_id).
     ' ============================================================
     Private Sub CrearEnWooCommerce(context As HttpContext)
         Dim entregaId As Integer = 0
@@ -606,12 +622,11 @@ Public Class Entrega_Handler
         End If
 
         Dim usuarioId As Integer = SesionHelper.ObtenerUsuarioId(HttpContext.Current)
-        Dim pedidoId As Integer = 0
-        Dim codigoPed As String = ""
-        Dim yaEstabaConfirmado As Boolean = False
-        Dim prepedidoIdParaRecalc As Integer = 0
 
-        ' --- PASO 1: ver si ya fue confirmado antes ---
+        ' --- PASO 1: leer estado del borrador y prepedido ---
+        Dim estadoBorrador As String = ""
+        Dim pedidoIdExistente As Integer = 0
+        Dim prepedidoIdParaRecalc As Integer = 0
         Try
             Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
                 conn.Open()
@@ -620,10 +635,9 @@ Public Class Entrega_Handler
                     cmd.Parameters.AddWithValue("@id", entregaId)
                     Using dr As SqlDataReader = cmd.ExecuteReader()
                         If dr.Read() Then
-                            Dim est As String = dr("estado").ToString()
-                            If est <> "BORRADOR" AndAlso Not IsDBNull(dr("pedido_id")) Then
-                                pedidoId = CInt(dr("pedido_id"))
-                                yaEstabaConfirmado = True
+                            estadoBorrador = dr("estado").ToString()
+                            If Not IsDBNull(dr("pedido_id")) Then
+                                pedidoIdExistente = CInt(dr("pedido_id"))
                             End If
                             If Not IsDBNull(dr("prepedido_id")) Then
                                 prepedidoIdParaRecalc = CInt(dr("prepedido_id"))
@@ -634,72 +648,192 @@ Public Class Entrega_Handler
                         End If
                     End Using
                 End Using
+            End Using
+        Catch ex As Exception
+            context.Response.Write("{""ok"":false,""msg"":""Error al leer borrador: " & ex.Message.Replace("""", "'") & """}")
+            Return
+        End Try
 
-                ' --- PASO 2: si era borrador, ejecutar SP Confirmar ---
-                If Not yaEstabaConfirmado Then
-                    ' Sanear tipo_ocacion: el CHECK constraint en FLORERIA_Pedido solo
-                    ' acepta: CUMPLEANOS, ANIVERSARIO, AMOR, AGRADECIMIENTO,
-                    '         CONDOLENCIAS, GRADUACION, NACIMIENTO, OTRO
-                    ' Si el borrador trae NULL o un valor invalido (incluso ""),
-                    ' lo dejamos en 'OTRO' para que el SP_Confirmar no falle.
-                    Using cmdFix As New SqlCommand(
-                        "UPDATE FLORERIA_PrePedido_Entrega " &
-                        "SET tipo_ocacion = 'OTRO' " &
-                        "WHERE prepedido_entrega_id = @id " &
-                        "  AND (tipo_ocacion IS NULL " &
-                        "    OR LTRIM(RTRIM(tipo_ocacion)) = '' " &
-                        "    OR tipo_ocacion NOT IN " &
-                        "       ('CUMPLEANOS','ANIVERSARIO','AMOR','AGRADECIMIENTO'," &
-                        "        'CONDOLENCIAS','GRADUACION','NACIMIENTO','OTRO'))", conn)
-                        cmdFix.Parameters.AddWithValue("@id", entregaId)
-                        cmdFix.ExecuteNonQuery()
-                    End Using
+        ' --- CASO LEGADO: ya fue confirmado pero WC nunca sincronizó ---
+        ' Reutilizar pedido y solo sincronizar (flujo viejo, sigue siendo seguro
+        ' porque el pedido ya existe).
+        If estadoBorrador <> "BORRADOR" AndAlso pedidoIdExistente > 0 Then
+            SincronizarPedidoLegado(context, pedidoIdExistente, prepedidoIdParaRecalc, usuarioId)
+            Return
+        End If
 
-                    Using cmd As New SqlCommand("FLORERIA_sp_PrePedidoEntrega_Confirmar", conn)
-                        cmd.CommandType = CommandType.StoredProcedure
-                        cmd.Parameters.AddWithValue("@prepedido_entrega_id", entregaId)
-                        cmd.Parameters.AddWithValue("@usuario_id", usuarioId)
+        ' --- PASO 2: sanear tipo_ocacion en el borrador ---
+        ' (lo mismo que hacía la versión anterior, antes del SP _Confirmar)
+        Try
+            Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
+                conn.Open()
+                Using cmdFix As New SqlCommand(
+                    "UPDATE FLORERIA_PrePedido_Entrega " &
+                    "SET tipo_ocacion = 'OTRO' " &
+                    "WHERE prepedido_entrega_id = @id " &
+                    "  AND (tipo_ocacion IS NULL " &
+                    "    OR LTRIM(RTRIM(tipo_ocacion)) = '' " &
+                    "    OR tipo_ocacion NOT IN " &
+                    "       ('CUMPLEANOS','ANIVERSARIO','AMOR','AGRADECIMIENTO'," &
+                    "        'CONDOLENCIAS','GRADUACION','NACIMIENTO','OTRO'))", conn)
+                    cmdFix.Parameters.AddWithValue("@id", entregaId)
+                    cmdFix.ExecuteNonQuery()
+                End Using
+            End Using
+        Catch
+            ' silencioso: si esto falla, igual probamos WC con lo que haya
+        End Try
 
-                        Dim pId As New SqlParameter("@pedido_id", SqlDbType.Int)
-                        pId.Direction = ParameterDirection.Output
-                        cmd.Parameters.Add(pId)
+        ' --- PASO 3: enviar borrador a WooCommerce SIN confirmar ---
+        Dim sync As Dictionary(Of String, Object) = Nothing
+        Try
+            sync = WooCommerceSync.SincronizarBorrador(entregaId)
+        Catch ex As Exception
+            context.Response.Write("{""ok"":false,""msg"":""Error al enviar a WooCommerce: " & ex.Message.Replace("""", "'") & """}")
+            Return
+        End Try
 
-                        Dim pCod As New SqlParameter("@codigo", SqlDbType.VarChar, 20)
-                        pCod.Direction = ParameterDirection.Output
-                        cmd.Parameters.Add(pCod)
+        Dim okSync As Boolean = sync IsNot Nothing AndAlso sync.ContainsKey("ok") AndAlso CBool(sync("ok"))
+        Dim msgSync As String = If(sync IsNot Nothing AndAlso sync.ContainsKey("mensaje"), sync("mensaje").ToString(), "")
+        Dim wcOrdId As Integer = If(sync IsNot Nothing AndAlso sync.ContainsKey("wc_order_id"), CInt(sync("wc_order_id")), 0)
+        Dim wcOrdNum As String = If(sync IsNot Nothing AndAlso sync.ContainsKey("wc_order_number"), sync("wc_order_number").ToString(), "")
 
-                        cmd.ExecuteNonQuery()
+        ' --- PASO 4a: si WC FALLÓ -> no confirmar, retornar error ---
+        If Not okSync OrElse wcOrdId <= 0 Then
+            Dim sbErr As New System.Text.StringBuilder()
+            sbErr.Append("{")
+            sbErr.Append("""ok"":false,")
+            sbErr.Append("""pedido_id"":0,")
+            sbErr.Append("""codigo"":"""",")
+            sbErr.Append("""wc_order_id"":0,")
+            sbErr.Append("""msg"":""" & msgSync.Replace("""", "'") & """")
+            sbErr.Append("}")
+            context.Response.Write(sbErr.ToString())
+            Return
+        End If
 
-                        pedidoId = CInt(pId.Value)
-                        codigoPed = pCod.Value.ToString()
-                    End Using
-                Else
-                    ' Recuperar codigo del pedido ya confirmado
-                    Using cmd As New SqlCommand("SELECT codigo FROM FLORERIA_Pedido WHERE pedido_id = @id", conn)
-                        cmd.Parameters.AddWithValue("@id", pedidoId)
-                        Dim r As Object = cmd.ExecuteScalar()
-                        If r IsNot Nothing AndAlso Not IsDBNull(r) Then codigoPed = r.ToString()
+        ' --- PASO 4b: WC OK -> ejecutar SP _Confirmar y guardar wc_order_id ---
+        Dim pedidoId As Integer = 0
+        Dim codigoPed As String = ""
+        Try
+            Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
+                conn.Open()
+
+                ' Ejecutar SP _Confirmar
+                Using cmd As New SqlCommand("FLORERIA_sp_PrePedidoEntrega_Confirmar", conn)
+                    cmd.CommandType = CommandType.StoredProcedure
+                    cmd.Parameters.AddWithValue("@prepedido_entrega_id", entregaId)
+                    cmd.Parameters.AddWithValue("@usuario_id", usuarioId)
+
+                    Dim pId As New SqlParameter("@pedido_id", SqlDbType.Int)
+                    pId.Direction = ParameterDirection.Output
+                    cmd.Parameters.Add(pId)
+
+                    Dim pCod As New SqlParameter("@codigo", SqlDbType.VarChar, 20)
+                    pCod.Direction = ParameterDirection.Output
+                    cmd.Parameters.Add(pCod)
+
+                    cmd.ExecuteNonQuery()
+
+                    pedidoId = CInt(pId.Value)
+                    codigoPed = pCod.Value.ToString()
+                End Using
+
+                ' UPDATE FLORERIA_Pedido para guardar wc_order_id, wc_order_number,
+                ' wc_sync_estado='SINCRONIZADO' y wc_sync_fecha=GETDATE().
+                ' Esto es lo que normalmente hacía ActualizarEstadoSyncPedido().
+                If pedidoId > 0 AndAlso wcOrdId > 0 Then
+                    Using cmdU As New SqlCommand(
+                        "UPDATE FLORERIA_Pedido " &
+                        "SET wc_order_id = @wcid, " &
+                        "    wc_order_number = @wcnum, " &
+                        "    wc_sync_estado = 'SINCRONIZADO', " &
+                        "    wc_sync_fecha = GETDATE() " &
+                        "WHERE pedido_id = @pid", conn)
+                        cmdU.Parameters.AddWithValue("@wcid", wcOrdId)
+                        cmdU.Parameters.AddWithValue("@wcnum", If(wcOrdNum = "", wcOrdId.ToString(), wcOrdNum))
+                        cmdU.Parameters.AddWithValue("@pid", pedidoId)
+                        cmdU.ExecuteNonQuery()
                     End Using
                 End If
             End Using
         Catch ex As Exception
-            context.Response.Write("{""ok"":false,""msg"":""Error al confirmar pedido: " & ex.Message.Replace("""", "'") & """}")
+            ' Caso raro: WC creó la orden pero el SP _Confirmar falló.
+            ' El borrador NO quedó como CONFIRMADO. La orden WC sí existe.
+            ' Reportar al agente para que reintente o limpie manualmente.
+            Dim sbErr As New System.Text.StringBuilder()
+            sbErr.Append("{")
+            sbErr.Append("""ok"":false,")
+            sbErr.Append("""pedido_id"":0,")
+            sbErr.Append("""codigo"":"""",")
+            sbErr.Append("""wc_order_id"":" & wcOrdId & ",")
+            sbErr.Append("""msg"":""WC creó la orden #" & wcOrdId & " pero al confirmar en SISCONBOL falló: " &
+                         ex.Message.Replace("""", "'") & ". Revisar manualmente.""")
+            sbErr.Append("}")
+            context.Response.Write(sbErr.ToString())
             Return
         End Try
 
-        If pedidoId <= 0 Then
-            context.Response.Write("{""ok"":false,""msg"":""No se pudo obtener pedido_id""}")
-            Return
+        ' --- PASO 5: recalcular estado del prepedido -> CONVERTIDO ---
+        If prepedidoIdParaRecalc > 0 Then
+            Try
+                Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
+                    conn.Open()
+                    Using cmdR As New SqlCommand("FLORERIA_sp_PrePedido_RecalcularEstado", conn)
+                        cmdR.CommandType = CommandType.StoredProcedure
+                        cmdR.Parameters.AddWithValue("@prepedido_id", prepedidoIdParaRecalc)
+                        cmdR.Parameters.AddWithValue("@modificado_por", usuarioId)
+                        cmdR.ExecuteNonQuery()
+                    End Using
+                End Using
+            Catch
+                ' silencioso: el pedido ya está creado y sincronizado, no afecta la respuesta
+            End Try
         End If
 
-        ' --- PASO 3: sincronizar con WooCommerce ---
+        ' --- PASO 6: responder OK ---
+        Dim sb As New System.Text.StringBuilder()
+        sb.Append("{")
+        sb.Append("""ok"":true,")
+        sb.Append("""pedido_id"":" & pedidoId & ",")
+        sb.Append("""codigo"":""" & codigoPed & """,")
+        sb.Append("""wc_order_id"":" & wcOrdId & ",")
+        sb.Append("""msg"":""Pedido creado y sincronizado con WooCommerce""")
+        sb.Append("}")
+        context.Response.Write(sb.ToString())
+    End Sub
+
+    ' ============================================================
+    ' SincronizarPedidoLegado - caso raro: la entrega ya fue
+    ' confirmada antes (existe pedido_id en FLORERIA_Pedido) pero
+    ' WC nunca llegó a sincronizarse (wc_order_id = NULL o ERROR).
+    ' En ese caso reutilizamos el pedido y solo intentamos WC.
+    ' Es el flujo viejo, sigue siendo seguro porque el pedido ya existe.
+    ' ============================================================
+    Private Sub SincronizarPedidoLegado(context As HttpContext,
+                                        pedidoId As Integer,
+                                        prepedidoIdParaRecalc As Integer,
+                                        usuarioId As Integer)
+        Dim codigoPed As String = ""
+        Try
+            Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
+                conn.Open()
+                Using cmd As New SqlCommand("SELECT codigo FROM FLORERIA_Pedido WHERE pedido_id = @id", conn)
+                    cmd.Parameters.AddWithValue("@id", pedidoId)
+                    Dim r As Object = cmd.ExecuteScalar()
+                    If r IsNot Nothing AndAlso Not IsDBNull(r) Then codigoPed = r.ToString()
+                End Using
+            End Using
+        Catch
+        End Try
+
         Dim sync As Dictionary(Of String, Object) = Nothing
         Try
             sync = WooCommerceSync.SincronizarPedido(pedidoId)
         Catch ex As Exception
             context.Response.Write("{""ok"":false,""pedido_id"":" & pedidoId &
-                ",""codigo"":""" & codigoPed & """" &
-                ",""msg"":""Pedido confirmado pero fallo el envio a WC: " & ex.Message.Replace("""", "'") & """}")
+                ",""codigo"":""" & codigoPed & """,""wc_order_id"":0," &
+                """msg"":""Pedido ya estaba confirmado pero WC falló: " & ex.Message.Replace("""", "'") & """}")
             Return
         End Try
 
@@ -707,8 +841,8 @@ Public Class Entrega_Handler
         Dim msgSync As String = If(sync IsNot Nothing AndAlso sync.ContainsKey("mensaje"), sync("mensaje").ToString(), "")
         Dim wcOrdId As Integer = If(sync IsNot Nothing AndAlso sync.ContainsKey("wc_order_id"), CInt(sync("wc_order_id")), 0)
 
-        ' [NUEVO] Recalcular estado tras sincronizar con WC -> pasa a CONVERTIDO
-        If prepedidoIdParaRecalc > 0 Then
+        ' Recalcular estado del prepedido
+        If prepedidoIdParaRecalc > 0 AndAlso okSync Then
             Try
                 Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
                     conn.Open()
