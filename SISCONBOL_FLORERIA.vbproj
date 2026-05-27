@@ -111,6 +111,7 @@
     <Content Include="Modulos\Pedidos\GestionPedidos.aspx" />
     <Content Include="Modulos\Pedidos\MODAL_BUSCADOR.html" />
     <Content Include="Modulos\Pedidos\Pedido_Agregar.aspx" />
+    <Content Include="Modulos\Pedidos\Pedido_Detalle.aspx" />
     <Content Include="Modulos\Pedidos\PrePedido_Links.aspx" />
     <Content Include="Modulos\Pedidos\Recibo.aspx" />
     <Content Include="Modulos\Pedidos\TicketImprimir.aspx" />
@@ -205,9 +206,16 @@
       <DependentUpon>Pedido_Agregar.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
     </Compile>
+    <Compile Include="Modulos\Pedidos\Pedido_Detalle.aspx.vb">
+      <DependentUpon>Pedido_Detalle.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
     <Compile Include="Modulos\Pedidos\PrePedidos.aspx.vb">
       <DependentUpon>PrePedidos.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Modulos\Pedidos\PrePedidos_WC_Handler.ashx.vb">
+      <DependentUpon>PrePedidos_WC_Handler.ashx</DependentUpon>
     </Compile>
     <Compile Include="Modulos\Pedidos\PrePedido_Crear.aspx.vb">
       <DependentUpon>PrePedido_Crear.aspx</DependentUpon>
@@ -279,6 +287,7 @@
     <Content Include="cliente\Cliente_PublicHandler.ashx" />
     <Content Include="Modulos\Pedidos\PrePedido_Handler.ashx" />
     <Content Include="Modulos\Pedidos\Pedidos_Handler.ashx" />
+    <Content Include="Modulos\Pedidos\PrePedidos_WC_Handler.ashx" />
     <None Include="My Project\Application.myapp">
       <Generator>MyApplicationCodeGenerator</Generator>
       <LastGenOutput>Application.Designer.vb</LastGenOutput>

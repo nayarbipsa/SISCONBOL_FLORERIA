@@ -16,7 +16,7 @@ body { padding:20px 0; }
     background:white;
     margin:0 auto;
     padding:4mm 4mm 6mm;
-    font-size:10pt;
+    font-size:11pt;
     line-height:1.35;
     color:#000;
 }
@@ -24,31 +24,31 @@ body { padding:20px 0; }
 .sep  { border-top:1px dashed #000; margin:3mm 0; }
 .sep2 { border-top:2px solid  #000; margin:3mm 0; }
 
-.fila     { display:flex; justify-content:space-between; gap:2mm; font-size:9pt; margin-bottom:1mm; }
+.fila     { display:flex; justify-content:space-between; gap:2mm; font-size:10pt; margin-bottom:1mm; }
 .fila .lbl{ font-weight:bold; min-width:18mm; flex-shrink:0; }
 .fila .val{ text-align:right; word-break:break-word; }
 
-.titBloque { font-size:9pt; font-weight:bold; text-transform:uppercase;
+.titBloque { font-size:10pt; font-weight:bold; text-transform:uppercase;
              letter-spacing:1px; margin-bottom:1.5mm; text-align:center; }
 
 .alerta-box { text-align:center; border:2px solid #000; padding:1.5mm;
-              font-weight:bold; font-size:10pt; letter-spacing:1px; margin:2mm 0; }
+              font-weight:bold; font-size:11pt; letter-spacing:1px; margin:2mm 0; }
 
-.prod      { margin-bottom:2mm; font-size:10pt; }
+.prod      { margin-bottom:2mm; font-size:11pt; }
 .prod .nom { font-weight:bold; }
-.prod .pers{ font-size:9pt; padding-left:3mm; font-style:italic; }
+.prod .pers{ font-size:10pt; padding-left:3mm; font-style:italic; }
 
-.tarjeta     { font-size:9pt; border:1px dashed #000; padding:2mm; margin-top:1mm; }
+.tarjeta     { font-size:10pt; border:1px dashed #000; padding:2mm; margin-top:1mm; }
 .tarjeta .ded{ font-style:italic; word-break:break-word; }
 .tarjeta .fir{ text-align:right; margin-top:1mm; font-weight:bold; }
 
-.nota { font-size:9pt; padding:2mm; background:#f0f0f0; border-radius:2mm;
+.nota { font-size:10pt; padding:2mm; background:#f0f0f0; border-radius:2mm;
         margin-top:1mm; word-break:break-word; }
 
 .pagoEst { display:inline-block; padding:0.5mm 2mm;
-           border:1px solid #000; font-weight:bold; font-size:8pt; }
+           border:1px solid #000; font-weight:bold; font-size:9pt; }
 
-.footer { text-align:center; font-size:8pt; margin-top:3mm; }
+.footer { text-align:center; font-size:9pt; margin-top:3mm; }
 
 .acciones { width:72mm; margin:0 auto 10px; display:flex; gap:6px; }
 .acciones button {
@@ -94,10 +94,10 @@ body { padding:20px 0; }
 
     <!-- FILA: PRE + fecha | recuadro sucursal -->
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1mm">
-        <span style="font-size:8pt;color:#333"><%=LineaPreFecha%></span>
+        <span style="font-size:9pt;color:#333"><%=LineaPreFecha%></span>
         <%=BloqueSucursalBadge%>
     </div>
-    <div style="font-size:8pt;color:#333;margin-bottom:3mm"><%=LineaAgente%></div>
+    <div style="font-size:9pt;color:#333;margin-bottom:3mm"><%=LineaAgente%></div>
 
     <%=BloqueExpress%>
     <%=BloqueCobrar%>

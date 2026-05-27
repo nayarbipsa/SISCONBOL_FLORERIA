@@ -699,19 +699,59 @@ function finalizarYEnviar() {
 }
 
 // ============================================================
+// Menú "Acciones" desplegable en cada pedido confirmado
+// ============================================================
+function toggleMenuPedido(btnEl, ev) {
+    if (ev) ev.stopPropagation();
+    var menu = btnEl.parentNode.querySelector('.menu-dropdown-pedido');
+    if (!menu) return;
+    var abierto = (menu.style.display === 'block');
+    // Cerrar todos primero
+    cerrarMenusPedido();
+    if (!abierto) {
+        menu.style.display = 'block';
+        // Rotar chevron
+        var ic = btnEl.querySelector('i.ti-chevron-down, i.ti-chevron-up');
+        if (ic) ic.classList.replace('ti-chevron-down', 'ti-chevron-up');
+    }
+}
+
+function cerrarMenusPedido() {
+    document.querySelectorAll('.menu-dropdown-pedido').forEach(function(m) {
+        m.style.display = 'none';
+    });
+    document.querySelectorAll('.btn-acciones-menu i.ti-chevron-up').forEach(function(ic) {
+        ic.classList.replace('ti-chevron-up', 'ti-chevron-down');
+    });
+}
+
+// Cerrar al hacer click fuera
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.menu-wrap')) {
+        cerrarMenusPedido();
+    }
+});
+
+// ============================================================
 // Sincronizar un pedido ya creado con WooCommerce
 // Llama Entrega_Handler.ashx con accion=SINCRONIZAR_PEDIDO_WC
 // Al recibir wc_order_id, transforma el botón en "Ver en WC"
 // ============================================================
+// ============================================================
+// Sincronizar un pedido ya creado con WooCommerce
+// Llama Entrega_Handler.ashx con accion=SINCRONIZAR_PEDIDO_WC
+// Recarga la página para refrescar el menú con "Ver en WC"
+// ============================================================
 function sincronizarConWC(pedidoId, btn) {
     if (!confirm('¿Crear este pedido en WooCommerce?')) return;
 
-    // Estado de carga
-    var textoOriginal = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="ti ti-loader" style="font-size:13px;vertical-align:-2px"></i> Creando...';
-    btn.style.opacity = '0.7';
-    btn.style.cursor = 'wait';
+    // Buscar el botón Acciones del menú padre
+    var menuWrap = btn.closest('.menu-wrap');
+    var btnAcciones = menuWrap ? menuWrap.querySelector('.btn-acciones-menu') : null;
+    if (btnAcciones) {
+        btnAcciones.disabled = true;
+        btnAcciones.innerHTML = '<i class="ti ti-loader" style="font-size:13px"></i> Creando...';
+    }
 
     var formData = new FormData();
     formData.append('accion', 'SINCRONIZAR_PEDIDO_WC');
@@ -721,29 +761,22 @@ function sincronizarConWC(pedidoId, btn) {
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.ok && data.wc_order_id > 0) {
-                // Sustituir el botón por uno de "Ver en WC"
-                var url = 'https://miss-flores.com/wp-admin/post.php?post=' + data.wc_order_id + '&action=edit';
-                var nuevoLink = document.createElement('a');
-                nuevoLink.href = url;
-                nuevoLink.target = '_blank';
-                nuevoLink.style.cssText = 'background:#F3E5F5;color:#6A1B9A;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:500;text-decoration:none;display:inline-flex;align-items:center;gap:3px;border:1px solid #CE93D8';
-                nuevoLink.innerHTML = '<i class="ti ti-brand-woocommerce" style="font-size:13px;vertical-align:-2px"></i> Ver en WC';
-                btn.parentNode.replaceChild(nuevoLink, btn);
+                // Recargar para mostrar el nuevo estado del menú
+                location.reload();
             } else {
-                // Restaurar y mostrar error
-                btn.disabled = false;
-                btn.innerHTML = textoOriginal;
-                btn.style.opacity = '1';
-                btn.style.cursor = 'pointer';
                 alert('No se pudo crear en WooCommerce:\n' + (data.msg || 'Error desconocido'));
+                if (btnAcciones) {
+                    btnAcciones.disabled = false;
+                    btnAcciones.innerHTML = 'Acciones <i class="ti ti-chevron-down" style="font-size:13px"></i>';
+                }
             }
         })
         .catch(function() {
-            btn.disabled = false;
-            btn.innerHTML = textoOriginal;
-            btn.style.opacity = '1';
-            btn.style.cursor = 'pointer';
             alert('Error de conexión. Intente nuevamente.');
+            if (btnAcciones) {
+                btnAcciones.disabled = false;
+                btnAcciones.innerHTML = 'Acciones <i class="ti ti-chevron-down" style="font-size:13px"></i>';
+            }
         });
 }
 </script>

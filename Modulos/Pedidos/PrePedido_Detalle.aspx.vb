@@ -259,28 +259,48 @@ Partial Public Class Modulos_Pedidos_PrePedido_Detalle
                     sb.AppendLine("      <h4 class='pedido-codigo'>" & pedidoCodigo & "</h4>")
                     sb.AppendLine("      <p class='pedido-desc'>Para " & receptor & If(celReceptor <> "", " • " & celReceptor, "") & "</p>")
                     sb.AppendLine("    </div>")
-                    sb.AppendLine("    <div style='display:flex;gap:6px;flex-wrap:wrap;align-items:center'>")
-                    sb.AppendLine("      <span style='background:#E8F5E9;color:#2E7D32;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:500'>")
+                    
+                    ' --- Tag CONFIRMADO + Menú "Acciones" desplegable ---
+                    sb.AppendLine("    <div style='display:flex;gap:6px;align-items:center;flex-shrink:0'>")
+                    sb.AppendLine("      <span style='background:#E8F5E9;color:#2E7D32;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:500;white-space:nowrap'>")
                     sb.AppendLine("        <i class='ti ti-check' style='font-size:13px;vertical-align:-2px'></i> CONFIRMADO")
                     sb.AppendLine("      </span>")
-                    sb.AppendLine("      <a href='Recibo.aspx?id=" & pedidoId & "' target='_blank' style='background:#EBF0FF;color:#3B5BDB;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:500;text-decoration:none;display:inline-flex;align-items:center;gap:3px;border:1px solid #90CAF9'>")
-                    sb.AppendLine("        <i class='ti ti-printer' style='font-size:13px;vertical-align:-2px'></i> Imprimir recibo")
-                    sb.AppendLine("      </a>")
+                    sb.AppendLine("      <div class='menu-wrap' style='position:relative'>")
+                    sb.AppendLine("        <button type='button' class='btn-acciones-menu' onclick='toggleMenuPedido(this, event)' style='background:#f5f5f5;border:1px solid #e0e0e0;padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;color:#424242;font-weight:500;white-space:nowrap'>")
+                    sb.AppendLine("          Acciones <i class='ti ti-chevron-down' style='font-size:13px'></i>")
+                    sb.AppendLine("        </button>")
+                    sb.AppendLine("        <div class='menu-dropdown-pedido' data-pedido-id='" & pedidoId & "' style='display:none;position:absolute;top:calc(100% + 4px);right:0;background:#fff;border:1px solid #e0e0e0;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.08);min-width:210px;overflow:hidden;z-index:10'>")
                     
-                    ' Botón WooCommerce: Ver (si ya tiene wc_order_id) o Crear (si no)
+                    ' Opción: Ir al pedido
+                    sb.AppendLine("          <a href='Pedido_Detalle.aspx?id=" & pedidoId & "' style='display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:12px;text-decoration:none;color:#212121;border-bottom:1px solid #f5f5f5'>")
+                    sb.AppendLine("            <i class='ti ti-eye' style='font-size:15px;width:18px;color:#7F77DD'></i>")
+                    sb.AppendLine("            <div>Ir al pedido<span style='display:block;font-size:10px;color:#9e9e9e;margin-top:1px'>Ver detalle completo</span></div>")
+                    sb.AppendLine("          </a>")
+                    
+                    ' Opción: Imprimir recibo
+                    sb.AppendLine("          <a href='Recibo.aspx?id=" & pedidoId & "' target='_blank' style='display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:12px;text-decoration:none;color:#212121;border-bottom:1px solid #f5f5f5'>")
+                    sb.AppendLine("            <i class='ti ti-printer' style='font-size:15px;width:18px;color:#3B5BDB'></i>")
+                    sb.AppendLine("            <div>Imprimir recibo<span style='display:block;font-size:10px;color:#9e9e9e;margin-top:1px'>Ticket térmico 80mm</span></div>")
+                    sb.AppendLine("          </a>")
+                    
+                    ' Opción: Ver / Crear en WooCommerce
                     If wcOrderId > 0 Then
                         Dim wcUrl As String = "https://miss-flores.com/wp-admin/post.php?post=" & wcOrderId & "&action=edit"
-                        sb.AppendLine("      <a href='" & wcUrl & "' target='_blank' style='background:#F3E5F5;color:#6A1B9A;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:500;text-decoration:none;display:inline-flex;align-items:center;gap:3px;border:1px solid #CE93D8'>")
-                        sb.AppendLine("        <i class='ti ti-brand-woocommerce' style='font-size:13px;vertical-align:-2px'></i> Ver en WC")
-                        sb.AppendLine("      </a>")
+                        sb.AppendLine("          <a href='" & wcUrl & "' target='_blank' style='display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:12px;text-decoration:none;color:#212121'>")
+                        sb.AppendLine("            <i class='ti ti-brand-woocommerce' style='font-size:15px;width:18px;color:#6A1B9A'></i>")
+                        sb.AppendLine("            <div>Ver en WooCommerce<span style='display:block;font-size:10px;color:#9e9e9e;margin-top:1px'>#" & wcOrderId & "</span></div>")
+                        sb.AppendLine("          </a>")
                     Else
-                        sb.AppendLine("      <button type='button' onclick='sincronizarConWC(" & pedidoId & ", this)' style='background:#FFF3E0;color:#E65100;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:3px;border:1px solid #FFB74D'>")
-                        sb.AppendLine("        <i class='ti ti-brand-woocommerce' style='font-size:13px;vertical-align:-2px'></i> Crear en WC")
-                        sb.AppendLine("      </button>")
+                        sb.AppendLine("          <button type='button' onclick='sincronizarConWC(" & pedidoId & ", this); cerrarMenusPedido();' style='display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:12px;background:none;border:none;cursor:pointer;width:100%;text-align:left;color:#212121'>")
+                        sb.AppendLine("            <i class='ti ti-brand-woocommerce' style='font-size:15px;width:18px;color:#E65100'></i>")
+                        sb.AppendLine("            <div>Crear en WooCommerce<span style='display:block;font-size:10px;color:#9e9e9e;margin-top:1px'>Sincronizar este pedido</span></div>")
+                        sb.AppendLine("          </button>")
                     End If
                     
-                    sb.AppendLine("    </div>")
-                    sb.AppendLine("  </div>")
+                    sb.AppendLine("        </div>") ' fin menu-dropdown-pedido
+                    sb.AppendLine("      </div>") ' fin menu-wrap
+                    sb.AppendLine("    </div>") ' fin acciones (tag + menú)
+                    sb.AppendLine("  </div>") ' fin pedido-header
                     
                     ' Información del pedido
                     sb.AppendLine("  <div class='pedido-grid'>")
