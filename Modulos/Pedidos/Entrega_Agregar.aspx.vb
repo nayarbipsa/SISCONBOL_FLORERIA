@@ -23,6 +23,8 @@ Partial Public Class Modulos_Pedidos_Entrega_Agregar
     Public Property PrePedidoEntregaId As Integer = 0
     Public Property PrePedidoCodigo As String = ""
     Public Property ClienteNombre As String = ""
+    Public Property ClienteNombreSolo As String = ""
+    Public Property ClienteApellidosSolo As String = ""
     Public Property ClienteCelular As String = ""
     Public Property ClienteEmail As String = ""
     Public Property TasaCambio As Decimal = 7.0
@@ -214,6 +216,8 @@ Partial Public Class Modulos_Pedidos_Entrega_Agregar
                             PrePedidoCodigo = dr("codigo").ToString()
                             Dim nombre As String = If(IsDBNull(dr("cliente_nombre")), "", dr("cliente_nombre").ToString())
                             Dim apellidos As String = If(IsDBNull(dr("cliente_apellidos")), "", dr("cliente_apellidos").ToString())
+                            ClienteNombreSolo = nombre
+                            ClienteApellidosSolo = apellidos
                             ClienteNombre = (nombre.Trim() & " " & apellidos.Trim()).Trim()
                             If ClienteNombre = "" Then ClienteNombre = "Cliente"
                             ClienteCelular = If(IsDBNull(dr("cliente_celular")), "", dr("cliente_celular").ToString())

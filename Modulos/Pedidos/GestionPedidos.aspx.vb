@@ -6,14 +6,20 @@ Imports System.Web
 Partial Public Class Modulos_Pedidos_GestionPedidos
     Inherits System.Web.UI.Page
 
+    ' ============================================================
     ' Propiedades para el ASPX
-    Public Property TablaPendientesWC As String = ""
+    ' ============================================================
     Public Property OptionsDelivery As String = ""
     Public Property OptionsZona As String = ""
-    Public Property TotalPendientesWC As Integer = 0
+    Public Property SucursalRadios As String = ""
+    Public Property TotalGeneralSucursal As Integer = 0
+    Public Property TotalSinSucursal As Integer = 0
     Public Property MensajeAlerta As String = ""
     Public Property TipoAlerta As String = "success"
 
+    ' ============================================================
+    ' PAGE LOAD
+    ' ============================================================
     Protected Sub Page_Load(sender As Object, e As EventArgs) Handles Me.Load
         If Not SesionHelper.VerificarSesion(Context) Then
             Response.Redirect("~/Login.aspx")
@@ -32,8 +38,8 @@ Partial Public Class Modulos_Pedidos_GestionPedidos
 
         If Not IsPostBack Then
             Try
-                CargarPendientesWC()
                 CargarDropdowns()
+                CargarSucursales()
             Catch ex As Exception
                 System.Diagnostics.Debug.WriteLine("ERROR Page_Load: " & ex.Message)
                 MensajeAlerta = "Error: " & ex.Message
@@ -43,67 +49,58 @@ Partial Public Class Modulos_Pedidos_GestionPedidos
     End Sub
 
     ' ============================================================
-    ' BANNER WC PENDIENTES (sigue por server-side porque es chico)
+    ' CARGAR SUCURSALES (radio buttons dinámicos con conteo)
     ' ============================================================
-    Private Sub CargarPendientesWC()
+    Private Sub CargarSucursales()
         Dim sb As New StringBuilder()
-        TotalPendientesWC = 0
+
+        ' Diccionario para guardar conteos por sucursal_id
+        Dim conteos As New Dictionary(Of Integer, Integer)
+        Dim totalGeneral As Integer = 0
+        Dim sinAsignar As Integer = 0
 
         Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
             conn.Open()
-            Using cmd As New SqlCommand("FLORERIA_sp_Pedido_ListarPendientesWC", conn)
-                cmd.CommandType = CommandType.StoredProcedure
+
+            ' 1. Contar pedidos no cancelados por sucursal_prepara_id
+            Using cmd As New SqlCommand("SELECT ISNULL(sucursal_prepara_id, -1) AS sid, COUNT(*) AS cnt FROM FLORERIA_Pedido WHERE ISNULL(estado_pago,'') NOT IN ('CANCELADO') GROUP BY ISNULL(sucursal_prepara_id, -1)", conn)
                 Using dr As SqlDataReader = cmd.ExecuteReader()
                     While dr.Read()
-                        TotalPendientesWC += 1
-                        sb.Append(RenderFilaWC(dr))
+                        Dim sid As Integer = CInt(dr("sid"))
+                        Dim cnt As Integer = CInt(dr("cnt"))
+                        totalGeneral += cnt
+                        If sid = -1 Then
+                            sinAsignar = cnt
+                        Else
+                            conteos(sid) = cnt
+                        End If
+                    End While
+                End Using
+            End Using
+
+            ' 2. Listar sucursales activas
+            Using cmd As New SqlCommand("SELECT sucursal_id, nombre FROM FLORERIA_Sucursal WHERE ISNULL(activo,1)=1 ORDER BY nombre", conn)
+                Using dr As SqlDataReader = cmd.ExecuteReader()
+                    While dr.Read()
+                        Dim sucId As Integer = CInt(dr("sucursal_id"))
+                        Dim nombre As String = dr("nombre").ToString()
+                        Dim cnt As Integer = 0
+                        If conteos.ContainsKey(sucId) Then cnt = conteos(sucId)
+
+                        sb.Append("<label class=""suc-pill"" data-sp=""" & sucId & """>")
+                        sb.Append("<input type=""radio"" name=""sucPrepara"" value=""" & sucId & """/>")
+                        sb.Append(HE(nombre))
+                        sb.Append(" <span class=""suc-count"">(" & cnt & ")</span>")
+                        sb.Append("</label>")
                     End While
                 End Using
             End Using
         End Using
 
-        TablaPendientesWC = sb.ToString()
+        SucursalRadios = sb.ToString()
+        TotalGeneralSucursal = totalGeneral
+        TotalSinSucursal = sinAsignar
     End Sub
-
-    Private Function RenderFilaWC(dr As SqlDataReader) As String
-        Dim sb As New StringBuilder()
-        Dim pedidoId As Integer = CInt(dr("pedido_id"))
-        Dim wcNumber As String = LeerStr(dr, "wc_order_number")
-        Dim wcStatus As String = LeerStr(dr, "wc_order_status")
-        Dim metodoPago As String = LeerStr(dr, "wc_payment_method_title")
-        If metodoPago = "" Then metodoPago = "(no especificado)"
-        Dim receptor As String = LeerStr(dr, "receptor_nombre")
-        Dim celular As String = LeerStr(dr, "receptor_celular")
-        Dim totalBs As Decimal = LeerDec(dr, "total_bs")
-        Dim contactado As Boolean = LeerBool(dr, "contactado_cliente")
-        Dim creadoEn As DateTime = LeerFecha(dr, "creado_en")
-        Dim iconoMetodo As String = ObtenerIconoMetodoPago(LeerStr(dr, "wc_payment_method"))
-        Dim clienteJs As String = ("WC #" & wcNumber & " - " & receptor).Replace("'", "").Replace(Chr(34), "")
-
-        sb.Append("<div class=""wc-row"">")
-        sb.Append("<span class=""code-mono"">#" & HE(wcNumber) & "</span>")
-        sb.Append("<div><div style=""font-weight:500"">" & HE(receptor))
-        If contactado Then sb.Append("<span class=""contacto-ok""> &middot; contactado</span>")
-        sb.Append("</div>")
-        sb.Append("<div class=""cell-subtle"">" & HE(celular) & " &middot; " & creadoEn.ToString("dd/MM HH:mm") & "</div></div>")
-        sb.Append("<div class=""method-pago""><i class=""ti " & iconoMetodo & """></i> " & HE(metodoPago) & "</div>")
-        sb.Append("<span class=""badge badge-warn"">" & HE(wcStatus) & "</span>")
-        sb.Append("<span style=""text-align:right;font-weight:500"">Bs " & totalBs.ToString("N2") & "</span>")
-        sb.Append("<div class=""actions-cell"">")
-        sb.Append("<button type=""button"" class=""btn btn-icon-only"" onclick=""verDetalle(" & pedidoId & ")""><i class=""ti ti-eye""></i></button>")
-        sb.Append("<button type=""button"" class=""btn btn-icon-only btn-success-sm"" onclick=""abrirModalAceptar(" & pedidoId & ",'" & clienteJs & "','" & totalBs.ToString("N2") & "')""><i class=""ti ti-check""></i> Aceptar</button>")
-        sb.Append("</div></div>")
-        Return sb.ToString()
-    End Function
-
-    Private Function ObtenerIconoMetodoPago(metodo As String) As String
-        If metodo Is Nothing Then Return "ti-credit-card"
-        Dim m = metodo.ToLower()
-        If m.Contains("qr") OrElse m.Contains("bisa") Then Return "ti-qrcode"
-        If m.Contains("transfer") OrElse m.Contains("bnb") OrElse m.Contains("bank") Then Return "ti-building-bank"
-        If m.Contains("efectivo") OrElse m.Contains("cash") OrElse m.Contains("cod") OrElse m.Contains("contra") Then Return "ti-cash"
-        Return "ti-credit-card"
-    End Function
 
     ' ============================================================
     ' DROPDOWNS (Zona y Delivery)
@@ -169,7 +166,7 @@ Partial Public Class Modulos_Pedidos_GestionPedidos
                 If estadoNuevo Is Nothing OrElse estadoNuevo = "" Then Return
                 EjecutarCambiarEstado(pedidoId, estadoNuevo, usuarioId, ip)
             ElseIf accion = "CANCELAR_PEDIDO" Then
-                ' Verificar permiso
+                ' Verificar permiso (solo Admin o Gerente)
                 Dim tipoId As Integer = 3
                 If Session("tipo_id") IsNot Nothing Then Integer.TryParse(Session("tipo_id").ToString(), tipoId)
                 If tipoId <> 1 AndAlso tipoId <> 2 Then
@@ -277,16 +274,6 @@ Partial Public Class Modulos_Pedidos_GestionPedidos
         End Try
     End Function
 
-    Private Function LeerDec(dr As SqlDataReader, campo As String) As Decimal
-        Try
-            Dim idx = dr.GetOrdinal(campo)
-            If dr.IsDBNull(idx) Then Return 0D
-            Return CDec(dr(idx))
-        Catch
-            Return 0D
-        End Try
-    End Function
-
     Private Function LeerBool(dr As SqlDataReader, campo As String) As Boolean
         Try
             Dim idx = dr.GetOrdinal(campo)
@@ -294,16 +281,6 @@ Partial Public Class Modulos_Pedidos_GestionPedidos
             Return CBool(dr(idx))
         Catch
             Return False
-        End Try
-    End Function
-
-    Private Function LeerFecha(dr As SqlDataReader, campo As String) As DateTime
-        Try
-            Dim idx = dr.GetOrdinal(campo)
-            If dr.IsDBNull(idx) Then Return DateTime.MinValue
-            Return CDate(dr(idx))
-        Catch
-            Return DateTime.MinValue
         End Try
     End Function
 

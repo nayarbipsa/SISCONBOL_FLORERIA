@@ -185,7 +185,24 @@
         </div>
     </div>
     <div class="panel-body">
-        <p style="margin:0;font-size:13px;color:#666">Cliente: <strong><%=ClienteNombre%></strong> &mdash; <%=ClienteCelular%> &mdash; <%=ClienteEmail%></p>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;align-items:end">
+            <div>
+                <label class="ea-label" style="font-size:10px;color:#999;margin-bottom:2px">Cliente - Nombre</label>
+                <input type="text" id="txClienteNombre" class="ea-input" style="padding:6px 8px;font-size:13px" value="<%=ClienteNombreSolo%>" onblur="guardarCliente('cliente_nombre', this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();return false;}" />
+            </div>
+            <div>
+                <label class="ea-label" style="font-size:10px;color:#999;margin-bottom:2px">Apellidos</label>
+                <input type="text" id="txClienteApellidos" class="ea-input" style="padding:6px 8px;font-size:13px" value="<%=ClienteApellidosSolo%>" onblur="guardarCliente('cliente_apellidos', this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();return false;}" />
+            </div>
+            <div>
+                <label class="ea-label" style="font-size:10px;color:#999;margin-bottom:2px">Celular</label>
+                <input type="text" id="txClienteCelular" class="ea-input" style="padding:6px 8px;font-size:13px" value="<%=ClienteCelular%>" onblur="guardarCliente('cliente_celular', this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();return false;}" />
+            </div>
+            <div>
+                <label class="ea-label" style="font-size:10px;color:#999;margin-bottom:2px">Email</label>
+                <input type="email" id="txClienteEmail" class="ea-input" style="padding:6px 8px;font-size:13px" value="<%=ClienteEmail%>" onblur="guardarCliente('cliente_email', this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();return false;}" />
+            </div>
+        </div>
     </div>
 </div>
 
@@ -737,12 +754,64 @@ function toggleSeccion(nombre) {
 
 // ============================================================
 // TOGGLE DOMICILIO / RECOJO
+// Al volver a Domicilio, limpia los campos que se auto-llenaron por Recojo
+// (los detectamos por prefijo "Recoge en tienda" / "Por recoge en tienda").
+// El receptor/dedicatoria/firma que el agente escribio manualmente NO se toca.
 // ============================================================
 function toggleTipoEntrega() {
-    var isDomicilio = document.querySelector('input[name="tipoEntrega"][value="DOMICILIO"]').checked;
+    var radioDom = document.querySelector('input[name="tipoEntrega"][value="DOMICILIO"]');
+    var isDomicilio = !!(radioDom && radioDom.checked);
     document.getElementById('fieldsDomicilio').style.display = isDomicilio ? 'block' : 'none';
     document.getElementById('fieldsRecojo').style.display = isDomicilio ? 'none' : 'block';
+
+    if (isDomicilio) {
+        limpiarAutoLlenadosRecojo();
+    }
+
     actualizarChecklist();
+}
+
+// ============================================================
+// LIMPIAR AUTO-LLENADOS DE RECOJO
+// Limpia receptor, celular receptor, ocasion, dedicatoria y firma
+// solo si tienen los valores autollenados ("Recoge en tienda...", "Por recoge en tienda", "OTRO").
+// Lo escrito manualmente por el agente se respeta.
+// ============================================================
+function limpiarAutoLlenadosRecojo() {
+    var rx = /^Recoge en tienda\b/i;
+
+    var txReceptor = document.getElementById('txReceptor');
+    if (txReceptor && rx.test(txReceptor.value)) {
+        txReceptor.value = '';
+        guardarCampo('receptor_nombre', '');
+    }
+
+    // El celular auto-llenado es una copia del cliente -> lo comparamos
+    var txCelRec = document.getElementById('txCelularReceptor');
+    var txCelCli = document.getElementById('txClienteCelular');
+    if (txCelRec && txCelCli && txCelRec.value && txCelRec.value === txCelCli.value) {
+        txCelRec.value = '';
+        guardarCampo('receptor_celular', '');
+    }
+
+    var txDed = document.getElementById('txDedicatoria');
+    if (txDed && /^Por recoge en tienda\b/i.test(txDed.value)) {
+        txDed.value = '';
+        guardarCampo('dedicatoria', '');
+    }
+
+    var txFir = document.getElementById('txFirma');
+    if (txFir && rx.test(txFir.value)) {
+        txFir.value = '';
+        guardarCampo('firma_tarjeta', '');
+    }
+
+    // Ocasion: si esta en OTRO, la dejamos a vacio para que el agente la reelija si quiere
+    var ddOca = document.getElementById('ddOcasion');
+    if (ddOca && ddOca.value === 'OTRO') {
+        ddOca.value = '';
+        guardarCampo('tipo_ocacion', '');
+    }
 }
 
 // ============================================================
@@ -800,6 +869,34 @@ function guardarCampo(campo, valor) {
     .then(function(data) {
         if (data.ok) { mostrarGuardado(); } else { mostrarError(); }
         actualizarChecklist();
+    })
+    .catch(function() { mostrarError(); });
+}
+
+// ============================================================
+// GUARDAR CAMPO DEL CLIENTE (cliente_nombre, cliente_apellidos, cliente_email, cliente_celular)
+// Usa el endpoint GUARDAR_CLIENTE del handler que actualiza FLORERIA_PrePedido.
+// ============================================================
+function guardarCliente(campo, valor) {
+    if (prepedidoId === 0) {
+        mostrarError();
+        return;
+    }
+    mostrarGuardando();
+    var formData = new FormData();
+    formData.append('accion', 'GUARDAR_CLIENTE');
+    formData.append('prepedido_id', prepedidoId);
+    formData.append('campo', campo);
+    formData.append('valor', valor);
+    fetch('Entrega_Handler.ashx', { method: 'POST', body: formData })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.ok) {
+            mostrarGuardado();
+        } else {
+            mostrarError();
+            if (data.msg) { mostrarToast(data.msg, 'err'); }
+        }
     })
     .catch(function() { mostrarError(); });
 }
@@ -1841,8 +1938,69 @@ function crearPedidoWC() {
         }
     });
 }
+// ============================================================
+// SELECCIONAR SUCURSAL DE RECOJO
+// Al elegir sucursal en modo Recojo: ademas de guardar sucursal_id,
+// auto-llena los siguientes campos (SOBRESCRIBIENDO lo que hubiera):
+//   - Persona que recibe = "Recoge en tienda <Sucursal>"
+//   - Celular receptor   = copia del celular del cliente
+//   - Ocasion            = "OTRO"
+//   - Dedicatoria        = "Por recoge en tienda"
+//   - Firma              = "Recoge en tienda"
+// Cada cambio se guarda al servidor via guardarCampo().
+// ============================================================
 function seleccionarSucursalRecojo(id) {
     guardarCampo('sucursal_id', id);
+
+    // Obtener nombre legible de la sucursal desde la tarjeta clicada
+    var sucNombre = '';
+    var card = document.querySelector('#fieldsRecojo .ea-sucursal-card.selected p');
+    if (card) {
+        sucNombre = (card.textContent || card.innerText || '').trim();
+    }
+
+    // 1) Persona que recibe
+    var textoReceptor = 'Recoge en tienda' + (sucNombre ? ' ' + sucNombre : '');
+    var txReceptor = document.getElementById('txReceptor');
+    if (txReceptor) {
+        txReceptor.value = textoReceptor;
+        guardarCampo('receptor_nombre', textoReceptor);
+    }
+
+    // 2) Celular receptor = celular del cliente
+    var txCelCli = document.getElementById('txClienteCelular');
+    var txCelRec = document.getElementById('txCelularReceptor');
+    if (txCelRec && txCelCli) {
+        var celCli = (txCelCli.value || '').trim();
+        if (celCli) {
+            txCelRec.value = celCli;
+            guardarCampo('receptor_celular', celCli);
+        }
+    }
+
+    // 3) Ocasion = OTRO
+    var ddOca = document.getElementById('ddOcasion');
+    if (ddOca) {
+        ddOca.value = 'OTRO';
+        guardarCampo('tipo_ocacion', 'OTRO');
+    }
+
+    // 4) Dedicatoria
+    var textoDed = 'Por recoge en tienda';
+    var txDed = document.getElementById('txDedicatoria');
+    if (txDed) {
+        txDed.value = textoDed;
+        guardarCampo('dedicatoria', textoDed);
+    }
+
+    // 5) Firma
+    var textoFir = 'Recoge en tienda';
+    var txFir = document.getElementById('txFirma');
+    if (txFir) {
+        txFir.value = textoFir;
+        guardarCampo('firma_tarjeta', textoFir);
+    }
+
     actualizarChecklist();
 }
 
@@ -1900,27 +2058,41 @@ function validarChecklistCompleto() {
     var celular = txC ? (txC.value || '').trim() : '';
     items.push({ etiqueta: 'Receptor (nombre y celular)', ok: receptor !== '' && celular !== '' });
 
-    // 7. Pago: suma de pagos VERIFICADOS debe igualar el total (con tolerancia 0.01 Bs)
-    //    Tambien se controla EXCESO: si la suma supera el total, marca error.
+    // 7. Pago: ahora INFORMATIVO. Permite crear pedido WC con saldo pendiente.
+    //    Solo BLOQUEA si hay sobrepago (eso si es un error logico).
+    //    Suma TODOS los pagos no-RECHAZADOS (VERIFICADO + PENDIENTE) porque
+    //    al confirmar el pedido los PENDIENTE pasan a VERIFICADO (FIX SP).
+    var sumaCuenta = 0;
     var sumaVerificado = 0;
-    document.querySelectorAll('.ea-pago-row[data-estado="VERIFICADO"]').forEach(function(row) {
+    var sumaPendiente = 0;
+    document.querySelectorAll('.ea-pago-row').forEach(function(row) {
+        var est = (row.getAttribute('data-estado') || '').toUpperCase();
         var m = parseFloat(row.getAttribute('data-monto-bs')) || 0;
-        sumaVerificado += m;
+        if (est === 'VERIFICADO') { sumaVerificado += m; sumaCuenta += m; }
+        else if (est === 'PENDIENTE') { sumaPendiente += m; sumaCuenta += m; }
+        // RECHAZADO no se suma
     });
     var totalPedido = leerTotalPedidoBs();
-    var pagoOk = false;
-    var etiquetaPago = 'Pago verificado';
+    var pagoOk = true;
+    var etiquetaPago = '';
     if (totalPedido <= 0) {
-        etiquetaPago = 'Pago verificado (sin total calculado)';
-    } else if (sumaVerificado + 0.01 < totalPedido) {
-        // Faltan pagos
-        etiquetaPago = 'Pago verificado (Bs ' + sumaVerificado.toFixed(2) + ' de ' + totalPedido.toFixed(2) + ')';
-    } else if (sumaVerificado > totalPedido + 0.01) {
-        // Excede el total
-        var exceso = sumaVerificado - totalPedido;
+        etiquetaPago = 'Pago (sin total calculado)';
+    } else if (sumaCuenta > totalPedido + 0.01) {
+        // Sobrepago: bloquear
+        var exceso = sumaCuenta - totalPedido;
         etiquetaPago = 'Pago excede el total en Bs ' + exceso.toFixed(2);
+        pagoOk = false;
+    } else if (sumaCuenta + 0.01 >= totalPedido) {
+        // Pagado completo
+        etiquetaPago = 'Pago completo (Bs ' + sumaCuenta.toFixed(2) + ')';
+    } else if (sumaCuenta > 0) {
+        // Pago parcial: informativo, NO bloquea
+        var saldoFalta = totalPedido - sumaCuenta;
+        etiquetaPago = 'Pago parcial: Bs ' + sumaCuenta.toFixed(2) + ' de ' + totalPedido.toFixed(2) +
+                       ' (saldo Bs ' + saldoFalta.toFixed(2) + ')';
     } else {
-        pagoOk = true;
+        // Sin pago: informativo, NO bloquea
+        etiquetaPago = 'Sin pago registrado (saldo Bs ' + totalPedido.toFixed(2) + ')';
     }
     items.push({ etiqueta: etiquetaPago, ok: pagoOk });
 

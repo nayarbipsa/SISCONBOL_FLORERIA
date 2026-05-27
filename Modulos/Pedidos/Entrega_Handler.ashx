@@ -40,6 +40,8 @@ Public Class Entrega_Handler
                     ActualizarDetalle(context)
                 Case "GUARDAR_CAMPO"
                     GuardarCampo(context)
+                Case "GUARDAR_CLIENTE"
+                    GuardarCliente(context)
                 Case "AGREGAR_PAGO"
                     AgregarPago(context)
                 Case "ELIMINAR_PAGO"
@@ -343,6 +345,60 @@ Public Class Entrega_Handler
                 cmd.ExecuteNonQuery()
             End Using
 
+            ' ============================================================
+            ' [BUG #2 ZONA-PUENTE RECOJO]
+            ' Si el campo guardado fue tipo_entrega o sucursal_id, auto-resolver
+            ' el zona_id contra la zona-puente correspondiente.
+            '
+            ' Caso A: borrador AHORA es RECOJO_SUCURSAL con sucursal_id válido
+            '   -> zona_id = (zona donde wc_zone_code coincide con la sucursal
+            '                 y tipo='RECOJO_SUCURSAL' y activo=1)
+            '   Esto asegura que cuando se envíe a WC, el campo state se llene
+            '   con "Recoger en Sopocachi" o "Recoger en Calacoto" y WC pueda
+            '   asignar el shipping method correcto.
+            '
+            ' Caso B: borrador AHORA es DOMICILIO y zona_id apunta a una zona
+            '   con tipo='RECOJO_SUCURSAL'
+            '   -> limpiar zona_id a NULL para que el agente elija una zona
+            '   DELIVERY real desde el datalist.
+            ' ============================================================
+            If campo = "tipo_entrega" OrElse campo = "sucursal_id" Then
+                Try
+                    ' Caso A: RECOJO_SUCURSAL con sucursal_id -> setear zona-puente
+                    Using cmdMap As New SqlCommand(
+                        "UPDATE e " &
+                        "SET e.zona_id = z.zona_id " &
+                        "FROM FLORERIA_PrePedido_Entrega e " &
+                        "INNER JOIN FLORERIA_Sucursal s ON s.sucursal_id = e.sucursal_id " &
+                        "INNER JOIN FLORERIA_Zona z " &
+                        "    ON z.wc_zone_code = s.wc_zone_code " &
+                        "   AND z.tipo = 'RECOJO_SUCURSAL' " &
+                        "   AND z.activo = 1 " &
+                        "WHERE e.prepedido_entrega_id = @eid " &
+                        "  AND e.tipo_entrega = 'RECOJO_SUCURSAL' " &
+                        "  AND e.sucursal_id IS NOT NULL " &
+                        "  AND (e.zona_id IS NULL OR e.zona_id <> z.zona_id)", conn)
+                        cmdMap.Parameters.AddWithValue("@eid", entregaId)
+                        cmdMap.ExecuteNonQuery()
+                    End Using
+
+                    ' Caso B: volvió a DOMICILIO y zona_id era de tipo RECOJO_SUCURSAL -> limpiar
+                    Using cmdClean As New SqlCommand(
+                        "UPDATE e " &
+                        "SET e.zona_id = NULL " &
+                        "FROM FLORERIA_PrePedido_Entrega e " &
+                        "INNER JOIN FLORERIA_Zona z ON z.zona_id = e.zona_id " &
+                        "WHERE e.prepedido_entrega_id = @eid " &
+                        "  AND e.tipo_entrega = 'DOMICILIO' " &
+                        "  AND z.tipo = 'RECOJO_SUCURSAL'", conn)
+                        cmdClean.Parameters.AddWithValue("@eid", entregaId)
+                        cmdClean.ExecuteNonQuery()
+                    End Using
+                Catch
+                    ' Silencioso: si esto falla no rompe el guardado del campo principal
+                End Try
+            End If
+
             ' [NUEVO] Si se actualizo receptor_nombre/celular o fecha_entrega -> recalcular estado
             ' Esto cubre el caso "agente llena todo manualmente sin enviar form web"
             If campo = "receptor_nombre" OrElse campo = "receptor_celular" OrElse campo = "fecha_entrega" Then
@@ -361,6 +417,91 @@ Public Class Entrega_Handler
                 End Try
             End If
         End Using
+
+        context.Response.Write("{""ok"":true}")
+    End Sub
+
+    ' ============================================================
+    ' GUARDAR CLIENTE (cliente_nombre / cliente_apellidos / cliente_email del PrePedido)
+    ' Recibe: prepedido_id, campo, valor
+    ' Campos permitidos: cliente_nombre, cliente_apellidos, cliente_email, cliente_celular
+    ' Solo permite editar si el prepedido NO ha sido convertido.
+    ' ============================================================
+    Private Sub GuardarCliente(context As HttpContext)
+        Dim prepedidoId As Integer = 0
+        Integer.TryParse(context.Request.Form("prepedido_id"), prepedidoId)
+
+        Dim campo As String = context.Request.Form("campo")
+        If campo Is Nothing Then campo = ""
+
+        Dim valor As String = context.Request.Form("valor")
+        If valor Is Nothing Then valor = ""
+
+        If prepedidoId <= 0 Then
+            context.Response.Write("{""ok"":false,""msg"":""prepedido_id invalido""}")
+            Return
+        End If
+
+        ' Lista blanca de campos permitidos del cliente
+        Dim camposPermitidos As String() = {
+            "cliente_nombre", "cliente_apellidos", "cliente_email", "cliente_celular"
+        }
+        If Array.IndexOf(camposPermitidos, campo) < 0 Then
+            context.Response.Write("{""ok"":false,""msg"":""Campo no permitido""}")
+            Return
+        End If
+
+        Dim usuarioId As Integer = SesionHelper.ObtenerUsuarioId(HttpContext.Current)
+
+        Try
+            Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
+                conn.Open()
+
+                ' Verificar que el prepedido no esté ya convertido
+                Dim estado As String = ""
+                Using cmdEst As New SqlCommand(
+                    "SELECT estado FROM FLORERIA_PrePedido WHERE prepedido_id = @id", conn)
+                    cmdEst.Parameters.AddWithValue("@id", prepedidoId)
+                    Dim r As Object = cmdEst.ExecuteScalar()
+                    If r IsNot Nothing AndAlso Not IsDBNull(r) Then
+                        estado = r.ToString()
+                    End If
+                End Using
+
+                If estado = "" Then
+                    context.Response.Write("{""ok"":false,""msg"":""PrePedido no encontrado""}")
+                    Return
+                End If
+
+                If estado = "CONVERTIDO" OrElse estado = "CANCELADO" Then
+                    context.Response.Write("{""ok"":false,""msg"":""No se puede editar un prepedido " & estado & """}")
+                    Return
+                End If
+
+                ' UPDATE del campo
+                Dim sql As String = "UPDATE FLORERIA_PrePedido SET [" & campo & "] = @val, " &
+                    "modificado_por = @uid, modificado_en = GETDATE() " &
+                    "WHERE prepedido_id = @id"
+                Using cmd As New SqlCommand(sql, conn)
+                    If valor = "" Then
+                        ' cliente_celular es NOT NULL en FLORERIA_PrePedido - no permitir vaciar
+                        If campo = "cliente_celular" Then
+                            context.Response.Write("{""ok"":false,""msg"":""El celular del cliente no puede estar vacio""}")
+                            Return
+                        End If
+                        cmd.Parameters.AddWithValue("@val", DBNull.Value)
+                    Else
+                        cmd.Parameters.AddWithValue("@val", valor)
+                    End If
+                    cmd.Parameters.AddWithValue("@uid", usuarioId)
+                    cmd.Parameters.AddWithValue("@id", prepedidoId)
+                    cmd.ExecuteNonQuery()
+                End Using
+            End Using
+        Catch ex As Exception
+            context.Response.Write("{""ok"":false,""msg"":""Error al guardar cliente: " & ex.Message.Replace("""", "'") & """}")
+            Return
+        End Try
 
         context.Response.Write("{""ok"":true}")
     End Sub

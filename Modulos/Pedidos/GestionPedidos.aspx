@@ -12,167 +12,228 @@
 
 <div class="alerta" id="divAlerta"></div>
 
-<div class="panel">
-    <div class="panel-head">
-        <div class="gp-header-info">
-            <div class="gp-header-icon"><i class="ti ti-clipboard-list"></i></div>
-            <div>
-                <div class="gp-header-title"><span id="lblTotal">0</span> pedidos hoy</div>
-                <div class="gp-header-subtitle"><span id="lblPendientesWC"><%= TotalPendientesWC %></span> esperando aceptacion manual</div>
+<!-- FILTRO DE SUCURSAL -->
+<div class="panel suc-filter-panel">
+    <div class="suc-filter-label"><i class="ti ti-building-store"></i> Sucursal que prepara</div>
+    <div class="suc-filter-pills" id="sucPills">
+        <label class="suc-pill active" data-sp="">
+            <input type="radio" name="sucPrepara" value="" checked/>
+            Todas <span class="suc-count">(<%= TotalGeneralSucursal %>)</span>
+        </label>
+        <%= SucursalRadios %>
+        <label class="suc-pill" data-sp="-1">
+            <input type="radio" name="sucPrepara" value="-1"/>
+            Sin establecer <span class="suc-count">(<%= TotalSinSucursal %>)</span>
+        </label>
+    </div>
+</div>
+
+<!-- TABS -->
+<div class="tabs-container">
+    <div class="tab-item active" data-tab="todos" onclick="cambiarTab('todos')">
+        <i class="ti ti-list"></i>
+        <span>Todos los pedidos</span>
+        <span class="tab-badge" id="badgeTodos">0</span>
+    </div>
+    <div class="tab-item" data-tab="wc_pendiente" onclick="cambiarTab('wc_pendiente')">
+        <i class="ti ti-cash-banknote"></i>
+        <span>Verificar pago WC</span>
+        <span class="tab-badge tab-badge-warn" id="badgeWC">0</span>
+    </div>
+</div>
+
+<!-- PANEL TAB TODOS -->
+<div class="tab-panel" id="panelTodos">
+
+    <div class="panel">
+        <div class="panel-head">
+            <div class="panel-title">Pedidos del periodo</div>
+            <div class="panel-actions">
+                <button type="button" class="btn-toggle-vista" id="btnVista" onclick="toggleVistaCompacta()">
+                    <i class="ti ti-layout-rows"></i> Detallado
+                </button>
+                <button type="button" class="btn btn-sm" onclick="cargarPedidos()">
+                    <i class="ti ti-refresh"></i> Refrescar
+                </button>
+                <button type="button" class="btn btn-sm" onclick="limpiarFiltros()">
+                    <i class="ti ti-x"></i> Limpiar
+                </button>
             </div>
         </div>
-        <div class="panel-actions">
-            <button type="button" class="btn-toggle-vista" id="btnVista" onclick="toggleVistaCompacta()">
-                <i class="ti ti-layout-rows"></i> Detallado
-            </button>
-            <button type="button" class="btn btn-sm" onclick="cargarPedidos()">
-                <i class="ti ti-refresh"></i> Refrescar
-            </button>
+
+        <div style="padding:14px 16px;background:#fafafa;border-bottom:1px solid #e0e0e0">
+
+            <div class="filter-group" style="margin-bottom:12px">
+                <label>Buscar</label>
+                <div class="search-wrap">
+                    <i class="ti ti-search"></i>
+                    <input type="text" id="txBuscar" class="form-control" placeholder="Codigo PED/WC, cliente, receptor, celular, direccion..."/>
+                </div>
+            </div>
+
+            <div class="filter-fecha-bloque">
+                <div class="filter-fecha-titulo entrega"><i class="ti ti-truck-delivery"></i> Fecha de entrega</div>
+                <div style="display:flex;flex-wrap:wrap;gap:5px" id="pillsEntrega">
+                    <span class="pill-filter active" data-tipo="entrega" data-val="hoy">Hoy</span>
+                    <span class="pill-filter" data-tipo="entrega" data-val="manana">Manana</span>
+                    <span class="pill-filter" data-tipo="entrega" data-val="semana">Esta semana</span>
+                    <span class="pill-filter" data-tipo="entrega" data-val="prox7">Proximos 7d</span>
+                    <span class="pill-filter" data-tipo="entrega" data-val="rango">Rango...</span>
+                </div>
+                <div class="filter-fecha-rango" id="rangoEntrega">
+                    <input type="date" id="txFeDesde"/>
+                    <input type="date" id="txFeHasta"/>
+                </div>
+            </div>
+
+            <div class="filter-fecha-bloque">
+                <div class="filter-fecha-titulo creacion"><i class="ti ti-plus"></i> Fecha de creacion</div>
+                <div style="display:flex;flex-wrap:wrap;gap:5px" id="pillsCreacion">
+                    <span class="pill-filter active" data-tipo="creacion" data-val="cualquiera">Cualquiera</span>
+                    <span class="pill-filter" data-tipo="creacion" data-val="hoy">Hoy</span>
+                    <span class="pill-filter" data-tipo="creacion" data-val="24h">Ultimas 24h</span>
+                    <span class="pill-filter" data-tipo="creacion" data-val="semana">Esta semana</span>
+                    <span class="pill-filter" data-tipo="creacion" data-val="rango">Rango...</span>
+                </div>
+                <div class="filter-fecha-rango" id="rangoCreacion">
+                    <input type="date" id="txCrDesde"/>
+                    <input type="date" id="txCrHasta"/>
+                </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+                <select id="ddPago" class="form-control" style="font-size:11px;height:32px;padding:5px 8px">
+                    <option value="">Pago: Todos</option>
+                    <option value="PAGADO">Pagado</option>
+                    <option value="ANTICIPO">Anticipo</option>
+                    <option value="PENDIENTE">Pendiente</option>
+                </select>
+                <select id="ddOperativo" class="form-control" style="font-size:11px;height:32px;padding:5px 8px">
+                    <option value="">Estado: Todos</option>
+                    <option value="PENDIENTE">Pendiente</option>
+                    <option value="IMPRESO">Impreso</option>
+                    <option value="EN_PREPARACION">En preparacion</option>
+                    <option value="LISTO">Listo</option>
+                    <option value="EN_RUTA">En ruta</option>
+                    <option value="ENTREGADO">Entregado</option>
+                    <option value="NO_ENTREGADO">No entregado</option>
+                </select>
+                <select id="ddZona" class="form-control" style="font-size:11px;height:32px;padding:5px 8px">
+                    <option value="">Zona: Todas</option>
+                    <%= OptionsZona %>
+                </select>
+                <select id="ddDelivery" class="form-control" style="font-size:11px;height:32px;padding:5px 8px">
+                    <option value="">Delivery: Todos</option>
+                    <option value="-1">Sin asignar</option>
+                    <%= OptionsDelivery %>
+                </select>
+            </div>
+
+            <div style="display:flex;gap:5px;flex-wrap:wrap">
+                <span class="pill-filter" data-flag="exp"><i class="ti ti-bolt" style="font-size:11px;color:#F57C00"></i> Solo express</span>
+                <span class="pill-filter" data-flag="sc"><i class="ti ti-phone-off" style="font-size:11px"></i> Sin contactar</span>
+                <span class="pill-filter" data-flag="sd"><i class="ti ti-user-off" style="font-size:11px"></i> Sin delivery</span>
+            </div>
+        </div>
+
+        <div class="filtros-footer">
+            <span class="auto-msg"><i class="ti ti-info-circle"></i> Click en una fila para ver el detalle completo</span>
+            <span>Mostrando <span id="lblMostrando">0</span> pedidos</span>
+        </div>
+
+        <div class="table-container">
+            <table class="table" id="tablaPedidos">
+                <thead>
+                    <tr>
+                        <th style="width:90px"><i class="ti ti-clock"></i> Hora</th>
+                        <th>Pedido / Receptor</th>
+                        <th style="width:140px">Zona / Delivery</th>
+                        <th style="width:120px">Estado</th>
+                        <th style="width:220px;text-align:right">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tbodyPedidos">
+                    <tr><td colspan="5" class="tabla-loading"><i class="ti ti-loader"></i><br>Cargando...</td></tr>
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
 
-<% If TotalPendientesWC > 0 Then %>
-<div class="banner-warn" id="bannerWC">
-    <div class="banner-warn-head" onclick="toggleBannerWC()">
-        <div class="banner-warn-title">
-            <i class="ti ti-alert-triangle"></i>
-            <div>
-                <div class="t1"><%= TotalPendientesWC %> pedidos WC esperando aceptacion manual</div>
-                <div class="t2">Verifica el pago en tu banco antes de aceptar. WooCommerce nunca los confirmara automaticamente.</div>
-            </div>
-        </div>
-        <button type="button" class="btn btn-sm" style="background:transparent;border-color:transparent" onclick="event.stopPropagation();toggleBannerWC()">
-            <i class="ti ti-chevron-up" id="iconBannerWC"></i> <span id="textBannerWC">Ocultar</span>
-        </button>
-    </div>
-    <div class="banner-warn-body" id="bannerWCBody">
-        <div class="wc-row wc-row-head">
-            <span>WC #</span>
-            <span>Cliente</span>
-            <span>Metodo pago</span>
-            <span>Estado WC</span>
-            <span style="text-align:right">Monto</span>
-            <span style="text-align:right">Acciones</span>
-        </div>
-        <%= TablaPendientesWC %>
-    </div>
-</div>
-<% End If %>
+<!-- PANEL TAB VERIFICAR WC -->
+<div class="tab-panel" id="panelWC" style="display:none">
 
-<div class="panel">
-    <div class="panel-head">
-        <div class="panel-title">Pedidos del periodo</div>
-        <div class="panel-actions">
-            <button type="button" class="btn btn-sm" onclick="limpiarFiltros()">
-                <i class="ti ti-x"></i> Limpiar
-            </button>
+    <div class="aviso-wc">
+        <i class="ti ti-info-circle"></i>
+        <div>
+            <div class="aviso-wc-t1">Estos pedidos llegaron de WooCommerce con pago manual (QR, transferencia, COD).</div>
+            <div class="aviso-wc-t2">Verifica el ingreso en tu banco antes de aceptar. WooCommerce nunca los confirmara automaticamente.</div>
         </div>
     </div>
 
-    <div style="padding:14px 16px;background:#fafafa;border-bottom:1px solid #e0e0e0">
-
-        <div class="filter-group" style="margin-bottom:12px">
-            <label>Buscar</label>
-            <div class="search-wrap">
-                <i class="ti ti-search"></i>
-                <input type="text" id="txBuscar" class="form-control" placeholder="Codigo PED/WC, cliente, celular, direccion..."/>
+    <div class="panel">
+        <div class="panel-head">
+            <div class="panel-title">Pedidos pendientes de verificacion</div>
+            <div class="panel-actions">
+                <button type="button" class="btn btn-sm" onclick="cargarPedidos()">
+                    <i class="ti ti-refresh"></i> Refrescar
+                </button>
             </div>
         </div>
 
-        <div class="filter-fecha-bloque">
-            <div class="filter-fecha-titulo entrega"><i class="ti ti-truck-delivery"></i> Fecha de entrega</div>
-            <div style="display:flex;flex-wrap:wrap;gap:5px" id="pillsEntrega">
-                <span class="pill-filter active" data-tipo="entrega" data-val="hoy">Hoy</span>
-                <span class="pill-filter" data-tipo="entrega" data-val="manana">Manana</span>
-                <span class="pill-filter" data-tipo="entrega" data-val="semana">Esta semana</span>
-                <span class="pill-filter" data-tipo="entrega" data-val="prox7">Proximos 7d</span>
-                <span class="pill-filter" data-tipo="entrega" data-val="rango">Rango...</span>
+        <div style="padding:14px 16px;background:#fafafa;border-bottom:1px solid #e0e0e0">
+            <div class="filter-group" style="margin-bottom:10px">
+                <label>Buscar</label>
+                <div class="search-wrap">
+                    <i class="ti ti-search"></i>
+                    <input type="text" id="txBuscarWC" class="form-control" placeholder="WC #, cliente, receptor, celular..."/>
+                </div>
             </div>
-            <div class="filter-fecha-rango" id="rangoEntrega">
-                <input type="date" id="txFeDesde"/>
-                <input type="date" id="txFeHasta"/>
-            </div>
-        </div>
 
-        <div class="filter-fecha-bloque">
-            <div class="filter-fecha-titulo creacion"><i class="ti ti-plus"></i> Fecha de creacion</div>
-            <div style="display:flex;flex-wrap:wrap;gap:5px" id="pillsCreacion">
-                <span class="pill-filter active" data-tipo="creacion" data-val="cualquiera">Cualquiera</span>
-                <span class="pill-filter" data-tipo="creacion" data-val="hoy">Hoy</span>
-                <span class="pill-filter" data-tipo="creacion" data-val="24h">Ultimas 24h</span>
-                <span class="pill-filter" data-tipo="creacion" data-val="semana">Esta semana</span>
-                <span class="pill-filter" data-tipo="creacion" data-val="rango">Rango...</span>
-            </div>
-            <div class="filter-fecha-rango" id="rangoCreacion">
-                <input type="date" id="txCrDesde"/>
-                <input type="date" id="txCrHasta"/>
+            <div class="filter-fecha-bloque" style="margin-bottom:0">
+                <div class="filter-fecha-titulo entrega"><i class="ti ti-truck-delivery"></i> Fecha de entrega</div>
+                <div style="display:flex;flex-wrap:wrap;gap:5px" id="pillsEntregaWC">
+                    <span class="pill-filter active" data-tipo="entrega" data-val="todas">Todas</span>
+                    <span class="pill-filter" data-tipo="entrega" data-val="hoy">Hoy</span>
+                    <span class="pill-filter" data-tipo="entrega" data-val="manana">Manana</span>
+                    <span class="pill-filter" data-tipo="entrega" data-val="semana">Esta semana</span>
+                </div>
             </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px">
-            <select id="ddPago" class="form-control" style="font-size:11px;height:32px;padding:5px 8px">
-                <option value="">Pago: Todos</option>
-                <option value="PAGADO">Pagado</option>
-                <option value="ANTICIPO">Anticipo</option>
-                <option value="PENDIENTE">Pendiente</option>
-            </select>
-            <select id="ddOperativo" class="form-control" style="font-size:11px;height:32px;padding:5px 8px">
-                <option value="">Estado: Todos</option>
-                <option value="PENDIENTE">Pendiente</option>
-                <option value="IMPRESO">Impreso</option>
-                <option value="EN_PREPARACION">En preparacion</option>
-                <option value="LISTO">Listo</option>
-                <option value="EN_RUTA">En ruta</option>
-                <option value="ENTREGADO">Entregado</option>
-                <option value="NO_ENTREGADO">No entregado</option>
-            </select>
-            <select id="ddZona" class="form-control" style="font-size:11px;height:32px;padding:5px 8px">
-                <option value="">Zona: Todas</option>
-                <%= OptionsZona %>
-            </select>
-            <select id="ddDelivery" class="form-control" style="font-size:11px;height:32px;padding:5px 8px">
-                <option value="">Delivery: Todos</option>
-                <option value="-1">Sin asignar</option>
-                <%= OptionsDelivery %>
-            </select>
+        <div class="filtros-footer">
+            <span class="auto-msg"><i class="ti ti-info-circle"></i> Boton verde acepta el pago manual</span>
+            <span>Mostrando <span id="lblMostrandoWC">0</span> pedidos</span>
         </div>
 
-        <div style="display:flex;gap:5px;flex-wrap:wrap">
-            <span class="pill-filter" data-flag="exp"><i class="ti ti-bolt" style="font-size:11px;color:#F57C00"></i> Solo express</span>
-            <span class="pill-filter" data-flag="sc"><i class="ti ti-phone-off" style="font-size:11px"></i> Sin contactar</span>
-            <span class="pill-filter" data-flag="sd"><i class="ti ti-user-off" style="font-size:11px"></i> Sin delivery</span>
+        <div class="table-container">
+            <table class="table tabla-wc" id="tablaPedidosWC">
+                <thead>
+                    <tr>
+                        <th style="width:70px">WC #</th>
+                        <th>Cliente / Receptor</th>
+                        <th style="width:160px">Metodo pago</th>
+                        <th style="width:90px">Entrega</th>
+                        <th style="width:90px;text-align:right">Monto</th>
+                        <th style="width:170px;text-align:right">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tbodyPedidosWC">
+                    <tr><td colspan="6" class="tabla-loading"><i class="ti ti-loader"></i><br>Cargando...</td></tr>
+                </tbody>
+            </table>
         </div>
-    </div>
-
-    <div class="filtros-footer">
-        <span class="auto-msg"><i class="ti ti-check"></i> Filtros se aplican al instante</span>
-        <span>Mostrando <span id="lblMostrando">0</span> pedidos</span>
-    </div>
-
-    <div class="table-container">
-        <table class="table" id="tablaPedidos">
-            <thead>
-                <tr>
-                    <th style="width:90px"><i class="ti ti-clock"></i> Hora</th>
-                    <th>Pedido / Receptor</th>
-                    <th style="width:140px">Zona / Delivery</th>
-                    <th style="width:120px">Estado</th>
-                    <th style="width:110px;text-align:right">Acciones</th>
-                </tr>
-            </thead>
-            <tbody id="tbodyPedidos">
-                <tr><td colspan="5" class="tabla-loading"><i class="ti ti-loader"></i><br>Cargando...</td></tr>
-            </tbody>
-        </table>
     </div>
 </div>
 
+<!-- Hidden fields -->
 <input type="hidden" id="hdAccion" name="hdAccion" value=""/>
 <input type="hidden" id="hdPedidoId" name="hdPedidoId" value=""/>
 <input type="hidden" id="hdEstadoNuevo" name="hdEstadoNuevo" value=""/>
+<input type="hidden" id="hdTabActivo" name="hdTabActivo" value="todos"/>
 <asp:Button ID="btnPostBack" runat="server" Text="" Style="display:none" OnClick="btnAccion_Click"/>
 
+<!-- MODAL ACEPTAR PAGO -->
 <div class="modal-overlay hidden" id="modalAceptar">
     <div class="modal-confirm">
         <div class="modal-confirm-body">
@@ -196,8 +257,319 @@
 var _pedidoAceptarId = 0;
 var _vistaCompacta = false;
 var _timerBuscar = null;
+var _timerBuscarWC = null;
 var _btnPostbackId = '<%= btnPostBack.ClientID %>';
+var _tabActiva = 'todos';
+var _sucPreparaSel = '';
 
+// ============================================================
+// TABS
+// ============================================================
+function cambiarTab(tab) {
+    if (tab === _tabActiva) return;
+    _tabActiva = tab;
+    document.getElementById('hdTabActivo').value = tab;
+
+    var tabs = document.querySelectorAll('.tab-item');
+    for (var i = 0; i < tabs.length; i++) {
+        if (tabs[i].dataset.tab === tab) {
+            tabs[i].classList.add('active');
+        } else {
+            tabs[i].classList.remove('active');
+        }
+    }
+
+    document.getElementById('panelTodos').style.display = (tab === 'todos') ? '' : 'none';
+    document.getElementById('panelWC').style.display = (tab === 'wc_pendiente') ? '' : 'none';
+
+    cargarPedidos();
+}
+
+// ============================================================
+// FILTRO SUCURSAL
+// ============================================================
+function setupSucursales() {
+    var inputs = document.querySelectorAll('input[name="sucPrepara"]');
+    for (var i = 0; i < inputs.length; i++) {
+        inputs[i].addEventListener('change', function() {
+            _sucPreparaSel = this.value;
+            var labels = document.querySelectorAll('.suc-pill');
+            for (var j = 0; j < labels.length; j++) {
+                labels[j].classList.remove('active');
+            }
+            this.closest('.suc-pill').classList.add('active');
+            cargarPedidos();
+        });
+    }
+}
+
+// ============================================================
+// QUERYSTRING
+// ============================================================
+function construirQuery() {
+    var qs = 'tab=' + _tabActiva + '&';
+
+    if (_sucPreparaSel !== '') {
+        qs += 'sp=' + encodeURIComponent(_sucPreparaSel) + '&';
+    }
+
+    if (_tabActiva === 'todos') {
+        var b = document.getElementById('txBuscar').value;
+        if (b) qs += 'b=' + encodeURIComponent(b) + '&';
+
+        var pillEntrega = document.querySelector('#pillsEntrega .pill-filter.active');
+        if (pillEntrega) {
+            qs += construirFiltroFecha(pillEntrega.dataset.val, 'fed', 'feh', 'txFeDesde', 'txFeHasta');
+        }
+
+        var pillCreacion = document.querySelector('#pillsCreacion .pill-filter.active');
+        if (pillCreacion) {
+            qs += construirFiltroFechaCreacion(pillCreacion.dataset.val);
+        }
+
+        var p = document.getElementById('ddPago').value; if (p) qs += 'p=' + p + '&';
+        var op = document.getElementById('ddOperativo').value; if (op) qs += 'op=' + op + '&';
+        var z = document.getElementById('ddZona').value; if (z) qs += 'z=' + z + '&';
+        var deli = document.getElementById('ddDelivery').value; if (deli) qs += 'deli=' + deli + '&';
+
+        var flags = document.querySelectorAll('#panelTodos .pill-filter[data-flag]');
+        for (var i = 0; i < flags.length; i++) {
+            if (flags[i].classList.contains('active')) {
+                qs += flags[i].dataset.flag + '=1&';
+            }
+        }
+
+        if (_vistaCompacta) qs += 'cp=1&';
+    } else {
+        var bWC = document.getElementById('txBuscarWC').value;
+        if (bWC) qs += 'b=' + encodeURIComponent(bWC) + '&';
+
+        var pillEntregaWC = document.querySelector('#pillsEntregaWC .pill-filter.active');
+        if (pillEntregaWC && pillEntregaWC.dataset.val !== 'todas') {
+            qs += construirFiltroFecha(pillEntregaWC.dataset.val, 'fed', 'feh', '', '');
+        }
+    }
+
+    return qs;
+}
+
+function construirFiltroFecha(val, paramD, paramH, idDesde, idHasta) {
+    var qs = '';
+    var hoy = new Date();
+    var fmt = function(d) {
+        return d.getFullYear() + '-' + ('0'+(d.getMonth()+1)).slice(-2) + '-' + ('0'+d.getDate()).slice(-2);
+    };
+    if (val === 'hoy') {
+        qs += 'hoy=1&';
+    } else if (val === 'manana') {
+        var m = new Date(hoy); m.setDate(m.getDate() + 1);
+        qs += paramD + '=' + fmt(m) + '&' + paramH + '=' + fmt(m) + '&';
+    } else if (val === 'semana') {
+        var lunes = new Date(hoy); lunes.setDate(hoy.getDate() - ((hoy.getDay() + 6) % 7));
+        var dom = new Date(lunes); dom.setDate(lunes.getDate() + 6);
+        qs += paramD + '=' + fmt(lunes) + '&' + paramH + '=' + fmt(dom) + '&';
+    } else if (val === 'prox7') {
+        var fin = new Date(hoy); fin.setDate(hoy.getDate() + 7);
+        qs += paramD + '=' + fmt(hoy) + '&' + paramH + '=' + fmt(fin) + '&';
+    } else if (val === 'rango' && idDesde && idHasta) {
+        var fd = document.getElementById(idDesde).value;
+        var fh = document.getElementById(idHasta).value;
+        if (fd) qs += paramD + '=' + fd + '&';
+        if (fh) qs += paramH + '=' + fh + '&';
+    }
+    return qs;
+}
+
+function construirFiltroFechaCreacion(val) {
+    var qs = '';
+    var hoy = new Date();
+    var fmt = function(d) {
+        return d.getFullYear() + '-' + ('0'+(d.getMonth()+1)).slice(-2) + '-' + ('0'+d.getDate()).slice(-2);
+    };
+    if (val === 'hoy') {
+        qs += 'crd=' + fmt(hoy) + '&crh=' + fmt(hoy) + '&';
+    } else if (val === '24h') {
+        var ayer = new Date(hoy); ayer.setDate(ayer.getDate() - 1);
+        qs += 'crd=' + fmt(ayer) + '&crh=' + fmt(hoy) + '&';
+    } else if (val === 'semana') {
+        var lunes = new Date(hoy); lunes.setDate(hoy.getDate() - ((hoy.getDay() + 6) % 7));
+        qs += 'crd=' + fmt(lunes) + '&crh=' + fmt(hoy) + '&';
+    } else if (val === 'rango') {
+        var fd = document.getElementById('txCrDesde').value;
+        var fh = document.getElementById('txCrHasta').value;
+        if (fd) qs += 'crd=' + fd + '&';
+        if (fh) qs += 'crh=' + fh + '&';
+    }
+    return qs;
+}
+
+// ============================================================
+// CARGAR PEDIDOS
+// ============================================================
+function cargarPedidos() {
+    var esWC = (_tabActiva === 'wc_pendiente');
+    var tbody = document.getElementById(esWC ? 'tbodyPedidosWC' : 'tbodyPedidos');
+    var lblM = document.getElementById(esWC ? 'lblMostrandoWC' : 'lblMostrando');
+    var badge = document.getElementById(esWC ? 'badgeWC' : 'badgeTodos');
+    var colspan = esWC ? 6 : 5;
+
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="' + colspan + '" class="tabla-loading"><i class="ti ti-loader"></i><br>Cargando...</td></tr>';
+
+    var qs = construirQuery();
+    var url = 'Pedidos_Handler.ashx?' + qs + '_=' + Date.now();
+
+    fetch(url, { credentials: 'same-origin' })
+        .then(function(r) {
+            if (r.status === 401) {
+                window.location.href = '../../Login.aspx';
+                return null;
+            }
+            return r.text();
+        })
+        .then(function(html) {
+            if (html === null) return;
+            var totalMatch = html.match(/^<!--TOTAL:(\d+)-->/);
+            var total = 0;
+            if (totalMatch) {
+                total = parseInt(totalMatch[1], 10);
+                html = html.replace(/^<!--TOTAL:\d+-->/, '');
+            }
+            tbody.innerHTML = html;
+            if (lblM) lblM.textContent = total;
+            if (badge) badge.textContent = total;
+
+            if (!esWC) {
+                actualizarContadorWC();
+            }
+        })
+        .catch(function(err) {
+            tbody.innerHTML = '<tr><td colspan="' + colspan + '" class="table-empty"><i class="ti ti-alert-triangle"></i><br>Error: ' + err.message + '</td></tr>';
+        });
+}
+
+function actualizarContadorWC() {
+    var qs = 'tab=wc_pendiente';
+    if (_sucPreparaSel !== '') qs += '&sp=' + encodeURIComponent(_sucPreparaSel);
+    qs += '&_=' + Date.now();
+
+    fetch('Pedidos_Handler.ashx?' + qs, { credentials: 'same-origin' })
+        .then(function(r) { return r.text(); })
+        .then(function(html) {
+            var m = html.match(/^<!--TOTAL:(\d+)-->/);
+            if (m) {
+                var n = parseInt(m[1], 10);
+                document.getElementById('badgeWC').textContent = n;
+            }
+        })
+        .catch(function() {});
+}
+
+function limpiarFiltros() {
+    document.getElementById('txBuscar').value = '';
+    var pills = document.querySelectorAll('#pillsEntrega .pill-filter');
+    for (var i = 0; i < pills.length; i++) pills[i].classList.remove('active');
+    document.querySelector('#pillsEntrega .pill-filter[data-val="hoy"]').classList.add('active');
+    var pillsC = document.querySelectorAll('#pillsCreacion .pill-filter');
+    for (var i = 0; i < pillsC.length; i++) pillsC[i].classList.remove('active');
+    document.querySelector('#pillsCreacion .pill-filter[data-val="cualquiera"]').classList.add('active');
+    document.getElementById('ddPago').value = '';
+    document.getElementById('ddOperativo').value = '';
+    document.getElementById('ddZona').value = '';
+    document.getElementById('ddDelivery').value = '';
+    var flags = document.querySelectorAll('#panelTodos .pill-filter[data-flag]');
+    for (var i = 0; i < flags.length; i++) flags[i].classList.remove('active');
+    document.getElementById('rangoEntrega').classList.remove('show');
+    document.getElementById('rangoCreacion').classList.remove('show');
+    cargarPedidos();
+}
+
+// ============================================================
+// EVENTOS DE FILTROS
+// ============================================================
+function setupEventos() {
+    var pe = document.querySelectorAll('#pillsEntrega .pill-filter');
+    for (var i = 0; i < pe.length; i++) {
+        pe[i].addEventListener('click', function() {
+            var all = document.querySelectorAll('#pillsEntrega .pill-filter');
+            for (var j = 0; j < all.length; j++) all[j].classList.remove('active');
+            this.classList.add('active');
+            var rango = document.getElementById('rangoEntrega');
+            if (this.dataset.val === 'rango') {
+                rango.classList.add('show');
+            } else {
+                rango.classList.remove('show');
+                cargarPedidos();
+            }
+        });
+    }
+
+    var pc = document.querySelectorAll('#pillsCreacion .pill-filter');
+    for (var i = 0; i < pc.length; i++) {
+        pc[i].addEventListener('click', function() {
+            var all = document.querySelectorAll('#pillsCreacion .pill-filter');
+            for (var j = 0; j < all.length; j++) all[j].classList.remove('active');
+            this.classList.add('active');
+            var rango = document.getElementById('rangoCreacion');
+            if (this.dataset.val === 'rango') {
+                rango.classList.add('show');
+            } else {
+                rango.classList.remove('show');
+                cargarPedidos();
+            }
+        });
+    }
+
+    var flags = document.querySelectorAll('#panelTodos .pill-filter[data-flag]');
+    for (var i = 0; i < flags.length; i++) {
+        flags[i].addEventListener('click', function() {
+            this.classList.toggle('active');
+            cargarPedidos();
+        });
+    }
+
+    var peWC = document.querySelectorAll('#pillsEntregaWC .pill-filter');
+    for (var i = 0; i < peWC.length; i++) {
+        peWC[i].addEventListener('click', function() {
+            var all = document.querySelectorAll('#pillsEntregaWC .pill-filter');
+            for (var j = 0; j < all.length; j++) all[j].classList.remove('active');
+            this.classList.add('active');
+            cargarPedidos();
+        });
+    }
+
+    var selects = ['ddPago', 'ddOperativo', 'ddZona', 'ddDelivery'];
+    for (var i = 0; i < selects.length; i++) {
+        var el = document.getElementById(selects[i]);
+        if (el) el.addEventListener('change', cargarPedidos);
+    }
+
+    var rangos = ['txFeDesde', 'txFeHasta', 'txCrDesde', 'txCrHasta'];
+    for (var i = 0; i < rangos.length; i++) {
+        var el = document.getElementById(rangos[i]);
+        if (el) el.addEventListener('change', cargarPedidos);
+    }
+
+    var tx = document.getElementById('txBuscar');
+    if (tx) {
+        tx.addEventListener('input', function() {
+            if (_timerBuscar) clearTimeout(_timerBuscar);
+            _timerBuscar = setTimeout(cargarPedidos, 400);
+        });
+    }
+
+    var txWC = document.getElementById('txBuscarWC');
+    if (txWC) {
+        txWC.addEventListener('input', function() {
+            if (_timerBuscarWC) clearTimeout(_timerBuscarWC);
+            _timerBuscarWC = setTimeout(cargarPedidos, 400);
+        });
+    }
+}
+
+// ============================================================
+// VISTA COMPACTA / DETALLADA
+// ============================================================
 function toggleVistaCompacta() {
     _vistaCompacta = !_vistaCompacta;
     var btn = document.getElementById('btnVista');
@@ -214,218 +586,21 @@ function toggleVistaCompacta() {
     cargarPedidos();
 }
 
-function toggleBannerWC() {
-    var body = document.getElementById('bannerWCBody');
-    var icon = document.getElementById('iconBannerWC');
-    var txt = document.getElementById('textBannerWC');
-    if (!body) return;
-    if (body.classList.contains('hidden')) {
-        body.classList.remove('hidden');
-        if (icon) icon.className = 'ti ti-chevron-up';
-        if (txt) txt.textContent = 'Ocultar';
-    } else {
-        body.classList.add('hidden');
-        if (icon) icon.className = 'ti ti-chevron-down';
-        if (txt) txt.textContent = 'Mostrar';
+// ============================================================
+// VER DETALLE (sin modal, va directo a Pedido_Detalle.aspx)
+// ============================================================
+function abrirDetalleModal(pid) {
+    if (!pid) return;
+    window.location.href = 'Pedido_Detalle.aspx?id=' + pid;
+}
+
+// Cerrar dropdowns/modal con ESC
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        cerrarModalAceptar();
+        cerrarTodosDropdowns();
     }
-}
-
-// ============================================================
-// CONSTRUCCION DE QUERYSTRING
-// ============================================================
-function construirQuery() {
-    var qs = '';
-    var b = document.getElementById('txBuscar').value;
-    if (b) qs += 'b=' + encodeURIComponent(b) + '&';
-
-    // Fecha entrega
-    var pillEntrega = document.querySelector('#pillsEntrega .pill-filter.active');
-    if (pillEntrega) {
-        var v = pillEntrega.dataset.val;
-        var hoy = new Date();
-        var fmt = function(d) {
-            var y = d.getFullYear(), m = ('0'+(d.getMonth()+1)).slice(-2), dd = ('0'+d.getDate()).slice(-2);
-            return y + '-' + m + '-' + dd;
-        };
-        if (v === 'hoy') {
-            qs += 'hoy=1&';
-        } else if (v === 'manana') {
-            var m = new Date(hoy); m.setDate(m.getDate() + 1);
-            qs += 'fed=' + fmt(m) + '&feh=' + fmt(m) + '&';
-        } else if (v === 'semana') {
-            var lunes = new Date(hoy); lunes.setDate(hoy.getDate() - ((hoy.getDay() + 6) % 7));
-            var dom = new Date(lunes); dom.setDate(lunes.getDate() + 6);
-            qs += 'fed=' + fmt(lunes) + '&feh=' + fmt(dom) + '&';
-        } else if (v === 'prox7') {
-            var fin = new Date(hoy); fin.setDate(hoy.getDate() + 7);
-            qs += 'fed=' + fmt(hoy) + '&feh=' + fmt(fin) + '&';
-        } else if (v === 'rango') {
-            var fd = document.getElementById('txFeDesde').value;
-            var fh = document.getElementById('txFeHasta').value;
-            if (fd) qs += 'fed=' + fd + '&';
-            if (fh) qs += 'feh=' + fh + '&';
-        }
-    }
-
-    // Fecha creacion
-    var pillCreacion = document.querySelector('#pillsCreacion .pill-filter.active');
-    if (pillCreacion) {
-        var v = pillCreacion.dataset.val;
-        var hoy = new Date();
-        var fmt = function(d) {
-            var y = d.getFullYear(), m = ('0'+(d.getMonth()+1)).slice(-2), dd = ('0'+d.getDate()).slice(-2);
-            return y + '-' + m + '-' + dd;
-        };
-        if (v === 'hoy') {
-            qs += 'crd=' + fmt(hoy) + '&crh=' + fmt(hoy) + '&';
-        } else if (v === '24h') {
-            var ayer = new Date(hoy); ayer.setDate(ayer.getDate() - 1);
-            qs += 'crd=' + fmt(ayer) + '&crh=' + fmt(hoy) + '&';
-        } else if (v === 'semana') {
-            var lunes = new Date(hoy); lunes.setDate(hoy.getDate() - ((hoy.getDay() + 6) % 7));
-            qs += 'crd=' + fmt(lunes) + '&crh=' + fmt(hoy) + '&';
-        } else if (v === 'rango') {
-            var fd = document.getElementById('txCrDesde').value;
-            var fh = document.getElementById('txCrHasta').value;
-            if (fd) qs += 'crd=' + fd + '&';
-            if (fh) qs += 'crh=' + fh + '&';
-        }
-    }
-
-    var p = document.getElementById('ddPago').value; if (p) qs += 'p=' + p + '&';
-    var op = document.getElementById('ddOperativo').value; if (op) qs += 'op=' + op + '&';
-    var z = document.getElementById('ddZona').value; if (z) qs += 'z=' + z + '&';
-    var deli = document.getElementById('ddDelivery').value; if (deli) qs += 'deli=' + deli + '&';
-
-    document.querySelectorAll('.pill-filter[data-flag]').forEach(function(p) {
-        if (p.classList.contains('active')) {
-            qs += p.dataset.flag + '=1&';
-        }
-    });
-
-    if (_vistaCompacta) qs += 'cp=1&';
-
-    return qs;
-}
-
-// ============================================================
-// CARGAR PEDIDOS VIA AJAX
-// ============================================================
-function cargarPedidos() {
-    var tbody = document.getElementById('tbodyPedidos');
-    if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="5" class="tabla-loading"><i class="ti ti-loader"></i><br>Cargando...</td></tr>';
-
-    var qs = construirQuery();
-    var url = 'Pedidos_Handler.ashx?' + qs + '_=' + Date.now();
-
-    fetch(url, { credentials: 'same-origin' })
-        .then(function(r) {
-            if (r.status === 401) {
-                window.location.href = '../../Login.aspx';
-                return null;
-            }
-            return r.text();
-        })
-        .then(function(html) {
-            if (html === null) return;
-            // Extraer total del comentario
-            var totalMatch = html.match(/^<!--TOTAL:(\d+)-->/);
-            var total = 0;
-            if (totalMatch) {
-                total = parseInt(totalMatch[1], 10);
-                html = html.replace(/^<!--TOTAL:\d+-->/, '');
-            }
-            tbody.innerHTML = html;
-            var lblM = document.getElementById('lblMostrando');
-            if (lblM) lblM.textContent = total;
-            var lblT = document.getElementById('lblTotal');
-            if (lblT) lblT.textContent = total;
-        })
-        .catch(function(err) {
-            tbody.innerHTML = '<tr><td colspan="5" class="table-empty"><i class="ti ti-alert-triangle"></i><br>Error: ' + err.message + '</td></tr>';
-        });
-}
-
-function limpiarFiltros() {
-    document.getElementById('txBuscar').value = '';
-    document.querySelectorAll('#pillsEntrega .pill-filter').forEach(function(p) { p.classList.remove('active'); });
-    document.querySelector('#pillsEntrega .pill-filter[data-val="hoy"]').classList.add('active');
-    document.querySelectorAll('#pillsCreacion .pill-filter').forEach(function(p) { p.classList.remove('active'); });
-    document.querySelector('#pillsCreacion .pill-filter[data-val="cualquiera"]').classList.add('active');
-    document.getElementById('ddPago').value = '';
-    document.getElementById('ddOperativo').value = '';
-    document.getElementById('ddZona').value = '';
-    document.getElementById('ddDelivery').value = '';
-    document.querySelectorAll('.pill-filter[data-flag]').forEach(function(p) { p.classList.remove('active'); });
-    document.getElementById('rangoEntrega').classList.remove('show');
-    document.getElementById('rangoCreacion').classList.remove('show');
-    cargarPedidos();
-}
-
-// ============================================================
-// EVENTOS DE PILLS Y FILTROS
-// ============================================================
-function setupEventos() {
-    // Pills de fecha entrega
-    document.querySelectorAll('#pillsEntrega .pill-filter').forEach(function(p) {
-        p.addEventListener('click', function() {
-            document.querySelectorAll('#pillsEntrega .pill-filter').forEach(function(x) { x.classList.remove('active'); });
-            p.classList.add('active');
-            var rango = document.getElementById('rangoEntrega');
-            if (p.dataset.val === 'rango') {
-                rango.classList.add('show');
-            } else {
-                rango.classList.remove('show');
-                cargarPedidos();
-            }
-        });
-    });
-
-    // Pills de fecha creacion
-    document.querySelectorAll('#pillsCreacion .pill-filter').forEach(function(p) {
-        p.addEventListener('click', function() {
-            document.querySelectorAll('#pillsCreacion .pill-filter').forEach(function(x) { x.classList.remove('active'); });
-            p.classList.add('active');
-            var rango = document.getElementById('rangoCreacion');
-            if (p.dataset.val === 'rango') {
-                rango.classList.add('show');
-            } else {
-                rango.classList.remove('show');
-                cargarPedidos();
-            }
-        });
-    });
-
-    // Pills de flags
-    document.querySelectorAll('.pill-filter[data-flag]').forEach(function(p) {
-        p.addEventListener('click', function() {
-            p.classList.toggle('active');
-            cargarPedidos();
-        });
-    });
-
-    // Selects
-    ['ddPago','ddOperativo','ddZona','ddDelivery'].forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el) el.addEventListener('change', cargarPedidos);
-    });
-
-    // Inputs de rango
-    ['txFeDesde','txFeHasta','txCrDesde','txCrHasta'].forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el) el.addEventListener('change', cargarPedidos);
-    });
-
-    // Buscar con debounce
-    var txBuscar = document.getElementById('txBuscar');
-    if (txBuscar) {
-        txBuscar.addEventListener('input', function() {
-            if (_timerBuscar) clearTimeout(_timerBuscar);
-            _timerBuscar = setTimeout(cargarPedidos, 400);
-        });
-    }
-}
+});
 
 // ============================================================
 // DROPDOWN ACCIONES
@@ -440,7 +615,8 @@ function toggleDropdown(pid, evt) {
 }
 
 function cerrarTodosDropdowns() {
-    document.querySelectorAll('.dropdown').forEach(function(d) { d.classList.remove('open'); });
+    var dds = document.querySelectorAll('.dropdown');
+    for (var i = 0; i < dds.length; i++) dds[i].classList.remove('open');
 }
 
 document.addEventListener('click', function(e) {
@@ -449,16 +625,11 @@ document.addEventListener('click', function(e) {
 });
 
 // ============================================================
-// ACCIONES DEL MENU
+// ACCIONES PEDIDO
 // ============================================================
-function verDetalle(pid) {
-    cerrarTodosDropdowns();
-    window.location.href = 'PedidoDetalle.aspx?id=' + pid;
-}
-
 function imprimirTicket(pid) {
     cerrarTodosDropdowns();
-    var v = window.open('TicketImprimir.aspx?id=' + pid, 'ticket', 'width=400,height=600');
+    var v = window.open('Recibo.aspx?id=' + pid, 'recibo', 'width=400,height=600');
     if (v) v.focus();
 }
 
@@ -485,7 +656,7 @@ function asignarDelivery(pid) {
 
 function editarPedido(pid) {
     cerrarTodosDropdowns();
-    alert('Editar pedido - en proxima entrega');
+    window.location.href = 'Pedido_Detalle.aspx?id=' + pid;
 }
 
 function cancelarPedido(pid) {
@@ -511,24 +682,31 @@ function abrirMaps(dir) {
     window.open('https://maps.google.com/?q=' + encodeURIComponent(dir), '_blank');
 }
 
-function verEnWooCommerce(url) {
+function verEnWooCommerce(pid) {
     cerrarTodosDropdowns();
-    window.open(url, '_blank');
+    var fila = document.querySelector('tr[data-pid="' + pid + '"]');
+    if (fila) {
+        var wcEl = fila.querySelector('.wc-big');
+        if (wcEl) {
+            var wcNum = wcEl.textContent.replace('#', '').trim();
+            window.open('https://miss-flores.com/wp-admin/post.php?post=' + wcNum + '&action=edit', '_blank');
+        }
+    }
 }
 
 function copiarParaWhatsApp(pid) {
     cerrarTodosDropdowns();
-    fetch('Pedidos_Handler.ashx?action=copy&id=' + pid)
-        .catch(function(){});
-    var btn = event.target.closest('.dropdown-item');
-    var fila = btn.closest('tr');
-    var receptor = fila.querySelector('td:nth-child(2) div:nth-child(2)').textContent.trim();
+    fetch('Pedidos_Handler.ashx?action=copy&id=' + pid).catch(function(){});
     var texto = 'Hola, soy Miss Flores. Tu pedido esta en camino. Te contactamos pronto.';
-    navigator.clipboard.writeText(texto).then(function() {
-        alert('Texto copiado al portapapeles');
-    }).catch(function() {
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(texto).then(function() {
+            alert('Texto copiado al portapapeles');
+        }).catch(function() {
+            prompt('Copia este texto:', texto);
+        });
+    } else {
         prompt('Copia este texto:', texto);
-    });
+    }
 }
 
 // ============================================================
@@ -558,6 +736,7 @@ function confirmarAceptarPago() {
 // INIT
 // ============================================================
 (function() {
+    setupSucursales();
     setupEventos();
     cargarPedidos();
 
