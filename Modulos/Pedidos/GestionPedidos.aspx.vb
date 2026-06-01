@@ -147,6 +147,9 @@ Partial Public Class Modulos_Pedidos_GestionPedidos
         If accion Is Nothing Then accion = ""
         accion = accion.Trim()
 
+        ' DEFENSIVO: si la accion esta vacia (ej: Enter accidental en buscador), no hacer nada
+        If accion = "" Then Return
+
         Dim pedidoIdStr As String = Request.Form("hdPedidoId")
         Dim pedidoId As Integer = 0
         Integer.TryParse(pedidoIdStr, pedidoId)

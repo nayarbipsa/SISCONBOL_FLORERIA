@@ -2,3 +2,5 @@
 obj/ 
 *.suo 
 *.user 
+.mcp.json
+.mcp.json

@@ -104,7 +104,14 @@
     <Content Include="Global.asax" />
     <Content Include="Modulos\Catalogo\ProductoEditar.aspx" />
     <Content Include="Modulos\Catalogo\Productos.aspx" />
+    <Content Include="Modulos\Catalogo\ProductosPrecios.aspx" />
     <Content Include="Modulos\Config\Migrar.aspx" />
+    <Content Include="Modulos\CRM\WC_Extraer.aspx" />
+    <Content Include="Modulos\CRM\WC_Explorar.aspx" />
+    <Content Include="Modulos\CRM\Clientes.aspx" />
+    <Content Include="Modulos\CRM\Segmentos.aspx" />
+    <Content Include="Modulos\CRM\Analisis.aspx" />
+    <Content Include="Modulos\CRM\Exportar.aspx" />
     <Content Include="Modulos\Config\PermisosMenu.aspx" />
     <Content Include="Modulos\Config\Webhooks_Monitor.aspx" />
     <Content Include="Modulos\Pedidos\Entrega_Agregar.aspx" />
@@ -133,6 +140,7 @@
   <ItemGroup>
     <Compile Include="App_Code\Validador.vb" />
     <Compile Include="App_Code\WooCommerceSync.vb" />
+    <Compile Include="App_Code\CrmWcExtractor.vb" />
     <Compile Include="CambiarPassword.aspx.vb">
       <DependentUpon>CambiarPassword.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
@@ -172,12 +180,43 @@
       <DependentUpon>Productos.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
     </Compile>
+    <Compile Include="Modulos\Catalogo\ProductosPrecios.aspx.vb">
+      <DependentUpon>ProductosPrecios.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Modulos\Catalogo\ProductosPrecios_Handler.ashx.vb">
+      <DependentUpon>ProductosPrecios_Handler.ashx</DependentUpon>
+    </Compile>
     <Compile Include="Modulos\Config\Configuracion.aspx.vb">
       <DependentUpon>Configuracion.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
     </Compile>
     <Compile Include="Modulos\Config\Migrar.aspx.vb">
       <DependentUpon>Migrar.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Modulos\CRM\WC_Extraer.aspx.vb">
+      <DependentUpon>WC_Extraer.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Modulos\CRM\WC_Explorar.aspx.vb">
+      <DependentUpon>WC_Explorar.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Modulos\CRM\Clientes.aspx.vb">
+      <DependentUpon>Clientes.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Modulos\CRM\Segmentos.aspx.vb">
+      <DependentUpon>Segmentos.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Modulos\CRM\Analisis.aspx.vb">
+      <DependentUpon>Analisis.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Modulos\CRM\Exportar.aspx.vb">
+      <DependentUpon>Exportar.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
     </Compile>
     <Compile Include="Modulos\Config\PermisosMenu.aspx.vb">
@@ -209,6 +248,12 @@
     </Compile>
     <Compile Include="Modulos\Pedidos\Pedidos_Handler.ashx.vb">
       <DependentUpon>Pedidos_Handler.ashx</DependentUpon>
+    </Compile>
+    <Compile Include="Modulos\CRM\Clientes_Handler.ashx.vb">
+      <DependentUpon>Clientes_Handler.ashx</DependentUpon>
+    </Compile>
+    <Compile Include="Modulos\CRM\WC_Explorar_Handler.ashx.vb">
+      <DependentUpon>WC_Explorar_Handler.ashx</DependentUpon>
     </Compile>
     <Compile Include="Modulos\Pedidos\Pedido_Agregar.aspx.vb">
       <DependentUpon>Pedido_Agregar.aspx</DependentUpon>
@@ -297,6 +342,9 @@
     <Content Include="Modulos\Pedidos\PrePedidos_WC_Handler.ashx" />
     <Content Include="Modulos\Pedidos\PedidoEditar_Handler.ashx" />
     <Content Include="Modulos\Pedidos\MisEntregas_Handler.ashx" />
+    <Content Include="Modulos\CRM\Clientes_Handler.ashx" />
+    <Content Include="Modulos\CRM\WC_Explorar_Handler.ashx" />
+    <Content Include="Modulos\Catalogo\ProductosPrecios_Handler.ashx" />
     <None Include="My Project\Application.myapp">
       <Generator>MyApplicationCodeGenerator</Generator>
       <LastGenOutput>Application.Designer.vb</LastGenOutput>

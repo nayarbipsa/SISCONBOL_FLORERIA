@@ -74,10 +74,10 @@
             <div class="filter-fecha-bloque">
                 <div class="filter-fecha-titulo entrega"><i class="ti ti-truck-delivery"></i> Fecha de entrega</div>
                 <div style="display:flex;flex-wrap:wrap;gap:5px" id="pillsEntrega">
-                    <span class="pill-filter active" data-tipo="entrega" data-val="hoy">Hoy</span>
-                    <span class="pill-filter" data-tipo="entrega" data-val="manana">Manana</span>
-                    <span class="pill-filter" data-tipo="entrega" data-val="semana">Esta semana</span>
-                    <span class="pill-filter" data-tipo="entrega" data-val="prox7">Proximos 7d</span>
+                    <span class="pill-filter active" data-tipo="entrega" data-val="hoy">Hoy <span class="pill-count" data-cnt="hoy"></span></span>
+                    <span class="pill-filter" data-tipo="entrega" data-val="manana">Manana <span class="pill-count" data-cnt="manana"></span></span>
+                    <span class="pill-filter" data-tipo="entrega" data-val="semana">Esta semana <span class="pill-count" data-cnt="semana"></span></span>
+                    <span class="pill-filter" data-tipo="entrega" data-val="prox7">Proximos 7d <span class="pill-count" data-cnt="prox7"></span></span>
                     <span class="pill-filter" data-tipo="entrega" data-val="rango">Rango...</span>
                 </div>
                 <div class="filter-fecha-rango" id="rangoEntrega">
@@ -105,10 +105,10 @@
                 <div class="filter-fecha-titulo estado"><i class="ti ti-flag"></i> Estado de entrega</div>
                 <div style="display:flex;flex-wrap:wrap;gap:5px" id="pillsEstado">
                     <span class="pill-filter active" data-val="">Todos</span>
-                    <span class="pill-filter" data-val="en_curso">En curso</span>
-                    <span class="pill-filter" data-val="en_ruta">En ruta</span>
-                    <span class="pill-filter" data-val="entregados">Entregados</span>
-                    <span class="pill-filter" data-val="problemas">Problemas</span>
+                    <span class="pill-filter" data-val="en_curso">En curso <span class="pill-count" data-cnt="en_curso"></span></span>
+                    <span class="pill-filter" data-val="en_ruta">En ruta <span class="pill-count" data-cnt="en_ruta"></span></span>
+                    <span class="pill-filter" data-val="entregados">Entregados <span class="pill-count" data-cnt="entregados"></span></span>
+                    <span class="pill-filter" data-val="problemas">Problemas <span class="pill-count" data-cnt="problemas"></span></span>
                 </div>
             </div>
 
@@ -492,6 +492,7 @@ function cargarPedidos() {
 
             if (!esWC) {
                 actualizarContadorWC();
+                actualizarContadoresPills();
             }
         })
         .catch(function(err) {
@@ -514,6 +515,53 @@ function actualizarContadorWC() {
             }
         })
         .catch(function() {});
+}
+
+// ============================================================
+// CONTADORES DINAMICOS DE LAS PILLS (estados + fechas)
+// ============================================================
+function actualizarContadoresPills() {
+    // Usar misma query que cargarPedidos pero con action=contadores
+    var qs = construirQuery();
+    var url = 'Pedidos_Handler.ashx?action=contadores&' + qs + '_=' + Date.now();
+
+    fetch(url, { credentials: 'same-origin' })
+        .then(function(r) {
+            if (r.status === 401) return null;
+            return r.json();
+        })
+        .then(function(data) {
+            if (!data || !data.estados || !data.fechas) return;
+
+            // Pintar conteos en pills de estado
+            pintarConteoPill('en_curso', data.estados.en_curso);
+            pintarConteoPill('en_ruta', data.estados.en_ruta);
+            pintarConteoPill('entregados', data.estados.entregados);
+            pintarConteoPill('problemas', data.estados.problemas);
+
+            // Pintar conteos en pills de fecha entrega
+            pintarConteoPill('hoy', data.fechas.hoy);
+            pintarConteoPill('manana', data.fechas.manana);
+            pintarConteoPill('semana', data.fechas.semana);
+            pintarConteoPill('prox7', data.fechas.prox7);
+        })
+        .catch(function() { /* silencioso, los contadores son opcionales */ });
+}
+
+function pintarConteoPill(key, valor) {
+    var spans = document.querySelectorAll('.pill-count[data-cnt="' + key + '"]');
+    for (var i = 0; i < spans.length; i++) {
+        spans[i].textContent = '(' + valor + ')';
+        // Si es 0, atenuar la pill
+        var pill = spans[i].closest('.pill-filter');
+        if (pill) {
+            if (valor === 0) {
+                pill.classList.add('pill-vacia');
+            } else {
+                pill.classList.remove('pill-vacia');
+            }
+        }
+    }
 }
 
 function limpiarFiltros() {
@@ -622,6 +670,16 @@ function setupEventos() {
             if (_timerBuscar) clearTimeout(_timerBuscar);
             _timerBuscar = setTimeout(cargarPedidos, 400);
         });
+        // Prevenir submit del form al presionar Enter
+        tx.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.keyCode === 13) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (_timerBuscar) clearTimeout(_timerBuscar);
+                cargarPedidos();
+                return false;
+            }
+        });
     }
 
     var txWC = document.getElementById('txBuscarWC');
@@ -629,6 +687,16 @@ function setupEventos() {
         txWC.addEventListener('input', function() {
             if (_timerBuscarWC) clearTimeout(_timerBuscarWC);
             _timerBuscarWC = setTimeout(cargarPedidos, 400);
+        });
+        // Prevenir submit del form al presionar Enter
+        txWC.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.keyCode === 13) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (_timerBuscarWC) clearTimeout(_timerBuscarWC);
+                cargarPedidos();
+                return false;
+            }
         });
     }
 }
@@ -927,6 +995,14 @@ document.addEventListener('DOMContentLoaded', function() {
     if (inp) {
         inp.addEventListener('input', function() {
             pintarListaDeliverys(this.value);
+        });
+        // Prevenir submit del form al presionar Enter
+        inp.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.keyCode === 13) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }
         });
     }
 });

@@ -39,6 +39,14 @@ Public Class Pedidos_Handler
             Return
         End If
 
+        ' ============================================================
+        ' ROUTING: endpoint para contadores dinamicos de las pills
+        ' ============================================================
+        If action = "contadores" Then
+            ContadoresJson(context)
+            Return
+        End If
+
         Try
             ' Leer permisos (1=Admin, 2=Gerente, 3=Cajero/Vendedor)
             Dim tipoId As Integer = 3
@@ -833,6 +841,97 @@ Public Class Pedidos_Handler
             System.Diagnostics.Debug.WriteLine("ERROR RenderUnaFila: " & ex.Message)
             context.Response.StatusCode = 500
             context.Response.Write("")
+        End Try
+    End Sub
+
+    ' ============================================================
+    ' ENDPOINT: ?action=contadores
+    ' Devuelve JSON con contadores para pills (estados + fechas)
+    ' Recibe los mismos filtros que la lista para que cada pill
+    ' muestre cuántos pedidos quedarían si la seleccionas.
+    ' ============================================================
+    Private Sub ContadoresJson(context As HttpContext)
+        context.Response.ContentType = "application/json"
+
+        Try
+            ' Leer mismos filtros que la lista
+            Dim buscar As String = LeerQS(context, "b")
+            Dim feDesde As String = LeerQS(context, "fed")
+            Dim feHasta As String = LeerQS(context, "feh")
+            Dim soloHoy As String = LeerQS(context, "hoy")
+            Dim crDesde As String = LeerQS(context, "crd")
+            Dim crHasta As String = LeerQS(context, "crh")
+            Dim estadoPago As String = LeerQS(context, "p")
+            Dim zonaIdStr As String = LeerQS(context, "z")
+            Dim deliveryIdStr As String = LeerQS(context, "deli")
+            Dim soloExpress As String = LeerQS(context, "exp")
+            Dim soloSinContactar As String = LeerQS(context, "sc")
+            Dim soloSinDelivery As String = LeerQS(context, "sd")
+            Dim sucPreparaStr As String = LeerQS(context, "sp")
+            Dim estadoGrupo As String = LeerQS(context, "es")
+
+            Dim enCurso As Integer = 0, enRuta As Integer = 0, entregados As Integer = 0, problemas As Integer = 0
+            Dim hoy As Integer = 0, manana As Integer = 0, semana As Integer = 0, prox7 As Integer = 0
+
+            Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
+                conn.Open()
+                Using cmd As New SqlCommand("FLORERIA_sp_Pedido_Contadores", conn)
+                    cmd.CommandType = CommandType.StoredProcedure
+                    cmd.Parameters.AddWithValue("@buscar", IfBlanco(buscar))
+                    cmd.Parameters.AddWithValue("@fecha_desde", IfBlanco(feDesde))
+                    cmd.Parameters.AddWithValue("@fecha_hasta", IfBlanco(feHasta))
+                    cmd.Parameters.AddWithValue("@solo_hoy", If(soloHoy = "1", 1, 0))
+                    cmd.Parameters.AddWithValue("@creado_desde", IfBlanco(crDesde))
+                    cmd.Parameters.AddWithValue("@creado_hasta", IfBlanco(crHasta))
+                    cmd.Parameters.AddWithValue("@estado_pago", IfBlanco(estadoPago))
+                    cmd.Parameters.AddWithValue("@zona_id", IfInt(zonaIdStr))
+                    cmd.Parameters.AddWithValue("@delivery_id", IfInt(deliveryIdStr))
+                    cmd.Parameters.AddWithValue("@solo_express", If(soloExpress = "1", 1, 0))
+                    cmd.Parameters.AddWithValue("@solo_sin_contactar", If(soloSinContactar = "1", 1, 0))
+                    cmd.Parameters.AddWithValue("@solo_sin_delivery", If(soloSinDelivery = "1", 1, 0))
+                    cmd.Parameters.AddWithValue("@sucursal_prepara_id", IfInt(sucPreparaStr))
+                    cmd.Parameters.AddWithValue("@estado_grupo", IfBlanco(estadoGrupo))
+
+                    Using dr As SqlDataReader = cmd.ExecuteReader()
+                        ' Result set 1: estados
+                        If dr.Read() Then
+                            enCurso = LeerInt(dr, "en_curso")
+                            enRuta = LeerInt(dr, "en_ruta")
+                            entregados = LeerInt(dr, "entregados")
+                            problemas = LeerInt(dr, "problemas")
+                        End If
+
+                        ' Result set 2: fechas
+                        If dr.NextResult() AndAlso dr.Read() Then
+                            hoy = LeerInt(dr, "hoy")
+                            manana = LeerInt(dr, "manana")
+                            semana = LeerInt(dr, "semana_actual")
+                            prox7 = LeerInt(dr, "prox_7d")
+                        End If
+                    End Using
+                End Using
+            End Using
+
+            Dim sb As New StringBuilder()
+            sb.Append("{")
+            sb.Append("""estados"":{")
+            sb.Append("""en_curso"":" & enCurso & ",")
+            sb.Append("""en_ruta"":" & enRuta & ",")
+            sb.Append("""entregados"":" & entregados & ",")
+            sb.Append("""problemas"":" & problemas)
+            sb.Append("},")
+            sb.Append("""fechas"":{")
+            sb.Append("""hoy"":" & hoy & ",")
+            sb.Append("""manana"":" & manana & ",")
+            sb.Append("""semana"":" & semana & ",")
+            sb.Append("""prox7"":" & prox7)
+            sb.Append("}}")
+            context.Response.Write(sb.ToString())
+
+        Catch ex As Exception
+            System.Diagnostics.Debug.WriteLine("ERROR ContadoresJson: " & ex.Message)
+            context.Response.StatusCode = 500
+            context.Response.Write("{""error"":""" & JsonEscape(ex.Message) & """}")
         End Try
     End Sub
 
