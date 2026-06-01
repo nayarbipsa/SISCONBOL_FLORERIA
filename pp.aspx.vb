@@ -1,79 +1,118 @@
-Imports System.Data.SqlClient
 Imports System.Web
 
 ' ============================================================
-' SISCONBOL - Redirect Corto Pre-Pedidos (para Somee.com)
-' Archivo: pp.aspx.vb
-' URL: https://www.floreria.somee.com/pp.aspx?c=PRE-000042
-' Redirige a: PrePedido_Detalle.aspx?id=42
+' SISCONBOL - Link DUAL cliente/agente (pp.aspx)
+' URL: https://floreria.somee.com/pp.aspx?c=PRE-000123
+'
+' Comportamiento:
+'   - SIN sesion de agente (cliente): redirige directo al formulario
+'     publico cliente/index.aspx?t=<token> (sin login, sin pantalla
+'     intermedia). El token_web se asegura (reusa/genera) en el helper.
+'   - CON sesion de agente: muestra una pantalla de eleccion inline
+'     (ver como AGENTE o ver como CLIENTE), sin redirect automatico.
+'
+' La deteccion de agente usa SesionHelper.VerificarSesion (no logica propia).
 ' ============================================================
 Partial Public Class pp
     Inherits System.Web.UI.Page
 
-    ' ============================================================
-    ' Page_Load - Procesar redirect
-    ' ============================================================
+    ' --- Propiedades para la pantalla de eleccion (solo agentes) ---
+    Public Property MostrarEleccion As Boolean = False
+    Public Property Codigo As String = ""
+    Public Property ClienteNombre As String = ""
+    Public Property LinkAgente As String = ""
+    Public Property LinkCliente As String = ""
+
     Protected Sub Page_Load(ByVal sender As Object, ByVal e As EventArgs) Handles Me.Load
-        ' Obtener código del pre-pedido
+        ' --- DIAGNOSTICO TEMPORAL: pp.aspx?c=...&dbg=1 ---
+        ' Quitar este bloque cuando se confirme la deteccion de sesion.
+        If Request.QueryString("dbg") = "1" Then
+            MostrarDebugSesion()
+            Return
+        End If
+
+        ' --- 1. Validar codigo ---
         Dim codigo As String = Request.QueryString("c")
-        
-        ' Validar que venga el código
         If String.IsNullOrEmpty(codigo) Then
-            ' Sin código, redirigir a lista de pre-pedidos
-            Response.Redirect("~/Modulos/Pedidos/PrePedidos.aspx", False)
+            IrAInvalido()
             Return
         End If
-        
-        ' Limpiar y validar formato del código
+
         codigo = codigo.Trim().ToUpper()
-        
-        ' Validar formato PRE-XXXXXX
         If Not codigo.StartsWith("PRE-") OrElse codigo.Length < 8 Then
-            ' Código inválido
-            Response.Redirect("~/Modulos/Pedidos/PrePedidos.aspx?error=codigo_invalido", False)
+            IrAInvalido()
             Return
         End If
-        
-        ' Buscar el pre-pedido en la base de datos
-        Dim prepedidoId As Integer = BuscarPorCodigo(codigo)
-        
-        If prepedidoId > 0 Then
-            ' Pre-pedido encontrado - redirigir al detalle
-            Response.Redirect("~/Modulos/Pedidos/PrePedido_Detalle.aspx?id=" & prepedidoId, False)
-        Else
-            ' No encontrado - redirigir a lista con mensaje
-            Response.Redirect("~/Modulos/Pedidos/PrePedidos.aspx?error=no_encontrado&c=" & Server.UrlEncode(codigo), False)
+
+        ' --- 2. Detectar si hay un AGENTE logueado ---
+        Dim esAgente As Boolean = SesionHelper.VerificarSesion(HttpContext.Current)
+        Dim uid As Integer = If(esAgente, SesionHelper.ObtenerUsuarioId(HttpContext.Current), 0)
+
+        ' --- 3. Resolver pre-pedido + asegurar token_web vigente ---
+        Dim info As PrePedidoLink.Info = PrePedidoLink.AsegurarTokenPorCodigo(codigo, uid)
+        If Not info.Encontrado OrElse info.Token = "" Then
+            IrAInvalido()
+            Return
         End If
+
+        ' --- 4. CLIENTE: directo al formulario (sin pantalla intermedia) ---
+        If Not esAgente Then
+            Response.Redirect(ResolveUrl("~/cliente/index.aspx?t=" & info.Token), False)
+            HttpContext.Current.ApplicationInstance.CompleteRequest()
+            Return
+        End If
+
+        ' --- 5. AGENTE: pantalla de eleccion (sin redirect automatico) ---
+        MostrarEleccion = True
+        Codigo = info.Codigo
+        ClienteNombre = info.ClienteNombre
+        LinkAgente = ResolveUrl("~/Modulos/Pedidos/PrePedido_Detalle.aspx?id=" & info.PrePedidoId)
+        ' El link del cliente que se muestra al agente usa URL_PUBLICA_BASE (config)
+        LinkCliente = PrePedidoLink.UrlPublicaBase() & "/cliente/index.aspx?t=" & info.Token
     End Sub
 
-    ' ============================================================
-    ' BuscarPorCodigo - Obtener ID del pre-pedido por código
-    ' ============================================================
-    Private Function BuscarPorCodigo(codigo As String) As Integer
+    ' --- DIAGNOSTICO TEMPORAL: muestra que ve pp.aspx respecto a la sesion ---
+    Private Sub MostrarDebugSesion()
+        Dim ctx As HttpContext = HttpContext.Current
+        Dim sb As New System.Text.StringBuilder()
+
+        Dim sessionTokenLen As Integer = 0
         Try
-            Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
-                conn.Open()
-                
-                ' Query simple para obtener el ID
-                Dim sql As String = "SELECT prepedido_id FROM FLORERIA_PrePedido WHERE codigo = @codigo"
-                
-                Using cmd As New SqlCommand(sql, conn)
-                    cmd.Parameters.AddWithValue("@codigo", codigo)
-                    
-                    Dim result As Object = cmd.ExecuteScalar()
-                    
-                    If result IsNot Nothing AndAlso Not IsDBNull(result) Then
-                        Return Convert.ToInt32(result)
-                    End If
-                End Using
-            End Using
-            
-        Catch ex As Exception
-            ' Log del error (opcional)
-            System.Diagnostics.Debug.WriteLine("ERROR pp.BuscarPorCodigo: " & ex.Message)
+            If ctx.Session IsNot Nothing AndAlso ctx.Session("token") IsNot Nothing Then
+                sessionTokenLen = ctx.Session("token").ToString().Length
+            End If
+        Catch
         End Try
-        
-        Return 0 ' No encontrado o error
-    End Function
+
+        Dim ck As HttpCookie = ctx.Request.Cookies("SISCONBOL_TOKEN")
+        Dim cookieLen As Integer = If(ck IsNot Nothing AndAlso ck.Value IsNot Nothing, ck.Value.Length, 0)
+
+        Dim todasCookies As String = ""
+        For Each nombre As String In ctx.Request.Cookies.AllKeys
+            todasCookies &= nombre & " "
+        Next
+
+        Dim esAgente As Boolean = SesionHelper.VerificarSesion(ctx)
+        Dim uid As Integer = SesionHelper.ObtenerUsuarioId(ctx)
+
+        sb.Append("HOST = " & ctx.Request.Url.Host & vbCrLf)
+        sb.Append("URL  = " & ctx.Request.Url.AbsoluteUri & vbCrLf)
+        sb.Append("Session existe       = " & (ctx.Session IsNot Nothing) & vbCrLf)
+        sb.Append("Session token len    = " & sessionTokenLen & vbCrLf)
+        sb.Append("Cookie SISCONBOL_TOKEN len = " & cookieLen & vbCrLf)
+        sb.Append("Cookies presentes    = [" & todasCookies.Trim() & "]" & vbCrLf)
+        sb.Append("VerificarSesion()    = " & esAgente & vbCrLf)
+        sb.Append("usuario_id           = " & uid & vbCrLf)
+
+        ctx.Response.ContentType = "text/plain; charset=utf-8"
+        ctx.Response.Write(sb.ToString())
+        ctx.Response.End()
+    End Sub
+
+    ' Pantalla amigable "Link no valido" reutilizando el area publica del cliente
+    Private Sub IrAInvalido()
+        Response.Redirect(ResolveUrl("~/cliente/index.aspx?t="), False)
+        HttpContext.Current.ApplicationInstance.CompleteRequest()
+    End Sub
 
 End Class

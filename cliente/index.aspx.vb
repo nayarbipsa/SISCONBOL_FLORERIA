@@ -57,10 +57,20 @@ Partial Public Class Cliente_Index
     Protected Sub Page_Load(ByVal sender As Object, ByVal e As EventArgs) Handles Me.Load
         If IsPostBack Then Return
 
-        ' --- 1. Validar token ---
+        ' --- 1. Validar token (acepta ?t=token o, como fallback, ?c=CODIGO) ---
         Dim t As String = Request.QueryString("t")
         If t Is Nothing Then t = ""
         t = t.Trim()
+
+        ' Entrada por link corto ?c=PRE-000123: resuelve a token_web (lo asegura
+        ' si falta o expiro). Asi la misma pagina sirve si se entra con el codigo.
+        If t = "" Then
+            Dim c As String = Request.QueryString("c")
+            If c IsNot Nothing AndAlso c.Trim() <> "" Then
+                Dim info As PrePedidoLink.Info = PrePedidoLink.AsegurarTokenPorCodigo(c, 0)
+                If info.Encontrado AndAlso info.Token <> "" Then t = info.Token
+            End If
+        End If
 
         If t = "" OrElse t.Length < 16 Then
             Estado = "INVALIDO"

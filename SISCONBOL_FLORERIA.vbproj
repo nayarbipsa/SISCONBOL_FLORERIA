@@ -141,6 +141,7 @@
     <Compile Include="App_Code\Validador.vb" />
     <Compile Include="App_Code\WooCommerceSync.vb" />
     <Compile Include="App_Code\CrmWcExtractor.vb" />
+    <Compile Include="App_Code\PrePedidoLink.vb" />
     <Compile Include="CambiarPassword.aspx.vb">
       <DependentUpon>CambiarPassword.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
