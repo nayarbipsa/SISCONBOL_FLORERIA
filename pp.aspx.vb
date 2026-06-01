@@ -1,4 +1,5 @@
 Imports System.Web
+Imports System.Data.SqlClient
 
 ' ============================================================
 ' SISCONBOL - Link DUAL cliente/agente (pp.aspx)
@@ -47,6 +48,9 @@ Partial Public Class pp
         ' --- 2. Detectar si hay un AGENTE logueado ---
         Dim esAgente As Boolean = SesionHelper.VerificarSesion(HttpContext.Current)
         Dim uid As Integer = If(esAgente, SesionHelper.ObtenerUsuarioId(HttpContext.Current), 0)
+
+        ' --- LOG TEMPORAL DE DIAGNOSTICO (quitar cuando se confirme) ---
+        RegistrarDebugPP(codigo, esAgente, uid)
 
         ' --- 3. Resolver pre-pedido + asegurar token_web vigente ---
         Dim info As PrePedidoLink.Info = PrePedidoLink.AsegurarTokenPorCodigo(codigo, uid)
@@ -107,6 +111,45 @@ Partial Public Class pp
         ctx.Response.ContentType = "text/plain; charset=utf-8"
         ctx.Response.Write(sb.ToString())
         ctx.Response.End()
+    End Sub
+
+    ' --- LOG TEMPORAL: registra en FLORERIA_PP_Debug que vio pp.aspx ---
+    Private Sub RegistrarDebugPP(codigo As String, esAgente As Boolean, uid As Integer)
+        Try
+            Dim ctx As HttpContext = HttpContext.Current
+            Dim ck As HttpCookie = ctx.Request.Cookies("SISCONBOL_TOKEN")
+            Dim cookieLen As Integer = If(ck IsNot Nothing AndAlso ck.Value IsNot Nothing, ck.Value.Length, 0)
+            Dim sLen As Integer = 0
+            Try
+                If ctx.Session IsNot Nothing AndAlso ctx.Session("token") IsNot Nothing Then sLen = ctx.Session("token").ToString().Length
+            Catch
+            End Try
+            Dim cookiesPres As String = ""
+            For Each n As String In ctx.Request.Cookies.AllKeys
+                cookiesPres &= n & " "
+            Next
+            Dim ua As String = If(ctx.Request.UserAgent, "")
+
+            Using conn As New SqlConnection(SesionHelper.ObtenerCadena())
+                conn.Open()
+                Using cmd As New SqlCommand(
+                    "INSERT INTO FLORERIA_PP_Debug(host,url,cookie_token_len,session_token_len,cookies_presentes,verificar_sesion,usuario_id,codigo,user_agent) " &
+                    "VALUES(@h,@u,@cl,@sl,@cp,@v,@uid,@c,@ua)", conn)
+                    cmd.Parameters.AddWithValue("@h", ctx.Request.Url.Host)
+                    cmd.Parameters.AddWithValue("@u", Left(ctx.Request.Url.AbsoluteUri, 400))
+                    cmd.Parameters.AddWithValue("@cl", cookieLen)
+                    cmd.Parameters.AddWithValue("@sl", sLen)
+                    cmd.Parameters.AddWithValue("@cp", Left(cookiesPres.Trim(), 400))
+                    cmd.Parameters.AddWithValue("@v", esAgente)
+                    cmd.Parameters.AddWithValue("@uid", uid)
+                    cmd.Parameters.AddWithValue("@c", If(codigo Is Nothing, "", codigo))
+                    cmd.Parameters.AddWithValue("@ua", Left(ua, 400))
+                    cmd.ExecuteNonQuery()
+                End Using
+            End Using
+        Catch
+            ' nunca debe romper el flujo
+        End Try
     End Sub
 
     ' Pantalla amigable "Link no valido" reutilizando el area publica del cliente
