@@ -92,14 +92,27 @@ Partial Public Class Login
                                     ' Guardar token en cookie — dura hasta 23:59:59 hora Bolivia (UTC-4)
                                     Dim token As String = dr("token").ToString()
                                     Dim expiraUtc As DateTime = ObtenerExpiraBolivia()
+
+                                    ' Dominio de cookie: en produccion la fijamos a ".floreria.somee.com"
+                                    ' para que la sesion sirva tanto en www. como sin www (la cookie sin
+                                    ' Domain queda atada al host exacto y pp.aspx no la recibe si el host
+                                    ' no coincide). En local (localhost / IIS Express) se deja sin dominio.
+                                    Dim cookieDominio As String = ""
+                                    Dim hostLogin As String = Request.Url.Host.ToLower()
+                                    If hostLogin.EndsWith("floreria.somee.com") Then
+                                        cookieDominio = ".floreria.somee.com"
+                                    End If
+
                                     Dim cookie As New HttpCookie("SISCONBOL_TOKEN", token)
                                     cookie.Expires = expiraUtc
                                     cookie.HttpOnly = True
+                                    If cookieDominio <> "" Then cookie.Domain = cookieDominio
                                     Response.Cookies.Add(cookie)
 
                                     ' Guardar nombre en cookie para mostrar en pantalla
                                     Dim cookieNombre As New HttpCookie("SISCONBOL_NOMBRE", dr("nombres").ToString() & "|" & dr("apellidos").ToString() & "|" & dr("tipo_id").ToString())
                                     cookieNombre.Expires = expiraUtc
+                                    If cookieDominio <> "" Then cookieNombre.Domain = cookieDominio
                                     Response.Cookies.Add(cookieNombre)
 
                                     If CBool(dr("debe_cambiar_pwd")) Then
